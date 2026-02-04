@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
 interface WorkoutSessionProps {
-  session: Session
+  session: Session | null
   currentExerciseIndex: number
   currentSet: number
   sessionStartTime: number | null
@@ -71,6 +71,26 @@ export function WorkoutSession({
   const weightFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const weightUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Handle null session
+  if (!session) {
+    return (
+      <ScreenShell className="items-center justify-center px-6">
+        <p className="text-sm text-muted-foreground uppercase tracking-[0.3em] mb-4">
+          No workout program loaded
+        </p>
+        <Button
+          onClick={onEndSession}
+          variant="primary"
+          size="lg"
+          fullWidth
+          className="max-w-sm bg-foreground text-background"
+        >
+          Go Back
+        </Button>
+      </ScreenShell>
+    )
+  }
 
   const currentExercise = session.exercises[currentExerciseIndex]
   const totalExercises = session.exercises.length

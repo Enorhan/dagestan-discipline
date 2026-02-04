@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { CustomWorkout, UserProfile, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
@@ -43,13 +43,12 @@ export function WorkoutDetail({
     setIsLoading(true)
     try {
       // Check if saved
-      const saved = socialService.getSavedWorkouts()
+      const saved = await supabaseService.getSavedWorkouts()
       setIsSaved(saved.some(s => s.workoutId === workout.id))
 
       // Get creator info
-      const users = await socialService.searchUsers('')
-      const creatorUser = users.find(u => u.id === workout.creatorId)
-      setCreator(creatorUser || null)
+      const creatorProfile = await supabaseService.getProfile(workout.creatorId)
+      setCreator(creatorProfile)
     } catch (e) {
       console.error('Failed to load workout data:', e)
     } finally {
@@ -66,9 +65,9 @@ export function WorkoutDetail({
     haptics.medium()
     try {
       if (isSaved) {
-        await socialService.unsaveWorkout(workout.id)
+        await supabaseService.unsaveWorkout(workout.id)
       } else {
-        await socialService.saveWorkout(workout.id)
+        await supabaseService.saveWorkout(workout.id)
       }
       setIsSaved(!isSaved)
     } catch (e) {

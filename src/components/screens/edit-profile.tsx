@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
@@ -73,7 +73,7 @@ export function EditProfile({ user, onSave, onBack }: EditProfileProps) {
         avatarUrl: avatarUrl.trim() || undefined,
       }
 
-      const updatedUser = await socialService.updateProfile(user.id, updates)
+      const updatedUser = await supabaseService.updateProfile(user.id, updates)
       
       // Small delay for UX polish
       setTimeout(() => {

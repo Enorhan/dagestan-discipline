@@ -1,15 +1,16 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Drill, DrillCategory } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
-import { categoryInfo, getDrillById } from '@/lib/drills-data'
+import { categoryInfo } from '@/lib/drills-data'
+import { drillsService } from '@/lib/drills-service'
 import { BackButton } from '@/components/ui/back-button'
 import { VideoPlayer } from '@/components/ui/video-player'
 import { HorizontalScroll } from '@/components/ui/horizontal-scroll'
 import { Button } from '@/components/ui/button'
 import {
-  Check, X, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Clock
+  Check, X, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Clock, Refresh
 } from '@/components/ui/icons'
 
 // Map category to icon component
@@ -23,20 +24,170 @@ const categoryIcons: Record<DrillCategory, React.ReactNode> = {
   'recovery': <Heart size={18} className="text-primary" />
 }
 
+// Component to fetch and display related drills
+function RelatedDrillsSection({ drillIds, onSelect }: { drillIds: string[]; onSelect: (id: string) => void }) {
+  const [relatedDrills, setRelatedDrills] = useState<Drill[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchRelatedDrills = async () => {
+      setIsLoading(true)
+      const drills: Drill[] = []
+      for (const id of drillIds) {
+        const drill = await drillsService.getDrillById(id)
+        if (drill) drills.push(drill)
+      }
+      if (isMounted) {
+        setRelatedDrills(drills)
+        setIsLoading(false)
+      }
+    }
+
+    fetchRelatedDrills()
+
+    return () => {
+      isMounted = false
+    }
+  }, [drillIds])
+
+  if (isLoading) {
+    return (
+      <div className="px-4 sm:px-6 py-4 pb-8">
+        <h2 className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mb-3">
+          Related Drills
+        </h2>
+        <div className="flex items-center gap-2">
+          <Refresh size={16} className="animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (relatedDrills.length === 0) return null
+
+  return (
+    <div className="px-4 sm:px-6 py-4 pb-8">
+      <h2 className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mb-3">
+        Related Drills
+      </h2>
+      <HorizontalScroll gap={8}>
+        {relatedDrills.map(drill => (
+          <Button
+            key={drill.id}
+            onClick={() => onSelect(drill.id)}
+            variant="ghost"
+            size="sm"
+            className="flex-shrink-0 bg-card border border-border rounded-lg px-4 py-3 text-sm hover:bg-card/80 transition-colors min-h-[44px] normal-case tracking-normal h-auto"
+          >
+            {drill.name}
+          </Button>
+        ))}
+      </HorizontalScroll>
+    </div>
+  )
+}
+
 interface DrillDetailProps {
-  drill: Drill
+  drill?: Drill
+  drillId?: string
   onBack: () => void
   onSelectRelatedDrill?: (drill: Drill) => void
 }
 
-export function DrillDetail({ drill, onBack, onSelectRelatedDrill }: DrillDetailProps) {
-  const categoryDisplay = categoryInfo[drill.category as DrillCategory]
+export function DrillDetail({ drill: drillProp, drillId, onBack, onSelectRelatedDrill }: DrillDetailProps) {
+  const [drill, setDrill] = useState<Drill | null>(drillProp ?? null)
+  const [isLoading, setIsLoading] = useState(!drillProp && !!drillId)
+  const [relatedDrillsCache, setRelatedDrillsCache] = useState<Record<string, Drill>>({})
 
-  const handleRelatedDrillClick = (drillId: string) => {
-    const relatedDrill = getDrillById(drillId)
+  // Fetch drill if not passed as prop
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchDrill = async () => {
+      if (drillProp) {
+        setDrill(drillProp)
+        setIsLoading(false)
+        return
+      }
+
+      if (!drillId) {
+        setIsLoading(false)
+        return
+      }
+
+      setIsLoading(true)
+      const fetchedDrill = await drillsService.getDrillById(drillId)
+      if (isMounted) {
+        setDrill(fetchedDrill)
+        setIsLoading(false)
+      }
+    }
+
+    fetchDrill()
+
+    return () => {
+      isMounted = false
+    }
+  }, [drillProp, drillId])
+
+  // Track recently viewed when drill is loaded
+  useEffect(() => {
+    if (drill?.id) {
+      drillsService.trackRecentlyViewed(drill.id)
+    }
+  }, [drill?.id])
+
+  const categoryDisplay = drill ? categoryInfo[drill.category as DrillCategory] : null
+
+  const handleRelatedDrillClick = async (relatedDrillId: string) => {
+    // Check cache first
+    if (relatedDrillsCache[relatedDrillId]) {
+      onSelectRelatedDrill?.(relatedDrillsCache[relatedDrillId])
+      return
+    }
+
+    // Fetch from service
+    const relatedDrill = await drillsService.getDrillById(relatedDrillId)
     if (relatedDrill && onSelectRelatedDrill) {
+      setRelatedDrillsCache(prev => ({ ...prev, [relatedDrillId]: relatedDrill }))
       onSelectRelatedDrill(relatedDrill)
     }
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <ScreenShell>
+        <ScreenShellContent>
+          <div className="px-6 safe-area-top pb-4">
+            <BackButton onClick={onBack} label="Back" />
+          </div>
+          <div className="flex flex-col items-center justify-center py-12">
+            <Refresh size={24} className="animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mt-2">Loading drill...</p>
+          </div>
+        </ScreenShellContent>
+      </ScreenShell>
+    )
+  }
+
+  // Not found state
+  if (!drill) {
+    return (
+      <ScreenShell>
+        <ScreenShellContent>
+          <div className="px-6 safe-area-top pb-4">
+            <BackButton onClick={onBack} label="Back" />
+          </div>
+          <div className="flex flex-col items-center justify-center py-12">
+            <p className="text-muted-foreground">Drill not found</p>
+          </div>
+        </ScreenShellContent>
+      </ScreenShell>
+    )
   }
 
   return (
@@ -196,28 +347,10 @@ export function DrillDetail({ drill, onBack, onSelectRelatedDrill }: DrillDetail
 
         {/* Related Drills */}
         {drill.relatedDrills && drill.relatedDrills.length > 0 && (
-          <div className="px-4 sm:px-6 py-4 pb-8">
-            <h2 className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mb-3">
-              Related Drills
-            </h2>
-            <HorizontalScroll gap={8}>
-              {drill.relatedDrills.map(drillId => {
-                const relatedDrill = getDrillById(drillId)
-                if (!relatedDrill) return null
-                return (
-                  <Button
-                    key={drillId}
-                    onClick={() => handleRelatedDrillClick(drillId)}
-                    variant="ghost"
-                    size="sm"
-                    className="flex-shrink-0 bg-card border border-border rounded-lg px-4 py-3 text-sm hover:bg-card/80 transition-colors min-h-[44px] normal-case tracking-normal h-auto"
-                  >
-                    {relatedDrill.name}
-                  </Button>
-                )
-              })}
-            </HorizontalScroll>
-          </div>
+          <RelatedDrillsSection
+            drillIds={drill.relatedDrills}
+            onSelect={handleRelatedDrillClick}
+          />
         )}
       </ScreenShellContent>
     </ScreenShell>

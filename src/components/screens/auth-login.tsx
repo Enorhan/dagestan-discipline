@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile } from '@/lib/social-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,13 +17,19 @@ interface AuthLoginProps {
 }
 
 export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleLogin = async () => {
-    if (!username.trim()) {
-      setError('Please enter a username')
+    if (!email.trim()) {
+      setError('Please enter your email')
+      haptics.error()
+      return
+    }
+    if (!password) {
+      setError('Please enter your password')
       haptics.error()
       return
     }
@@ -32,10 +38,17 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
     setError(null)
 
     try {
-      const user = await socialService.signIn(username.trim())
+      console.log('[Login] Starting login for:', email.trim())
+      // Clear any existing session and localStorage before login
+      localStorage.clear()
+      console.log('[Login] Cleared localStorage')
+
+      const user = await supabaseService.signIn(email.trim(), password)
+      console.log('[Login] Sign in successful, user:', user.username)
       haptics.success()
       onLogin(user)
     } catch (e) {
+      console.error('[Login] Error:', e)
       setError(e instanceof Error ? e.message : 'Login failed')
       haptics.error()
     } finally {
@@ -76,16 +89,31 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
           <div className="space-y-6">
             <div>
               <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Username
+                Email
               </label>
               <Input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
                 className="h-14"
                 autoCapitalize="none"
                 autoCorrect="off"
+                autoComplete="email"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Password
+              </label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="h-14"
+                autoComplete="current-password"
               />
             </div>
 

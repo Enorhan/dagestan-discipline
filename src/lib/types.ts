@@ -20,6 +20,10 @@ export type Screen =
   | 'routine-player'
   | 'learning-path'
   | 'body-part-selector'
+  // Exercise screens
+  | 'exercises-main'
+  | 'sport-exercise-categories'
+  | 'sport-category-exercises'
   // Social screens
   | 'auth-login'
   | 'auth-signup'
@@ -32,6 +36,17 @@ export type Screen =
   | 'workout-detail'
   | 'edit-profile'
   | 'loading'
+
+// Exercise categories for sport-specific exercises
+export type ExerciseCategory =
+  | 'full-body'
+  | 'legs'
+  | 'chest'
+  | 'shoulders'
+  | 'back'
+  | 'arms'
+  | 'core'
+  | 'neck'
 
 // Activity types for external training logging
 export type ActivityType =
@@ -87,6 +102,12 @@ export interface Exercise {
   restTime: number // in seconds
   notes?: string
   videoUrl?: string // YouTube embed URL for exercise demo
+}
+
+export interface AthleteExerciseGroup {
+  athlete: string
+  sport: SportType
+  exercises: string[]
 }
 
 export interface Session {

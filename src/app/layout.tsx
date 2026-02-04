@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { OfflineBanner } from '@/components/ui/offline-banner'
+import { AuthProvider } from '@/contexts/auth-context'
 
 const inter = Inter({
   subsets: ["latin"],
@@ -53,7 +54,9 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased bg-background text-foreground`}>
         <OfflineBanner />
         <ErrorBoundary>
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </ErrorBoundary>
         <Analytics />
       </body>

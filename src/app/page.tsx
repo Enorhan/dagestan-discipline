@@ -1,8 +1,8 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useRef } from 'react'
-import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath } from '@/lib/types'
-import { mockSession, mockWeekProgress, bodyweightSession, generateWeeklyProgram } from '@/lib/data'
+import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory } from '@/lib/types'
+import { generateWeeklyProgram } from '@/lib/data'
 import { allDrills, routines, learningPaths } from '@/lib/drills-data'
 import { analytics } from '@/lib/analytics'
 import { OnboardingSport } from '@/components/screens/onboarding-sport'
@@ -25,6 +25,9 @@ import { DrillDetail } from '@/components/screens/drill-detail'
 import { CategoryList } from '@/components/screens/category-list'
 import { RoutinePlayer } from '@/components/screens/routine-player'
 import { BodyPartSelector } from '@/components/screens/body-part-selector'
+import { ExercisesMain } from '@/components/screens/exercises-main'
+import { SportExerciseCategories } from '@/components/screens/sport-exercise-categories'
+import { SportCategoryExercises } from '@/components/screens/sport-category-exercises'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 // Social screens
 import { AuthLogin } from '@/components/screens/auth-login'
@@ -37,7 +40,7 @@ import { SearchDiscover } from '@/components/screens/search-discover'
 import { SavedWorkouts } from '@/components/screens/saved-workouts'
 import { WorkoutDetail } from '@/components/screens/workout-detail'
 import { LoadingScreen } from '@/components/screens/loading-screen'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile, CustomWorkout } from '@/lib/social-types'
 
 const STORAGE_KEY = 'dagestaniDiscipline.state'
@@ -45,6 +48,17 @@ const UNDO_TTL_MS = 6000
 const STREAK_GRACE_HOURS = 36
 const DEFAULT_SCREENSHOT_INTERVAL_MS = 1400
 const DEFAULT_SCREENSHOT_DELAY_MS = 400
+
+// Default empty week progress - will be populated when user sets up their program
+const DEFAULT_WEEK_PROGRESS: WeekDay[] = [
+  { day: 'Monday', shortDay: 'M', planned: false, completed: false },
+  { day: 'Tuesday', shortDay: 'T', planned: false, completed: false },
+  { day: 'Wednesday', shortDay: 'W', planned: false, completed: false },
+  { day: 'Thursday', shortDay: 'T', planned: false, completed: false },
+  { day: 'Friday', shortDay: 'F', planned: false, completed: false },
+  { day: 'Saturday', shortDay: 'S', planned: false, completed: false },
+  { day: 'Sunday', shortDay: 'S', planned: false, completed: false },
+]
 
 const SCREENSHOT_SCREENS: Screen[] = [
   'auth-login',
@@ -56,6 +70,9 @@ const SCREENSHOT_SCREENS: Screen[] = [
   'home',
   'week-view',
   'exercise-list',
+  'exercises-main',
+  'sport-exercise-categories',
+  'sport-category-exercises',
   'workout-session',
   'rest-timer',
   'post-workout-reflection',
@@ -145,11 +162,11 @@ export default function App() {
   const [pauseStartedAt, setPauseStartedAt] = useState<number | null>(null)
 
   // Progress state
-  const [weekProgress, setWeekProgress] = useState<WeekDay[]>(mockWeekProgress)
+  const [weekProgress, setWeekProgress] = useState<WeekDay[]>(DEFAULT_WEEK_PROGRESS)
 
   // Streak & Accountability state
-  const [currentStreak, setCurrentStreak] = useState(3)
-  const [longestStreak, setLongestStreak] = useState(7)
+  const [currentStreak, setCurrentStreak] = useState(0)
+  const [longestStreak, setLongestStreak] = useState(0)
   const [lastWorkoutDate, setLastWorkoutDate] = useState<string | null>(null)
   const [sessionHistory, setSessionHistory] = useState<SessionLog[]>([])
   const [missedSessionExcuse, setMissedSessionExcuse] = useState<string | null>(null)
@@ -182,6 +199,10 @@ export default function App() {
   const [learningPathProgress, setLearningPathProgress] = useState<Record<string, number>>({})
   const [recentlyViewedDrills, setRecentlyViewedDrills] = useState<string[]>([])
 
+  // Exercise navigation state
+  const [selectedExerciseSport, setSelectedExerciseSport] = useState<SportType | null>(null)
+  const [selectedExerciseCategory, setSelectedExerciseCategory] = useState<ExerciseCategory | null>(null)
+
   // Screen transition state
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back' | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
@@ -192,16 +213,17 @@ export default function App() {
   const [selectedWorkout, setSelectedWorkout] = useState<CustomWorkout | null>(null)
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null)
 
+  // Loading state for Supabase data
+  const [isLoadingSupabaseData, setIsLoadingSupabaseData] = useState(false)
+
   const screenshotParams = getScreenshotParams()
   const isScreenshotMode = screenshotParams.enabled
   const screenshotScreen = screenshotParams.screen
   const screenshotIntervalMs = screenshotParams.intervalMs
   const screenshotDelayMs = screenshotParams.delayMs
 
-  // Get the current session - bodyweight sessions override the program
-  const currentSession = equipment === 'bodyweight'
-    ? bodyweightSession
-    : (generatedProgram?.[currentDayIndex] ?? mockSession)
+  // Get the current session from the generated program (null if no program yet)
+  const currentSession = generatedProgram?.[currentDayIndex] ?? null
 
   // Calculate completed and planned sessions
   const completedSessions = weekProgress.filter(d => d.completed).length
@@ -209,71 +231,102 @@ export default function App() {
 
   // Load persisted state
   useEffect(() => {
-    if (isScreenshotMode) {
-      hasHydratedRef.current = true
-      return
-    }
-    if (typeof window === 'undefined') return
-    try {
-      // Check auth state FIRST - if not authenticated, stay on auth-login
-      const authState = socialService.getAuthState()
-      if (!authState.isAuthenticated || !authState.user) {
-        // User is not logged in - keep them on auth-login screen
+    const hydrateState = async () => {
+      if (isScreenshotMode) {
         hasHydratedRef.current = true
         return
       }
+      if (typeof window === 'undefined') return
+      try {
+        // If we're on auth screens, clear any existing session first
+        if (currentScreen === 'auth-login' || currentScreen === 'auth-signup') {
+          console.log('[Hydration] On auth screen, clearing any existing session')
+          await supabaseService.signOut()
+          localStorage.clear()
+          hasHydratedRef.current = true
+          return
+        }
 
-      // User is authenticated - set current user and restore app state
-      setCurrentUser(authState.user)
+        // Check auth state FIRST - if not authenticated, stay on auth-login
+        const authState = await supabaseService.getAuthState()
+        console.log('[Hydration] Auth state:', authState)
+        if (!authState.isAuthenticated || !authState.user) {
+          // User is not logged in - keep them on auth-login screen
+          console.log('[Hydration] Not authenticated, staying on auth-login')
+          hasHydratedRef.current = true
+          return
+        }
 
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (!stored) {
-        // No saved state but user is authenticated - go to home
-        setCurrentScreen('home')
+        // User is authenticated - set current user and restore app state
+        console.log('[Hydration] User authenticated:', authState.user.username)
+        setCurrentUser(authState.user)
+
+        const stored = localStorage.getItem(STORAGE_KEY)
+        if (!stored) {
+          // No saved state but user is authenticated - reset to defaults
+          // Don't change screen if already on loading/onboarding screens
+          console.log('[Hydration] No localStorage data, resetting to defaults')
+          setGeneratedProgram(null)
+          setCurrentStreak(0)
+          setLongestStreak(0)
+          setWeekProgress(DEFAULT_WEEK_PROGRESS)
+          setSessionHistory([])
+          setActivityLogs([])
+          // Only set to loading if we're on auth screens, otherwise keep current screen
+          setCurrentScreen(prev => {
+            const authScreens = ['auth-login', 'auth-signup']
+            const newScreen = authScreens.includes(prev) ? 'loading' : prev
+            console.log('[Hydration] Screen transition:', prev, '->', newScreen)
+            return newScreen
+          })
+          hasHydratedRef.current = true
+          return
+        }
+        console.log('[Hydration] Found localStorage data, restoring state')
+        const data = JSON.parse(stored)
+
+        // Restore screen, but never restore to auth screens for authenticated users
+        const savedScreen = data.currentScreen ?? 'home'
+        const authScreens = ['auth-login', 'auth-signup', 'loading']
+        setCurrentScreen(authScreens.includes(savedScreen) ? 'home' : savedScreen)
+
+        setSelectedSport(data.selectedSport ?? 'wrestling')
+        setTrainingDays(data.trainingDays ?? 4)
+        setEquipment(data.equipment ?? null)
+        setWeightUnit(data.weightUnit ?? 'lbs')
+        setGeneratedProgram(data.generatedProgram ?? null)
+        setCurrentDayIndex(data.currentDayIndex ?? 0)
+
+        setCurrentExerciseIndex(data.currentExerciseIndex ?? 0)
+        setCurrentSet(data.currentSet ?? 1)
+        setSessionStartTime(data.sessionStartTime ?? null)
+        setPausedTime(data.pausedTime ?? 0)
+        setRestTimerEndsAt(data.restTimerEndsAt ?? null)
+        setRestTimerDuration(data.restTimerDuration ?? 0)
+        setSessionPaused(data.sessionPaused ?? false)
+        setPauseStartedAt(data.pauseStartedAt ?? null)
+
+        setWeekProgress(data.weekProgress ?? DEFAULT_WEEK_PROGRESS)
+        setCurrentStreak(data.currentStreak ?? 0)
+        setLongestStreak(data.longestStreak ?? 0)
+        setLastWorkoutDate(data.lastWorkoutDate ?? null)
+        setSessionHistory(data.sessionHistory ?? [])
+        setMissedSessionExcuse(data.missedSessionExcuse ?? null)
+        setCurrentSessionWeights(data.currentSessionWeights ?? {})
+        setTotalVolume(data.totalVolume ?? 0)
+        setActivityLogs(data.activityLogs ?? [])
+
+        if (data.sessionStartTime && ['workout-session', 'rest-timer'].includes(savedScreen)) {
+          setShowResumePrompt(true)
+        }
+      } catch (error) {
+        console.debug('Failed to hydrate state:', error)
+      } finally {
         hasHydratedRef.current = true
-        return
       }
-      const data = JSON.parse(stored)
-
-      // Restore screen, but never restore to auth screens for authenticated users
-      const savedScreen = data.currentScreen ?? 'home'
-      const authScreens = ['auth-login', 'auth-signup', 'loading']
-      setCurrentScreen(authScreens.includes(savedScreen) ? 'home' : savedScreen)
-
-      setSelectedSport(data.selectedSport ?? 'wrestling')
-      setTrainingDays(data.trainingDays ?? 4)
-      setEquipment(data.equipment ?? null)
-      setWeightUnit(data.weightUnit ?? 'lbs')
-      setGeneratedProgram(data.generatedProgram ?? null)
-      setCurrentDayIndex(data.currentDayIndex ?? 0)
-
-      setCurrentExerciseIndex(data.currentExerciseIndex ?? 0)
-      setCurrentSet(data.currentSet ?? 1)
-      setSessionStartTime(data.sessionStartTime ?? null)
-      setPausedTime(data.pausedTime ?? 0)
-      setRestTimerEndsAt(data.restTimerEndsAt ?? null)
-      setRestTimerDuration(data.restTimerDuration ?? 0)
-      setSessionPaused(data.sessionPaused ?? false)
-      setPauseStartedAt(data.pauseStartedAt ?? null)
-
-      setWeekProgress(data.weekProgress ?? mockWeekProgress)
-      setCurrentStreak(data.currentStreak ?? 0)
-      setLongestStreak(data.longestStreak ?? 0)
-      setLastWorkoutDate(data.lastWorkoutDate ?? null)
-      setSessionHistory(data.sessionHistory ?? [])
-      setMissedSessionExcuse(data.missedSessionExcuse ?? null)
-      setCurrentSessionWeights(data.currentSessionWeights ?? {})
-      setTotalVolume(data.totalVolume ?? 0)
-      setActivityLogs(data.activityLogs ?? [])
-
-      if (data.sessionStartTime && ['workout-session', 'rest-timer'].includes(savedScreen)) {
-        setShowResumePrompt(true)
-      }
-    } catch (error) {
-      console.debug('Failed to hydrate state:', error)
-    } finally {
-      hasHydratedRef.current = true
     }
+
+    hydrateState()
   }, [isScreenshotMode])
 
   // Persist state
@@ -338,6 +391,35 @@ export default function App() {
     activityLogs
   ])
 
+  // Fetch session and activity data from Supabase when user authenticates
+  useEffect(() => {
+    if (!currentUser || isScreenshotMode) return
+
+    const fetchSupabaseData = async () => {
+      setIsLoadingSupabaseData(true)
+      try {
+        const [supabaseSessionLogs, supabaseActivityLogs] = await Promise.all([
+          supabaseService.getSessionLogs(),
+          supabaseService.getActivityLogs()
+        ])
+
+        // Merge with localStorage data - Supabase takes precedence
+        if (supabaseSessionLogs.length > 0) {
+          setSessionHistory(supabaseSessionLogs)
+        }
+        if (supabaseActivityLogs.length > 0) {
+          setActivityLogs(supabaseActivityLogs)
+        }
+      } catch (error) {
+        console.debug('Failed to fetch Supabase data, using localStorage cache:', error)
+      } finally {
+        setIsLoadingSupabaseData(false)
+      }
+    }
+
+    fetchSupabaseData()
+  }, [currentUser, isScreenshotMode])
+
   useEffect(() => {
     if (!isScreenshotMode || !screenshotScreen) return
 
@@ -350,6 +432,17 @@ export default function App() {
             [demoSession.exercises[1]?.id ?? demoSession.exercises[0].id]: [95, 105],
           }
         : {}
+
+    // Demo week progress for screenshots - shows realistic progress
+    const demoWeekProgress: WeekDay[] = [
+      { day: 'Monday', shortDay: 'M', planned: true, completed: true },
+      { day: 'Tuesday', shortDay: 'T', planned: false, completed: false },
+      { day: 'Wednesday', shortDay: 'W', planned: true, completed: true },
+      { day: 'Thursday', shortDay: 'T', planned: false, completed: false },
+      { day: 'Friday', shortDay: 'F', planned: true, completed: false },
+      { day: 'Saturday', shortDay: 'S', planned: true, completed: false },
+      { day: 'Sunday', shortDay: 'S', planned: false, completed: false },
+    ]
 
     const demoHistory: SessionLog[] = demoSession
       ? [
@@ -425,7 +518,7 @@ export default function App() {
       setWeightUnit('lbs')
       setGeneratedProgram(demoProgram)
       setCurrentDayIndex(0)
-      setWeekProgress(mockWeekProgress)
+      setWeekProgress(demoWeekProgress)
       setCurrentExerciseIndex(0)
       setCurrentSet(2)
       setSessionStartTime(now - 12 * 60 * 1000)
@@ -650,13 +743,14 @@ export default function App() {
 
   // Find next non-skipped exercise index
   const findNextExerciseIndex = useCallback((fromIndex: number): number | null => {
+    if (!currentSession) return null
     for (let i = fromIndex + 1; i < currentSession.exercises.length; i++) {
       if (!skippedExercises.has(currentSession.exercises[i].id)) {
         return i
       }
     }
     return null // No more exercises
-  }, [currentSession.exercises, skippedExercises])
+  }, [currentSession, skippedExercises])
 
   // Check if current exercise is the last non-skipped one
   const isLastNonSkippedExercise = useCallback((): boolean => {
@@ -665,6 +759,7 @@ export default function App() {
 
   // Handle set confirmation
   const handleConfirmSet = useCallback((weight?: number) => {
+    if (!currentSession) return
     const exercise = currentSession.exercises[currentExerciseIndex]
     const isLastSet = currentSet === exercise.sets
     const isLastExercise = isLastNonSkippedExercise()
@@ -727,7 +822,7 @@ export default function App() {
   }, [
     currentExerciseIndex,
     currentSet,
-    currentSession.exercises,
+    currentSession,
     sessionStartTime,
     currentScreen,
     currentSessionWeights,
@@ -743,6 +838,7 @@ export default function App() {
   ])
 
   const handlePreviousSet = useCallback(() => {
+    if (!currentSession) return
     if (currentExerciseIndex === 0 && currentSet === 1) return
 
     const isWithinExercise = currentSet > 1
@@ -773,7 +869,7 @@ export default function App() {
 
     setCurrentExerciseIndex(targetExerciseIndex)
     setCurrentSet(targetSet)
-  }, [currentExerciseIndex, currentSet, currentSession.exercises, currentSessionWeights])
+  }, [currentExerciseIndex, currentSet, currentSession, currentSessionWeights])
 
   const handleTogglePause = useCallback(() => {
     if (!sessionStartTime) return
@@ -813,6 +909,7 @@ export default function App() {
 
   // Handle jumping to a specific exercise
   const handleJumpToExercise = useCallback((index: number) => {
+    if (!currentSession) return
     if (index < 0 || index >= currentSession.exercises.length) return
     const targetExercise = currentSession.exercises[index]
     if (skippedExercises.has(targetExercise.id)) return
@@ -823,7 +920,7 @@ export default function App() {
     setRestTimerDuration(0)
     setCurrentScreen('workout-session')
     analytics.track('exercise_jumped', { fromIndex: currentExerciseIndex, toIndex: index })
-  }, [currentSession.exercises, skippedExercises, currentExerciseIndex])
+  }, [currentSession, skippedExercises, currentExerciseIndex])
 
   // Handle skipping an exercise
   const handleSkipExercise = useCallback((exerciseId: string) => {
@@ -847,25 +944,44 @@ export default function App() {
   }, [])
 
   // Handle logging external training activity
-  const handleLogActivity = useCallback((log: Omit<ActivityLog, 'id'>) => {
+  const handleLogActivity = useCallback(async (log: Omit<ActivityLog, 'id'>) => {
+    // Optimistically update local state with a temporary ID
+    const tempId = crypto.randomUUID()
     const newLog: ActivityLog = {
       ...log,
-      id: crypto.randomUUID()
+      id: tempId
     }
     setActivityLogs(prev => [newLog, ...prev])
     analytics.track('activity_logged', { type: log.type, duration: log.duration, intensity: log.intensity })
     setEditingActivity(null)
     setCurrentScreen('home')
+
+    // Persist to Supabase (background, non-blocking)
+    try {
+      const savedLog = await supabaseService.logActivity(log)
+      // Update with the real ID from Supabase
+      setActivityLogs(prev => prev.map(a => a.id === tempId ? savedLog : a))
+    } catch (error) {
+      console.debug('Failed to save activity to Supabase, cached locally:', error)
+    }
   }, [])
 
   // Handle updating an existing activity
-  const handleUpdateActivity = useCallback((log: Omit<ActivityLog, 'id'>, activityId: string) => {
+  const handleUpdateActivity = useCallback(async (log: Omit<ActivityLog, 'id'>, activityId: string) => {
+    // Optimistically update local state
     setActivityLogs(prev => prev.map(a =>
       a.id === activityId ? { ...log, id: activityId } : a
     ))
     analytics.track('activity_updated', { type: log.type, duration: log.duration, intensity: log.intensity })
     setEditingActivity(null)
     setCurrentScreen('home')
+
+    // Persist to Supabase (background, non-blocking)
+    try {
+      await supabaseService.updateActivity(activityId, log)
+    } catch (error) {
+      console.debug('Failed to update activity in Supabase, cached locally:', error)
+    }
   }, [])
 
   // Handle editing an activity - navigate to log-activity with pre-filled data
@@ -875,15 +991,24 @@ export default function App() {
   }, [])
 
   // Handle deleting an activity
-  const handleDeleteActivity = useCallback((activityId: string) => {
+  const handleDeleteActivity = useCallback(async (activityId: string) => {
+    // Optimistically update local state
     setActivityLogs(prev => prev.filter(log => log.id !== activityId))
     analytics.track('activity_deleted', { activityId })
+
+    // Delete from Supabase (background, non-blocking)
+    try {
+      await supabaseService.deleteActivity(activityId)
+    } catch (error) {
+      console.debug('Failed to delete activity from Supabase:', error)
+    }
   }, [])
 
   // Handle starting session
   const handleStartSession = useCallback(() => {
     setCurrentExerciseIndex(0)
     setCurrentSet(1)
+    if (!currentSession) return
     setSessionStartTime(Date.now())
     setPausedTime(0)
     setSessionPaused(false)
@@ -894,7 +1019,7 @@ export default function App() {
     setSkippedExercises(new Set()) // Reset skipped exercises for new session
     setCurrentScreen('workout-session')
     analytics.track('workout_started', { sessionId: currentSession.id })
-  }, [currentSession.id])
+  }, [currentSession])
 
   // Handle ending session early
   const handleEndSession = useCallback(() => {
@@ -939,10 +1064,12 @@ export default function App() {
   ])
 
   // Handle post-workout reflection complete
-  const handleReflectionComplete = useCallback((effortRating: number, notes: string) => {
+  const handleReflectionComplete = useCallback(async (effortRating: number, notes: string) => {
+    if (!currentSession) return
     // Save session log
+    const tempId = Date.now().toString()
     const sessionLog: SessionLog = {
-      id: Date.now().toString(),
+      id: tempId,
       date: new Date().toISOString(),
       sessionId: currentSession.id,
       completed: true,
@@ -953,6 +1080,7 @@ export default function App() {
       volume: totalVolume,
     }
 
+    // Optimistically update local state
     setSessionHistory(prev => [...prev, sessionLog])
 
     // Reset session tracking
@@ -980,6 +1108,23 @@ export default function App() {
     // Go to session complete screen
     setCurrentScreen('session-complete')
     analytics.track('session_completed', { sessionId: currentSession.id, effortRating })
+
+    // Persist to Supabase (background, non-blocking)
+    try {
+      const savedLog = await supabaseService.logSession({
+        date: sessionLog.date,
+        sessionId: sessionLog.sessionId,
+        completed: sessionLog.completed,
+        effortRating: sessionLog.effortRating,
+        totalTime: sessionLog.totalTime,
+        notes: sessionLog.notes,
+        volume: sessionLog.volume,
+      })
+      // Update with the real ID from Supabase
+      setSessionHistory(prev => prev.map(s => s.id === tempId ? savedLog : s))
+    } catch (error) {
+      console.debug('Failed to save session to Supabase, cached locally:', error)
+    }
   }, [currentSession, currentSessionWeights, totalVolume, getSessionDuration, updateStreak])
 
   // Handle session complete close
@@ -1046,7 +1191,7 @@ export default function App() {
   const lastCompletedSession = sessionHistory.length > 0 ? sessionHistory[sessionHistory.length - 1] : null
 
   const bestSet = (() => {
-    if (!lastCompletedSession?.weight) return null
+    if (!lastCompletedSession?.weight || !currentSession) return null
     let bestWeight = 0
     let bestExerciseName = ''
 
@@ -1064,9 +1209,9 @@ export default function App() {
   })()
 
   const restExerciseIndex = Math.max(0, currentExerciseIndex - (currentSet === 1 ? 1 : 0))
-  const restExercise = currentSession.exercises[restExerciseIndex]
+  const restExercise = currentSession?.exercises[restExerciseIndex] ?? null
 
-  const trainingTarget: Screen = sessionStartTime ? 'workout-session' : 'exercise-list'
+  const trainingTarget: Screen = sessionStartTime ? 'workout-session' : 'exercises-main'
   let screen: React.ReactNode = null
 
   switch (currentScreen) {
@@ -1112,14 +1257,10 @@ export default function App() {
         <Home
           session={currentSession}
           weekProgress={weekProgress}
-          completedSessions={completedSessions}
-          plannedSessions={plannedSessions}
           currentStreak={currentStreak}
           longestStreak={longestStreak}
           equipment={equipment}
           onStartSession={handleStartSession}
-          onViewExerciseList={() => setCurrentScreen('exercise-list')}
-          onStartRoundTimer={handleStartRoundTimer}
           trainingTarget={trainingTarget}
           onNavigate={setCurrentScreen}
           undoLabel={undoAction?.label ?? null}
@@ -1146,7 +1287,7 @@ export default function App() {
             setCurrentScreen('home')
           }}
           onLogout={() => {
-            socialService.signOut()
+            supabaseService.signOut()
             setCurrentUser(null)
             setCurrentScreen('auth-login')
           }}
@@ -1181,6 +1322,7 @@ export default function App() {
           onClose={() => setCurrentScreen('home')}
           trainingTarget={trainingTarget}
           onNavigate={setCurrentScreen}
+          isLoading={isLoadingSupabaseData}
         />
       )
       break
@@ -1192,6 +1334,7 @@ export default function App() {
           currentWorkoutFocus={currentSession?.focus}
           trainingTarget={trainingTarget}
           onNavigate={setCurrentScreen}
+          backScreen='exercises-main'
           onSelectDrill={(drill) => {
             setSelectedDrill(drill)
             setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
@@ -1214,7 +1357,6 @@ export default function App() {
             setCurrentScreen('body-part-selector')
           }}
           learningPathProgress={learningPathProgress}
-          recentlyViewed={recentlyViewedDrills}
         />
       )
       break
@@ -1295,6 +1437,7 @@ export default function App() {
           activityLogs={activityLogs}
           onEditActivity={handleEditActivity}
           onDeleteActivity={handleDeleteActivity}
+          onLogTraining={() => setCurrentScreen('log-activity')}
         />
       )
       break
@@ -1373,6 +1516,61 @@ export default function App() {
       )
       break
 
+    case 'exercises-main':
+      screen = (
+        <ExercisesMain
+          session={currentSession}
+          trainingTarget={trainingTarget}
+          onNavigate={setCurrentScreen}
+          currentSport={selectedSport}
+          onSelectSport={(sport) => {
+            setSelectedSport(sport)
+            // Will navigate to training-hub inside the component
+          }}
+        />
+      )
+      break
+
+    case 'sport-exercise-categories':
+      screen = (
+        <SportExerciseCategories
+          sport={selectedExerciseSport ?? selectedSport}
+          trainingTarget={trainingTarget}
+          onNavigate={setCurrentScreen}
+          onBack={() => setCurrentScreen('exercises-main')}
+          onSelectCategory={(sport, category) => {
+            setSelectedExerciseSport(sport)
+            setSelectedExerciseCategory(category)
+            setCurrentScreen('sport-category-exercises')
+          }}
+        />
+      )
+      break
+
+    case 'sport-category-exercises':
+      screen = selectedExerciseCategory ? (
+        <SportCategoryExercises
+          sport={selectedExerciseSport ?? selectedSport}
+          category={selectedExerciseCategory}
+          trainingTarget={trainingTarget}
+          onNavigate={setCurrentScreen}
+          onBack={() => setCurrentScreen('sport-exercise-categories')}
+        />
+      ) : (
+        <SportExerciseCategories
+          sport={selectedExerciseSport ?? selectedSport}
+          trainingTarget={trainingTarget}
+          onNavigate={setCurrentScreen}
+          onBack={() => setCurrentScreen('exercises-main')}
+          onSelectCategory={(sport, category) => {
+            setSelectedExerciseSport(sport)
+            setSelectedExerciseCategory(category)
+            setCurrentScreen('sport-category-exercises')
+          }}
+        />
+      )
+      break
+
     case 'post-workout-reflection':
       screen = (
         <PostWorkoutReflection
@@ -1411,10 +1609,13 @@ export default function App() {
       screen = (
         <LoadingScreen
           onLoadComplete={() => {
+            console.log('[Loading] Load complete, generatedProgram:', generatedProgram)
             // If user hasn't completed onboarding (no program generated), send to onboarding
             if (!generatedProgram || generatedProgram.length === 0) {
+              console.log('[Loading] No program, navigating to onboarding-sport')
               setCurrentScreen('onboarding-sport')
             } else {
+              console.log('[Loading] Program exists, navigating to home')
               setCurrentScreen('home')
             }
           }}
@@ -1428,7 +1629,9 @@ export default function App() {
       screen = (
         <AuthLogin
           onLogin={(user) => {
+            console.log('[Login] User logged in:', user.username)
             setCurrentUser(user)
+            console.log('[Login] Navigating to loading screen')
             setCurrentScreen('loading')
           }}
           onNavigate={setCurrentScreen}

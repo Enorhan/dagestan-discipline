@@ -16,6 +16,7 @@ interface TrainingStatsProps {
   onClose: () => void
   trainingTarget: Screen
   onNavigate: (screen: Screen) => void
+  isLoading?: boolean
 }
 
 // Activity type labels and icons
@@ -32,29 +33,6 @@ const ACTIVITY_META: Record<ActivityType, { label: string; icon: ReactNode }> = 
 
 type ViewMode = 'month' | 'year'
 
-// Sample data for demonstration
-const SAMPLE_ACTIVITY_LOGS: ActivityLog[] = [
-  { id: '1', date: new Date().toISOString(), type: 'bjj-session', duration: 90, intensity: 8 },
-  { id: '2', date: new Date().toISOString(), type: 'bjj-session', duration: 60, intensity: 7 },
-  { id: '3', date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), type: 'sparring', duration: 45, intensity: 9 },
-  { id: '4', date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), type: 'wrestling-practice', duration: 75, intensity: 8 },
-  { id: '5', date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), type: 'bjj-session', duration: 90, intensity: 7 },
-  { id: '6', date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), type: 'sparring', duration: 60, intensity: 9 },
-  { id: '7', date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), type: 'drilling', duration: 45, intensity: 5 },
-  { id: '8', date: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(), type: 'competition', duration: 180, intensity: 10 },
-  { id: '9', date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(), type: 'open-mat', duration: 120, intensity: 6 },
-  { id: '10', date: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(), type: 'conditioning', duration: 45, intensity: 8 },
-]
-
-const SAMPLE_SESSION_LOGS: SessionLog[] = [
-  { id: '1', date: new Date().toISOString(), sessionId: 'day1', completed: true, effortRating: 8, totalTime: 2700, volume: 12500 },
-  { id: '2', date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), sessionId: 'day2', completed: true, effortRating: 7, totalTime: 2400, volume: 10200 },
-  { id: '3', date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), sessionId: 'day3', completed: true, effortRating: 9, totalTime: 3000, volume: 15800 },
-  { id: '4', date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), sessionId: 'day1', completed: true, effortRating: 8, totalTime: 2550, volume: 11900 },
-  { id: '5', date: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(), sessionId: 'day2', completed: true, effortRating: 7, totalTime: 2300, volume: 9800 },
-  { id: '6', date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(), sessionId: 'day3', completed: true, effortRating: 8, totalTime: 2800, volume: 14200 },
-]
-
 export function TrainingStats({
   sessionHistory,
   activityLogs,
@@ -63,15 +41,16 @@ export function TrainingStats({
   weightUnit,
   onClose,
   trainingTarget,
-  onNavigate
+  onNavigate,
+  isLoading = false
 }: TrainingStatsProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
 
-  // Use sample data if no real data exists
-  const activities = activityLogs.length > 0 ? activityLogs : SAMPLE_ACTIVITY_LOGS
-  const sessions = sessionHistory.length > 0 ? sessionHistory : SAMPLE_SESSION_LOGS
-  const usingSampleData = activityLogs.length === 0 && sessionHistory.length === 0
+  // Use real data only - no sample data fallback
+  const activities = isLoading ? [] : activityLogs
+  const sessions = isLoading ? [] : sessionHistory
+  const hasNoData = !isLoading && activityLogs.length === 0 && sessionHistory.length === 0
 
   // Filter data by selected month/year
   const filterByPeriod = <T extends { date: string }>(items: T[]): T[] => {
@@ -155,11 +134,24 @@ export function TrainingStats({
             </Button>
           </header>
 
-          {/* Sample Data Notice */}
-          {usingSampleData && (
-            <div className="mx-6 mb-4 p-3 bg-primary/10 rounded-lg border border-primary/20">
-              <p className="text-xs text-primary font-medium">
-                📊 Showing sample data. Complete workouts and log activities to see your real stats.
+          {/* Loading Notice */}
+          {isLoading && (
+            <div className="mx-6 mb-4 p-3 bg-muted/50 rounded-lg border border-border/60">
+              <p className="text-xs text-muted-foreground font-medium flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Loading your training data...
+              </p>
+            </div>
+          )}
+
+          {/* No Data Notice */}
+          {hasNoData && (
+            <div className="mx-6 mb-4 p-3 bg-muted/50 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground font-medium">
+                📊 No training data yet. Complete workouts and log activities to see your stats.
               </p>
             </div>
           )}

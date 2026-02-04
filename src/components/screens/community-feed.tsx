@@ -5,7 +5,7 @@ import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { FeedItem, WorkoutSearchFilters, focusAreaInfo, CustomWorkout, UserProfile } from '@/lib/social-types'
 import { Button } from '@/components/ui/button'
 import { Search, Heart, Bookmark, Users, Plus, Filter, ChevronRight } from '@/components/ui/icons'
@@ -48,7 +48,7 @@ export function CommunityFeed({
     setIsLoading(true)
     setError(null)
     try {
-      const items = await socialService.getCommunityFeed(filters)
+      const items = await supabaseService.getFeedWorkouts(filters)
       setFeedItems(items)
     } catch (e) {
       console.error('Failed to load feed:', e)
@@ -72,13 +72,13 @@ export function CommunityFeed({
     haptics.medium()
     try {
       if (isSaved) {
-        await socialService.unsaveWorkout(workoutId)
+        await supabaseService.unsaveWorkout(workoutId)
       } else {
-        await socialService.saveWorkout(workoutId)
+        await supabaseService.saveWorkout(workoutId)
       }
       // Update local state
-      setFeedItems(prev => prev.map(item => 
-        item.workout.id === workoutId 
+      setFeedItems(prev => prev.map(item =>
+        item.workout.id === workoutId
           ? { ...item, isSaved: !isSaved, workout: { ...item.workout, saveCount: item.workout.saveCount + (isSaved ? -1 : 1) } }
           : item
       ))
@@ -97,13 +97,13 @@ export function CommunityFeed({
     haptics.medium()
     try {
       if (isFollowing) {
-        await socialService.unfollowUser(userId)
+        await supabaseService.unfollowUser(userId)
       } else {
-        await socialService.followUser(userId)
+        await supabaseService.followUser(userId)
       }
       // Update local state
-      setFeedItems(prev => prev.map(item => 
-        item.creator.id === userId 
+      setFeedItems(prev => prev.map(item =>
+        item.creator.id === userId
           ? { ...item, isFollowing: !isFollowing }
           : item
       ))

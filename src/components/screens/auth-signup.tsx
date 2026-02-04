@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Wrestling, Gi, Trophy } from '@/components/ui/icons'
@@ -23,6 +23,9 @@ const SPORTS: { value: SportType; label: string; icon: React.ReactNode }[] = [
 ]
 
 export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [sport, setSport] = useState<SportType>('wrestling')
@@ -30,6 +33,31 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSignup = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email')
+      haptics.error()
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Please enter a valid email address')
+      haptics.error()
+      return
+    }
+    if (!password) {
+      setError('Please enter a password')
+      haptics.error()
+      return
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      haptics.error()
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      haptics.error()
+      return
+    }
     if (!username.trim()) {
       setError('Please enter a username')
       haptics.error()
@@ -55,7 +83,7 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
     setError(null)
 
     try {
-      const user = await socialService.signUp(username.trim(), displayName.trim(), sport)
+      const user = await supabaseService.signUp(email.trim(), password, username.trim(), displayName.trim(), sport)
       haptics.success()
       onSignup(user)
     } catch (e) {
@@ -84,6 +112,50 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
 
           {/* Signup Form */}
           <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Email
+              </label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                className="h-14"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="email"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Password
+              </label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Create a password"
+                className="h-14"
+                autoComplete="new-password"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Confirm Password
+              </label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm your password"
+                className="h-14"
+                autoComplete="new-password"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Username

@@ -6,7 +6,7 @@ import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { CustomWorkout, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
@@ -36,10 +36,9 @@ export function SavedWorkouts({
   const loadSavedWorkouts = async () => {
     setIsLoading(true)
     try {
-      const saved = socialService.getSavedWorkouts()
-      const publicWorkouts = socialService.getPublicWorkouts()
+      const saved = await supabaseService.getSavedWorkouts()
       const workoutsWithDetails = saved
-        .map(s => publicWorkouts.find(w => w.id === s.workoutId))
+        .map(s => s.workout)
         .filter(Boolean) as CustomWorkout[]
       setSavedWorkouts(workoutsWithDetails)
     } catch (e) {
@@ -57,7 +56,7 @@ export function SavedWorkouts({
     if (!workoutToUnsave) return
     haptics.medium()
     try {
-      await socialService.unsaveWorkout(workoutToUnsave.id)
+      await supabaseService.unsaveWorkout(workoutToUnsave.id)
       setSavedWorkouts(prev => prev.filter(w => w.id !== workoutToUnsave.id))
     } catch (e) {
       console.error('Failed to unsave workout:', e)
@@ -68,13 +67,9 @@ export function SavedWorkouts({
 
   const handleCopy = async (workout: CustomWorkout) => {
     haptics.success()
-    try {
-      await socialService.copyWorkout(workout.id)
-      // Navigate to workout builder with copied workout
-      onNavigate('workout-builder')
-    } catch (e) {
-      console.error('Failed to copy workout:', e)
-    }
+    // Navigate to workout builder with the workout data for copying
+    // The workout-builder will handle copying the workout
+    onNavigate('workout-builder')
   }
 
   return (

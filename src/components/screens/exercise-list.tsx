@@ -11,13 +11,13 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Dumbbell } from '@/components/ui/icons'
 
 interface ExerciseListProps {
-  session: Session
+  session: Session | null
   currentExerciseIndex?: number
   trainingTarget: Screen
   onNavigate: (screen: Screen) => void
 }
 
-export function ExerciseList({ 
+export function ExerciseList({
   session,
   currentExerciseIndex,
   trainingTarget,
@@ -25,7 +25,7 @@ export function ExerciseList({
 }: ExerciseListProps) {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(() => new Set())
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const scrollKey = `exercise-list-scroll-${session.id}`
+  const scrollKey = session ? `exercise-list-scroll-${session.id}` : 'exercise-list-scroll'
 
   const formatPrescription = (exercise: Exercise) => {
     if (exercise.duration) {
@@ -47,12 +47,12 @@ export function ExerciseList({
   }
 
   useEffect(() => {
-    if (currentExerciseIndex === undefined) return
+    if (!session || currentExerciseIndex === undefined) return
     const currentExercise = session.exercises[currentExerciseIndex]
     if (!currentExercise) return
     const element = document.getElementById(`exercise-${currentExercise.id}`)
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [currentExerciseIndex, session.exercises])
+  }, [currentExerciseIndex, session])
 
   // Restore scroll position on mount
   useEffect(() => {
@@ -72,13 +72,16 @@ export function ExerciseList({
     }
   }, [scrollKey])
 
-  if (session.exercises.length === 0) {
+  if (!session || session.exercises.length === 0) {
     return (
       <ScreenShell className="items-center justify-center">
         <EmptyState
           icon={<Dumbbell size={40} className="text-muted-foreground" />}
-          title="No Exercises Yet"
-          message="This session doesn't have any exercises. Head back and start a workout to begin your training."
+          title={!session ? "No Program Yet" : "No Exercises Yet"}
+          message={!session
+            ? "Generate a workout program first to see your exercises."
+            : "This session doesn't have any exercises. Head back and start a workout to begin your training."
+          }
           actionText="Back home"
           onAction={() => onNavigate('home')}
         />

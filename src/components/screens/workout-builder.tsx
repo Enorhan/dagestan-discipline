@@ -5,7 +5,7 @@ import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { Input, Textarea } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -91,9 +91,9 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, trainingTarget
     try {
       let workout: CustomWorkout
       if (editingWorkout) {
-        workout = await socialService.updateWorkout(editingWorkout.id, state)
+        workout = await supabaseService.updateWorkout(editingWorkout.id, state)
       } else {
-        workout = await socialService.createWorkout(state)
+        workout = await supabaseService.createWorkout(state)
       }
       haptics.success()
       onSave(workout)
@@ -140,7 +140,7 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, trainingTarget
     }))
   }
 
-  const estimatedDuration = socialService.calculateDuration(state.exercises)
+  const estimatedDuration = supabaseService.calculateDuration(state.exercises)
 
   return (
     <ScreenShell>

@@ -1,15 +1,16 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { Drill, DrillCategory, DrillSubcategory } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
-import { categoryInfo, getDrillsByCategory } from '@/lib/drills-data'
+import { categoryInfo } from '@/lib/drills-data'
+import { drillsService } from '@/lib/drills-service'
 import { BackButton } from '@/components/ui/back-button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Search, X, ChevronRight, Clock, Shield, Target, Zap, Stretch, Flame, Heart, Activity
+  Search, X, ChevronRight, Clock, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Refresh
 } from '@/components/ui/icons'
 
 // Map category to icon component
@@ -33,9 +34,30 @@ interface CategoryListProps {
 export function CategoryList({ category, onBack, onSelectDrill, initialSubcategory }: CategoryListProps) {
   const [selectedSubcategory, setSelectedSubcategory] = useState<DrillSubcategory | 'all'>(initialSubcategory || 'all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [allDrillsInCategory, setAllDrillsInCategory] = useState<Drill[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const categoryDisplay = categoryInfo[category]
-  const allDrillsInCategory = getDrillsByCategory(category)
+
+  // Fetch drills for this category
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchDrills = async () => {
+      setIsLoading(true)
+      const drills = await drillsService.getDrillsByCategory(category)
+      if (isMounted) {
+        setAllDrillsInCategory(drills)
+        setIsLoading(false)
+      }
+    }
+
+    fetchDrills()
+
+    return () => {
+      isMounted = false
+    }
+  }, [category])
 
   // Get unique subcategories
   const subcategories = useMemo(() => {
@@ -145,7 +167,12 @@ export function CategoryList({ category, onBack, onSelectDrill, initialSubcatego
 
         {/* Drill List */}
         <div className="px-4 sm:px-6 py-4">
-          {filteredDrills.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <Refresh size={24} className="animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mt-2">Loading drills...</p>
+            </div>
+          ) : filteredDrills.length === 0 ? (
             <EmptyState
               icon={<Search size={40} className="text-muted-foreground/50" />}
               title="No drills found"

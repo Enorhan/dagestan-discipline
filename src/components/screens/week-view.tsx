@@ -50,6 +50,8 @@ interface WeekViewProps {
   // Activity CRUD operations
   onEditActivity?: (activity: ActivityLog) => void
   onDeleteActivity?: (activityId: string) => void
+  // Log training action
+  onLogTraining?: () => void
 }
 
 export function WeekView({
@@ -63,7 +65,8 @@ export function WeekView({
   program,
   activityLogs,
   onEditActivity,
-  onDeleteActivity
+  onDeleteActivity,
+  onLogTraining
 }: WeekViewProps) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' })
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
@@ -509,6 +512,23 @@ export function WeekView({
           </div>
         </div>
         </ScreenShellContent>
+
+      {/* Floating Action Button - Log Training */}
+      {onLogTraining && (
+        <Button
+          onClick={() => {
+            haptics.medium()
+            onLogTraining()
+          }}
+          variant="primary"
+          size="icon"
+          withHaptic={false}
+          className="fixed bottom-28 right-6 w-14 h-14 rounded-full shadow-lg z-30 glow-primary-subtle"
+          aria-label="Log training activity"
+        >
+          <Activity size={24} />
+        </Button>
+      )}
 
       <BottomNav
         active="week"

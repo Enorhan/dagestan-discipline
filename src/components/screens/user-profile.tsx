@@ -6,11 +6,11 @@ import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile as UserProfileType, CustomWorkout, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
-import { Settings, Plus, ChevronRight, Edit, Bookmark } from '@/components/ui/icons'
+import { Settings, Plus, ChevronRight, Edit, Bookmark, BarChart } from '@/components/ui/icons'
 
 interface UserProfileProps {
   user: UserProfileType
@@ -46,22 +46,21 @@ export function UserProfileScreen({
     setIsLoading(true)
     try {
       if (isOwnProfile) {
-        const myWorkouts = socialService.getMyWorkouts()
+        const myWorkouts = await supabaseService.getUserWorkouts(user.id)
         setWorkouts(myWorkouts)
-        
-        const saved = socialService.getSavedWorkouts()
-        const publicWorkouts = socialService.getPublicWorkouts()
-        const savedWithDetails = saved.map(s => publicWorkouts.find(w => w.id === s.workoutId)).filter(Boolean) as CustomWorkout[]
+
+        const saved = await supabaseService.getSavedWorkouts()
+        const savedWithDetails = saved.map(s => s.workout).filter(Boolean) as CustomWorkout[]
         setSavedWorkouts(savedWithDetails)
       } else {
         // For other users, show only their public workouts
-        const publicWorkouts = socialService.getPublicWorkouts()
-        const userWorkouts = publicWorkouts.filter(w => w.creatorId === user.id)
-        setWorkouts(userWorkouts)
-        
+        const userWorkouts = await supabaseService.getUserWorkouts(user.id)
+        // Filter to only public workouts for non-own profiles
+        setWorkouts(userWorkouts.filter(w => w.visibility === 'public'))
+
         // Check if following
-        const following = socialService.getFollowing()
-        setIsFollowing(following.includes(user.id))
+        const isFollowingUser = await supabaseService.isFollowing(user.id)
+        setIsFollowing(isFollowingUser)
       }
     } catch (e) {
       console.error('Failed to load profile data:', e)
@@ -84,7 +83,7 @@ export function UserProfileScreen({
 
     haptics.medium()
     try {
-      await socialService.followUser(user.id)
+      await supabaseService.followUser(user.id)
       setIsFollowing(true)
     } catch (e) {
       console.error('Failed to follow:', e)
@@ -94,7 +93,7 @@ export function UserProfileScreen({
   const confirmUnfollow = async () => {
     haptics.medium()
     try {
-      await socialService.unfollowUser(user.id)
+      await supabaseService.unfollowUser(user.id)
       setIsFollowing(false)
     } catch (e) {
       console.error('Failed to unfollow:', e)
@@ -155,7 +154,7 @@ export function UserProfileScreen({
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-6">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-4">
             <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
               <p className="text-2xl font-black text-foreground">{user.workoutCount}</p>
               <p className="text-xs text-muted-foreground uppercase">Workouts</p>
@@ -169,6 +168,34 @@ export function UserProfileScreen({
               <p className="text-xs text-muted-foreground uppercase">Following</p>
             </div>
           </div>
+
+          {/* View Statistics - Own Profile Only */}
+          {isOwnProfile && (
+            <Button
+              onClick={() => {
+                haptics.light()
+                onNavigate('training-stats')
+              }}
+              variant="ghost"
+              size="md"
+              fullWidth
+              withHaptic={false}
+              className="mb-4 h-14 card-elevated rounded-xl font-semibold text-foreground hover:bg-card/80 transition-colors normal-case tracking-normal"
+            >
+              <div className="flex items-center justify-between w-full px-1">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                    <BarChart size={20} className="text-primary" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-foreground">Training Statistics</p>
+                    <p className="text-xs text-muted-foreground">View your progress & insights</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} className="text-muted-foreground" />
+              </div>
+            </Button>
+          )}
 
           {/* Follow/Edit Button */}
           {isOwnProfile ? (

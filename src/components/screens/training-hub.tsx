@@ -1,16 +1,11 @@
 'use client'
 
-import React, { useCallback } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import { Screen, SportType, DrillCategory, Drill, Routine, LearningPath } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
-import {
-  categoryInfo,
-  routines,
-  learningPaths,
-  allDrills,
-  getDrillsByCategory
-} from '@/lib/drills-data'
+import { categoryInfo } from '@/lib/drills-data'
+import { drillsService } from '@/lib/drills-service'
 import { BackButton } from '@/components/ui/back-button'
 import { HorizontalScroll } from '@/components/ui/horizontal-scroll'
 import { Button } from '@/components/ui/button'
@@ -42,7 +37,7 @@ interface TrainingHubProps {
   onSelectLearningPath: (path: LearningPath) => void
   onSelectBodyPart: () => void
   learningPathProgress?: Record<string, number>
-  recentlyViewed?: string[]
+  backScreen?: Screen
 }
 
 export function TrainingHub({
@@ -56,35 +51,129 @@ export function TrainingHub({
   onSelectLearningPath,
   onSelectBodyPart,
   learningPathProgress = {},
-  recentlyViewed = []
+  backScreen = 'home',
 }: TrainingHubProps) {
+  // Loading and data states
+  const [isLoading, setIsLoading] = useState(true)
+  const [routinesData, setRoutinesData] = useState<Routine[]>([])
+  const [learningPathsData, setLearningPathsData] = useState<LearningPath[]>([])
+  const [drillsData, setDrillsData] = useState<Drill[]>([])
+  const [recentDrills, setRecentDrills] = useState<Drill[]>([])
+  const [drillCounts, setDrillCounts] = useState<Record<DrillCategory, number>>({
+    'technique': 0,
+    'exercise': 0,
+    'injury-prevention': 0,
+    'mobility': 0,
+    'conditioning': 0,
+    'warmup': 0,
+    'recovery': 0
+  })
+
+  // Fetch data on mount
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchData = async () => {
+      setIsLoading(true)
+      try {
+        const [drills, routines, paths, recent] = await Promise.all([
+          drillsService.getDrills(),
+          drillsService.getRoutines(),
+          drillsService.getLearningPaths(),
+          drillsService.getRecentlyViewedDrills(5)
+        ])
+
+        if (isMounted) {
+          setDrillsData(drills)
+          setRoutinesData(routines)
+          setLearningPathsData(paths)
+          setRecentDrills(recent)
+
+          // Calculate drill counts per category
+          const counts: Record<DrillCategory, number> = {
+            'technique': 0,
+            'exercise': 0,
+            'injury-prevention': 0,
+            'mobility': 0,
+            'conditioning': 0,
+            'warmup': 0,
+            'recovery': 0
+          }
+          drills.forEach(d => {
+            if (d.category in counts) {
+              counts[d.category as DrillCategory]++
+            }
+          })
+          setDrillCounts(counts)
+        }
+      } catch (error) {
+        console.error('Error fetching training hub data:', error)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    fetchData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleRefresh = useCallback(async () => {
+    drillsService.clearCache()
+    const [drills, routines, paths, recent] = await Promise.all([
+      drillsService.getDrills(),
+      drillsService.getRoutines(),
+      drillsService.getLearningPaths(),
+      drillsService.getRecentlyViewedDrills(5)
+    ])
+    setDrillsData(drills)
+    setRoutinesData(routines)
+    setLearningPathsData(paths)
+    setRecentDrills(recent)
+
+    // Recalculate drill counts
+    const counts: Record<DrillCategory, number> = {
+      'technique': 0,
+      'exercise': 0,
+      'injury-prevention': 0,
+      'mobility': 0,
+      'conditioning': 0,
+      'warmup': 0,
+      'recovery': 0
+    }
+    drills.forEach(d => {
+      if (d.category in counts) {
+        counts[d.category as DrillCategory]++
+      }
+    })
+    setDrillCounts(counts)
+  }, [])
+
   const { isRefreshing, handleTouchStart, handleTouchMove, handleTouchEnd } = usePullToRefresh({
-    onRefresh: () => {}
+    onRefresh: handleRefresh
   })
 
   // Get recommended warmup/recovery based on current workout
   const getRecommendedRoutines = useCallback(() => {
-    const warmups = routines.filter(r =>
+    const warmups = routinesData.filter(r =>
       r.type === 'warmup' &&
       (r.forSport?.includes(sport) || r.forWorkoutFocus?.some(f => currentWorkoutFocus?.includes(f)))
     )
-    const recoveries = routines.filter(r =>
+    const recoveries = routinesData.filter(r =>
       r.type === 'recovery' &&
       r.forWorkoutFocus?.some(f => currentWorkoutFocus?.includes(f))
     )
     return { warmups: warmups.slice(0, 1), recoveries: recoveries.slice(0, 1) }
-  }, [sport, currentWorkoutFocus])
+  }, [sport, currentWorkoutFocus, routinesData])
 
   const { warmups, recoveries } = getRecommendedRoutines()
 
   // Get learning paths for current sport
-  const sportPaths = learningPaths.filter(p => p.sport === sport)
-
-  // Get recently viewed drills
-  const recentDrills = recentlyViewed
-    .map(id => allDrills.find(d => d.id === id))
-    .filter((d): d is Drill => d !== undefined)
-    .slice(0, 5)
+  const sportPaths = learningPathsData.filter(p => p.sport === sport)
 
   const handleCategoryClick = (category: DrillCategory) => {
     if (category === 'injury-prevention') {
@@ -112,13 +201,21 @@ export function TrainingHub({
 
           {/* Header */}
           <div className="px-6 safe-area-top pb-4">
-            <BackButton onClick={() => onNavigate('home')} label="Back" />
+            <BackButton onClick={() => onNavigate(backScreen)} label="Back" />
             <h1 className="text-3xl font-black tracking-tight mt-4">Learn</h1>
             <p className="text-muted-foreground text-sm mt-1">
               Drills, techniques, and injury prevention
             </p>
           </div>
 
+        {/* Loading State */}
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Refresh size={24} className="animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mt-2">Loading training content...</p>
+          </div>
+        ) : (
+          <>
         {/* For You Today */}
         {(warmups.length > 0 || recoveries.length > 0) && (
           <div className="px-6 py-4">
@@ -181,7 +278,7 @@ export function TrainingHub({
           </h2>
           <div className="grid grid-cols-2 gap-3">
             {(Object.entries(categoryInfo) as [DrillCategory, typeof categoryInfo[DrillCategory]][]).map(([category, info]) => {
-              const drillCount = getDrillsByCategory(category).length
+              const drillCount = drillCounts[category]
               if (drillCount === 0 && category !== 'injury-prevention' && category !== 'conditioning' && category !== 'recovery') return null
 
               return (
@@ -275,6 +372,8 @@ export function TrainingHub({
               ))}
             </HorizontalScroll>
           </div>
+        )}
+          </>
         )}
         </div>
       </ScreenShellContent>

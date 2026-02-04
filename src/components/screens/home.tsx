@@ -1,6 +1,6 @@
 'use client'
 
-import { Screen, Session, WeekDay, TimerMode, Equipment } from '@/lib/types'
+import { Screen, Session, WeekDay, Equipment } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -9,16 +9,12 @@ import { StreakRing } from '@/components/ui/streak-ring'
 import { Button } from '@/components/ui/button'
 
 interface HomeProps {
-  session: Session
+  session: Session | null
   weekProgress: WeekDay[]
-  completedSessions: number
-  plannedSessions: number
   currentStreak: number
   longestStreak: number
   equipment: Equipment | null
   onStartSession: () => void
-  onViewExerciseList: () => void
-  onStartRoundTimer: (mode: TimerMode) => void
   trainingTarget: Screen
   onNavigate: (screen: Screen) => void
   undoLabel?: string | null
@@ -32,8 +28,6 @@ export function Home({
   longestStreak,
   equipment,
   onStartSession,
-  onViewExerciseList,
-  onStartRoundTimer,
   trainingTarget,
   onNavigate,
   undoLabel,
@@ -82,15 +76,28 @@ export function Home({
               <ChevronRight size={14} />
             </Button>
           </div>
-          <h2 className="type-title text-foreground">
-            {session.day}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {session.focus} · {session.duration} min
-          </p>
-          <p className="mt-3 text-xs font-medium text-muted-foreground/70">
-            {equipmentLabel}
-          </p>
+          {session ? (
+            <>
+              <h2 className="type-title text-foreground">
+                {session.day}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {session.focus} · {session.duration} min
+              </p>
+              <p className="mt-3 text-xs font-medium text-muted-foreground/70">
+                {equipmentLabel}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="type-title text-foreground">
+                No Program
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Generate a workout program to get started
+              </p>
+            </>
+          )}
         </div>
 
         {/* Primary CTA - with glow */}
@@ -103,74 +110,21 @@ export function Home({
           size="xl"
           fullWidth
           withHaptic={false}
+          disabled={!session}
           className="h-16 font-black text-lg tracking-wide uppercase rounded-xl glow-primary-subtle animate-breathe"
         >
-          Start Session
+          {session ? 'Start Session' : 'No Program Available'}
         </Button>
       </div>
 
-      {/* SECTION 3: QUICK ACTIONS */}
+      {/* SECTION 3: LEARN */}
       <div className="px-6 pb-10">
-        <div className="section-divider mb-6" />
-        <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase text-center mb-4">
-          Quick actions
-        </p>
-        <div className="flex items-center justify-center gap-3">
-          <Button
-            onClick={() => onStartRoundTimer('mma')}
-            variant="ghost"
-            size="md"
-            fullWidth
-            className="flex-1 h-12 bg-card/50 rounded-lg text-sm font-semibold text-foreground hover:bg-card transition-colors card-interactive normal-case tracking-normal"
-            aria-label="Start conditioning timer"
-          >
-            Conditioning
-          </Button>
-          <Button
-            onClick={() => onViewExerciseList()}
-            variant="ghost"
-            size="md"
-            fullWidth
-            className="flex-1 h-12 bg-card/50 rounded-lg text-sm font-semibold text-foreground hover:bg-card transition-colors card-interactive normal-case tracking-normal"
-            aria-label="View exercises"
-          >
-            Exercises
-          </Button>
-        </div>
-        {/* Log external training */}
-        <Button
-          onClick={() => onNavigate('log-activity')}
-          variant="ghost"
-          size="md"
-          fullWidth
-          className="mt-3 h-12 bg-card/30 rounded-lg text-sm font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground transition-colors card-interactive normal-case tracking-normal"
-          aria-label="Log external training"
-        >
-          Log Training (BJJ, Wrestling, Judo)
-        </Button>
-
-        {/* View Statistics */}
-        <Button
-          onClick={() => onNavigate('training-stats')}
-          variant="ghost"
-          size="md"
-          fullWidth
-          className="mt-3 h-12 bg-card/30 rounded-lg text-sm font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground transition-colors gap-2 card-interactive normal-case tracking-normal"
-          aria-label="View training statistics"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 20V10M12 20V4M6 20v-6" />
-          </svg>
-          View Statistics
-        </Button>
-
-        {/* Learn - Training Hub */}
         <Button
           onClick={() => onNavigate('training-hub')}
           variant="ghost"
           size="md"
           fullWidth
-          className="mt-3 h-12 bg-primary/20 border border-primary/30 rounded-lg text-sm font-semibold text-primary hover:bg-primary/30 transition-colors gap-2 card-interactive normal-case tracking-normal"
+          className="h-12 bg-primary/20 border border-primary/30 rounded-lg text-sm font-semibold text-primary hover:bg-primary/30 transition-colors gap-2 card-interactive normal-case tracking-normal"
           aria-label="Open training hub with drills and techniques"
         >
           <Book size={18} />

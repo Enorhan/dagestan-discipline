@@ -1,13 +1,13 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Routine } from '@/lib/types'
+import { Routine, Drill } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
-import { getDrillById } from '@/lib/drills-data'
+import { drillsService } from '@/lib/drills-service'
 import { haptics } from '@/lib/haptics'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
-import { Play, Pause, SkipForward, SkipBack, Check, Clock, Flame, Trophy } from '@/components/ui/icons'
+import { Play, Pause, SkipForward, SkipBack, Check, Clock, Flame, Trophy, Refresh } from '@/components/ui/icons'
 
 interface RoutinePlayerProps {
   routine: Routine
@@ -21,11 +21,42 @@ export function RoutinePlayer({ routine, onComplete, onClose }: RoutinePlayerPro
   const [isPlaying, setIsPlaying] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
+  const [drillsCache, setDrillsCache] = useState<Record<string, Drill>>({})
+  const [isLoadingDrills, setIsLoadingDrills] = useState(true)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number | null>(null)
 
+  // Fetch all drills for the routine on mount
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchDrills = async () => {
+      setIsLoadingDrills(true)
+      const drillIds = routine.drills.map(rd => rd.drillId)
+      const cache: Record<string, Drill> = {}
+
+      for (const drillId of drillIds) {
+        const drill = await drillsService.getDrillById(drillId)
+        if (drill) {
+          cache[drillId] = drill
+        }
+      }
+
+      if (isMounted) {
+        setDrillsCache(cache)
+        setIsLoadingDrills(false)
+      }
+    }
+
+    fetchDrills()
+
+    return () => {
+      isMounted = false
+    }
+  }, [routine.drills])
+
   const currentRoutineDrill = routine.drills[currentDrillIndex]
-  const currentDrill = currentRoutineDrill ? getDrillById(currentRoutineDrill.drillId) : null
+  const currentDrill = currentRoutineDrill ? drillsCache[currentRoutineDrill.drillId] ?? null : null
   const totalDrills = routine.drills.length
   const progress = ((currentDrillIndex) / totalDrills) * 100
 
@@ -100,6 +131,23 @@ export function RoutinePlayer({ routine, onComplete, onClose }: RoutinePlayerPro
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Loading state
+  if (isLoadingDrills) {
+    return (
+      <ScreenShell>
+        <ScreenShellContent>
+          <div className="px-6 safe-area-top pb-4">
+            <BackButton onClick={onClose} label="Close" variant="close" />
+          </div>
+          <div className="flex flex-col items-center justify-center flex-1 px-6">
+            <Refresh size={24} className="animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mt-2">Loading routine...</p>
+          </div>
+        </ScreenShellContent>
+      </ScreenShell>
+    )
   }
 
   if (isComplete) {

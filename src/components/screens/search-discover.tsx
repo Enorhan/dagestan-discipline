@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
-import { socialService } from '@/lib/social-service'
+import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile, CustomWorkout, WorkoutSearchFilters, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { AnimatedCard } from '@/components/ui/animated-card'
@@ -47,10 +47,10 @@ export function SearchDiscover({
     setError(null)
     try {
       if (activeTab === 'workouts') {
-        const workouts = await socialService.searchWorkouts({ ...filters, query: searchQuery })
-        setWorkoutResults(workouts)
+        const feedItems = await supabaseService.getFeedWorkouts({ ...filters, query: searchQuery })
+        setWorkoutResults(feedItems.map(item => item.workout))
       } else {
-        const users = await socialService.searchUsers(searchQuery)
+        const users = await supabaseService.searchUsers(searchQuery)
         setUserResults(users)
       }
     } catch (e) {
@@ -71,8 +71,8 @@ export function SearchDiscover({
     const loadPopular = async () => {
       setIsLoading(true)
       try {
-        const workouts = await socialService.searchWorkouts({ sortBy: 'popular' })
-        setWorkoutResults(workouts)
+        const feedItems = await supabaseService.getFeedWorkouts({ sortBy: 'popular' })
+        setWorkoutResults(feedItems.map(item => item.workout))
       } catch (e) {
         console.error('Failed to load popular:', e)
       } finally {
