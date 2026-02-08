@@ -10,7 +10,7 @@ interface ScreenShellProps extends HTMLAttributes<HTMLDivElement> {
 export function ScreenShell({ children, className = '', ...props }: ScreenShellProps) {
   return (
     <div
-      className={`h-dvh bg-background flex flex-col overflow-hidden ${className}`}
+      className={`ui-tokenized h-dvh bg-background flex flex-col overflow-hidden ${className}`}
       {...props}
     >
       {children}
@@ -66,4 +66,3 @@ export function ScreenShellFooter({ children, className = '' }: ScreenShellProps
     </div>
   )
 }
-

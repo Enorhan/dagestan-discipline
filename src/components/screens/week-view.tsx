@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Screen, WeekDay, Session, ActivityLog, ActivityType } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
-import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { Button } from '@/components/ui/button'
@@ -41,7 +41,6 @@ interface WeekViewProps {
   plannedSessions: number
   onClose: () => void
   onRefresh?: () => Promise<void> | void
-  trainingTarget: Screen
   onNavigate: (screen: Screen) => void
   // Workout previews
   program?: Session[] | null
@@ -52,6 +51,10 @@ interface WeekViewProps {
   onDeleteActivity?: (activityId: string) => void
   // Log training action
   onLogTraining?: () => void
+  onStartAction?: () => void
+  hasWorkoutToday?: boolean
+  onStartSessionForDay?: (dayIndex: number) => void
+  onEditSession?: (dayIndex: number) => void
 }
 
 export function WeekView({
@@ -60,13 +63,16 @@ export function WeekView({
   plannedSessions,
   onClose,
   onRefresh,
-  trainingTarget,
   onNavigate,
   program,
   activityLogs,
   onEditActivity,
   onDeleteActivity,
-  onLogTraining
+  onLogTraining,
+  onStartAction,
+  hasWorkoutToday = false,
+  onStartSessionForDay,
+  onEditSession
 }: WeekViewProps) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' })
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
@@ -207,7 +213,6 @@ export function WeekView({
         <div className="max-w-lg mx-auto w-full pb-28">
           {/* Header */}
           <header className="px-6 safe-area-top pb-4">
-            <BackButton onClick={onClose} label="Back" />
             <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mt-4">
               Week Progress
             </p>
@@ -417,6 +422,38 @@ export function WeekView({
                                   </span>
                                 </div>
                               ))}
+                              {!day.completed && (
+                                <div className="flex gap-2 pt-2">
+                                  {onStartSessionForDay && (
+                                    <Button
+                                      onClick={() => {
+                                        haptics.medium()
+                                        onStartSessionForDay(index)
+                                      }}
+                                      variant="primary"
+                                      size="sm"
+                                      className="flex-1"
+                                      withHaptic={false}
+                                    >
+                                      Start Session
+                                    </Button>
+                                  )}
+                                  {onEditSession && (
+                                    <Button
+                                      onClick={() => {
+                                        haptics.light()
+                                        onEditSession(index)
+                                      }}
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex-1"
+                                      withHaptic={false}
+                                    >
+                                      Edit Session
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -530,11 +567,14 @@ export function WeekView({
         </Button>
       )}
 
-      <BottomNav
-        active="week"
-        trainingTarget={trainingTarget}
-        onNavigate={onNavigate}
-      />
+      <ScreenShellFooter>
+        <BottomNav
+          active="home"
+          onNavigate={onNavigate}
+          onStartAction={onStartAction}
+          hasWorkoutToday={hasWorkoutToday}
+        />
+      </ScreenShellFooter>
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

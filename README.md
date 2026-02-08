@@ -49,6 +49,8 @@ npm run dev
 - `npm run build` - Build for production
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
+- `npm run pipeline:sources` - Seed default external collection sources
+- `npm run pipeline:run` - Run athlete/exercise data expansion pipeline end-to-end
 
 ## Project Structure
 
@@ -84,4 +86,3 @@ The app uses a dark theme with a brutal minimalist design featuring blood red ac
 ## License
 
 Private project
-

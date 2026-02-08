@@ -2,7 +2,7 @@
 // SOCIAL WORKOUT SYSTEM TYPES
 // ============================================
 
-import { SportType, Exercise, DrillDifficulty } from './types'
+import { SportType, Exercise, DrillDifficulty, Equipment, WeightUnit } from './types'
 
 // User profile for social features
 export interface UserProfile {
@@ -13,6 +13,10 @@ export interface UserProfile {
   bio?: string
   sport: SportType
   createdAt: string
+  trainingDays?: number
+  weightUnit?: WeightUnit
+  equipment?: Equipment | null
+  onboardingCompleted?: boolean | null
   // Stats
   workoutCount: number
   followerCount: number
@@ -77,55 +81,12 @@ export interface CustomWorkoutExercise {
   order: number
 }
 
-// Follow relationship
-export interface Follow {
-  id: string
-  followerId: string
-  followingId: string
-  createdAt: string
-}
-
-// Saved workout reference
-export interface SavedWorkout {
-  id: string
-  userId: string
-  workoutId: string
-  workout?: CustomWorkout // Populated when fetching
-  savedAt: string
-}
-
-// Feed item for community feed
-export interface FeedItem {
-  workout: CustomWorkout
-  creator: UserProfile
-  isSaved: boolean
-  isFollowing: boolean
-}
-
-// Search filters
-export interface WorkoutSearchFilters {
-  query?: string
-  focus?: WorkoutFocus
-  difficulty?: DrillDifficulty
-  sport?: SportType
-  sortBy?: 'recent' | 'popular' | 'saves'
-}
-
-export interface UserSearchFilters {
-  query?: string
-  sport?: SportType
-}
-
 // New screen types for social features
 export type SocialScreen =
   | 'auth-login'
   | 'auth-signup'
   | 'workout-builder'
-  | 'community-feed'
   | 'user-profile'
-  | 'user-profile-other'
-  | 'search-discover'
-  | 'saved-workouts'
   | 'workout-detail'
   | 'edit-profile'
 
@@ -164,10 +125,6 @@ export interface AuthState {
 export interface SocialState {
   auth: AuthState
   myWorkouts: CustomWorkout[]
-  savedWorkouts: SavedWorkout[]
-  following: string[] // User IDs
-  followers: string[] // User IDs
-  feedCache: FeedItem[]
 }
 
 // Focus area display info

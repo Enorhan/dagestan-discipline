@@ -3,25 +3,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { Screen, Session, Exercise } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
-import { ScreenShell } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { Button } from '@/components/ui/button'
-import { BackButton } from '@/components/ui/back-button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Dumbbell } from '@/components/ui/icons'
 
 interface ExerciseListProps {
   session: Session | null
   currentExerciseIndex?: number
-  trainingTarget: Screen
   onNavigate: (screen: Screen) => void
+  onStartAction?: () => void
+  hasWorkoutToday?: boolean
 }
 
 export function ExerciseList({
   session,
   currentExerciseIndex,
-  trainingTarget,
-  onNavigate
+  onNavigate,
+  onStartAction,
+  hasWorkoutToday = false
 }: ExerciseListProps) {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(() => new Set())
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -91,10 +92,10 @@ export function ExerciseList({
 
   return (
     <ScreenShell>
-      <div className="flex-1 flex flex-col max-w-lg mx-auto w-full min-h-0 pb-28">
+      <ScreenShellContent maxWidth>
+      <div className="flex-1 flex flex-col w-full min-h-0 pb-28">
       {/* Header */}
       <header className="px-6 safe-area-top pb-4">
-        <BackButton onClick={() => onNavigate('home')} label="Back" />
         <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mt-4">
           {session.day}
         </p>
@@ -233,12 +234,16 @@ export function ExerciseList({
         </div>
       </div>
       </div>
+      </ScreenShellContent>
 
-      <BottomNav
-        active="training"
-        trainingTarget={trainingTarget}
-        onNavigate={onNavigate}
-      />
+      <ScreenShellFooter>
+        <BottomNav
+          active="home"
+          onNavigate={onNavigate}
+          onStartAction={onStartAction}
+          hasWorkoutToday={hasWorkoutToday}
+        />
+      </ScreenShellFooter>
     </ScreenShell>
   )
 }

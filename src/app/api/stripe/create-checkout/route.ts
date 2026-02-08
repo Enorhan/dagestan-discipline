@@ -2,22 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-01-28.clover',
-})
+function getStripeClient() {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    throw new Error('Missing STRIPE_SECRET_KEY')
+  }
+  return new Stripe(secretKey, {
+    apiVersion: '2026-01-28.clover',
+  })
+}
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabaseAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceKey) {
+    throw new Error('Missing Supabase admin environment variables')
+  }
+  return createClient(url, serviceKey)
+}
 
 // Premium subscription price: 25 SEK/month
 const PREMIUM_PRICE_SEK = 2500 // in öre (cents)
 
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripeClient()
+    const supabase = getSupabaseAdminClient()
     const body = await request.json()
     const { mode, priceId, programId, successUrl, cancelUrl, userId, email } = body
 
@@ -114,4 +124,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-

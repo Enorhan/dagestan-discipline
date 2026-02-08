@@ -1,6 +1,7 @@
 'use client'
 
 import { supabaseService } from '@/lib/supabase-service'
+import { supabase } from '@/lib/supabase'
 import type { Drill, Routine, LearningPath, DrillCategory, SportType, DrillDifficulty } from './types'
 import {
   allDrills as localAllDrills,
@@ -23,6 +24,7 @@ interface DrillsCache {
   drillsById: Map<string, Drill>
   routinesById: Map<string, Routine>
   learningPathsById: Map<string, LearningPath>
+  latestDataAt: string | null
 }
 
 const cache: DrillsCache = {
@@ -35,6 +37,7 @@ const cache: DrillsCache = {
   drillsById: new Map(),
   routinesById: new Map(),
   learningPathsById: new Map(),
+  latestDataAt: null,
 }
 
 // Cache TTL in milliseconds (5 minutes)
@@ -46,6 +49,39 @@ function isCacheValid(timestamp: number | null): boolean {
 }
 
 export const drillsService = {
+  async refreshCacheIfDataUpdates(): Promise<void> {
+    try {
+      const [drillsResult, routinesResult] = await Promise.all([
+        supabase
+          .from('drills')
+          .select('created_at')
+          .order('created_at', { ascending: false })
+          .limit(1),
+        supabase
+          .from('routines')
+          .select('created_at')
+          .order('created_at', { ascending: false })
+          .limit(1),
+      ])
+
+      const drillLatest = (drillsResult.data?.[0] as { created_at?: string } | undefined)?.created_at ?? null
+      const routineLatest = (routinesResult.data?.[0] as { created_at?: string } | undefined)?.created_at ?? null
+      const latest = [drillLatest, routineLatest].filter(Boolean).sort().pop() ?? null
+
+      if (!latest) {
+        return
+      }
+
+      if (cache.latestDataAt && latest > cache.latestDataAt) {
+        this.clearCache(true)
+      }
+
+      cache.latestDataAt = latest
+    } catch {
+      // Cache invalidation is best-effort.
+    }
+  },
+
   /**
    * Get all drills from Supabase, with fallback to local data
    */
@@ -55,6 +91,8 @@ export const drillsService = {
     difficulty?: DrillDifficulty
     search?: string
   }): Promise<Drill[]> {
+    await this.refreshCacheIfDataUpdates()
+
     // Check cache first (only for unfiltered requests)
     if (!filters && cache.drills && isCacheValid(cache.drillsTimestamp)) {
       return cache.drills
@@ -155,6 +193,8 @@ export const drillsService = {
     type?: 'warmup' | 'recovery' | 'mobility'
     sport?: SportType
   }): Promise<Routine[]> {
+    await this.refreshCacheIfDataUpdates()
+
     // Check cache first (only for unfiltered requests)
     if (!filters && cache.routines && isCacheValid(cache.routinesTimestamp)) {
       return cache.routines
@@ -233,6 +273,8 @@ export const drillsService = {
     sport?: SportType
     difficulty?: DrillDifficulty
   }): Promise<LearningPath[]> {
+    await this.refreshCacheIfDataUpdates()
+
     // Check cache first (only for unfiltered requests)
     if (!filters && cache.learningPaths && isCacheValid(cache.learningPathsTimestamp)) {
       return cache.learningPaths
@@ -329,7 +371,7 @@ export const drillsService = {
   /**
    * Clear the cache (useful for forcing refresh)
    */
-  clearCache(): void {
+  clearCache(preserveDataVersion: boolean = false): void {
     cache.drills = null
     cache.drillsTimestamp = null
     cache.routines = null
@@ -339,6 +381,9 @@ export const drillsService = {
     cache.drillsById.clear()
     cache.routinesById.clear()
     cache.learningPathsById.clear()
+    if (!preserveDataVersion) {
+      cache.latestDataAt = null
+    }
   },
 
   /**
@@ -348,4 +393,3 @@ export const drillsService = {
     return localGetDrillsByCategory(category)
   },
 }
-

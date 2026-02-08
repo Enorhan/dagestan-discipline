@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Equipment, Screen, SportType, WeightUnit } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
-import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { Button } from '@/components/ui/button'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
@@ -20,8 +20,14 @@ interface SettingsProps {
   onWeightUnitChange: (unit: WeightUnit) => void
   onSave: () => void
   onLogout: () => void
-  trainingTarget: Screen
   onNavigate: (screen: Screen) => void
+  onStartAction?: () => void
+  hasWorkoutToday?: boolean
+  hasUnsavedProgramChanges?: boolean
+  onSaveProgramChanges?: () => void
+  onRevertProgramChanges?: () => void
+  onResetProgram?: () => void
+  onStartTrial?: () => Promise<void>
 }
 
 export function Settings({
@@ -35,12 +41,20 @@ export function Settings({
   onWeightUnitChange,
   onSave,
   onLogout,
-  trainingTarget,
-  onNavigate
+  onNavigate,
+  onStartAction,
+  hasWorkoutToday = false,
+  hasUnsavedProgramChanges = false,
+  onSaveProgramChanges,
+  onRevertProgramChanges,
+  onResetProgram,
+  onStartTrial
 }: SettingsProps) {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isStartingTrial, setIsStartingTrial] = useState(false)
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
   const sportOptions: { value: SportType; label: string }[] = [
     { value: 'wrestling', label: 'Wrestling' },
     { value: 'judo', label: 'Judo' },
@@ -184,6 +198,102 @@ export function Settings({
             </div>
           </div>
 
+          {/* Subscription */}
+          <div className="mb-10">
+            <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Subscription
+            </p>
+            <Card className="p-4 bg-card/50 border-border/60">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-foreground">Monthly Plan</p>
+                  <p className="text-sm text-muted-foreground">25 SEK / month</p>
+                </div>
+                <div className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
+                  2-week trial
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                All features are currently unlocked. Start a free trial anytime.
+              </p>
+              {subscriptionError && (
+                <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={isStartingTrial}
+                className="mt-4 w-full"
+                onClick={async () => {
+                  haptics.light()
+                  setSubscriptionError(null)
+
+                  if (!onStartTrial) {
+                    setSubscriptionError('Sign in required to start trial.')
+                    return
+                  }
+
+                  setIsStartingTrial(true)
+                  try {
+                    await onStartTrial()
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unable to start checkout right now.'
+                    setSubscriptionError(message)
+                  } finally {
+                    setIsStartingTrial(false)
+                  }
+                }}
+              >
+                Start Free Trial
+              </Button>
+            </Card>
+          </div>
+
+          {/* Program Actions */}
+          <div className="mb-10">
+            <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Program
+            </p>
+            <div className="flex flex-col gap-2">
+              {hasUnsavedProgramChanges && onSaveProgramChanges && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    haptics.medium()
+                    onSaveProgramChanges()
+                  }}
+                >
+                  Save Draft
+                </Button>
+              )}
+              {hasUnsavedProgramChanges && onRevertProgramChanges && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    haptics.light()
+                    onRevertProgramChanges()
+                  }}
+                >
+                  Revert to Last Saved
+                </Button>
+              )}
+              {onResetProgram && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    haptics.light()
+                    onResetProgram()
+                  }}
+                >
+                  Restore Original Generated
+                </Button>
+              )}
+            </div>
+          </div>
+
           {/* Streak Rules */}
           <div className="mb-8 p-4 bg-card/50 rounded-lg">
             <p className="text-sm font-semibold text-foreground uppercase tracking-wide mb-2">
@@ -228,17 +338,20 @@ export function Settings({
                 setShowConfirmation(true)
               }}
             >
-              Save & Regenerate Program
+              Save Preferences
             </Button>
           </div>
         </ScreenShellContent>
       </div>
 
-      <BottomNav
-        active="profile"
-        trainingTarget={trainingTarget}
-        onNavigate={onNavigate}
-      />
+      <ScreenShellFooter>
+        <BottomNav
+          active="profile"
+          onNavigate={onNavigate}
+          onStartAction={onStartAction}
+          hasWorkoutToday={hasWorkoutToday}
+        />
+      </ScreenShellFooter>
 
       {/* Confirmation Modal */}
       <ConfirmationModal
@@ -253,9 +366,9 @@ export function Settings({
             setIsSaving(false)
           }, 300)
         }}
-        title="Regenerate Program?"
-        message="This will create a new training program and reset your current week progress. Your streak and history will be preserved."
-        confirmText="Regenerate"
+        title="Save Preferences?"
+        message="Your preferences will be saved. If training days or sport changed, a new program will be generated and week progress reset. Streak and history remain."
+        confirmText="Save"
         cancelText="Cancel"
         variant="destructive"
       />

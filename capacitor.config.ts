@@ -1,5 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+const liveReloadUrl = process.env.CAPACITOR_LIVE_RELOAD_URL;
+
 const config: CapacitorConfig = {
   appId: 'com.dagestani.disciple',
   appName: 'Dagestani Disciple',
@@ -10,11 +12,14 @@ const config: CapacitorConfig = {
     backgroundColor: '#0a0a0a',
     preferredContentMode: 'mobile',
   },
-  // Development only - uncomment for local development:
-  // server: {
-  //   url: 'http://localhost:3000',
-  //   cleartext: true
-  // }
+  ...(liveReloadUrl ? {
+    server: {
+      url: liveReloadUrl,
+      cleartext: liveReloadUrl.startsWith('http://'),
+      // If live-reload server is down, fall back to the bundled web app instead of a blank WebView.
+      errorPath: 'index.html',
+    }
+  } : {})
 };
 
 export default config;

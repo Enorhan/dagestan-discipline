@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "pipeline:sources": "npx tsx scripts/seed-content-sources.ts",
+    "pipeline:collect": "npx tsx scripts/athlete-data-pipeline.ts collect",
+    "pipeline:extract": "npx tsx scripts/athlete-data-pipeline.ts extract",
+    "pipeline:queue": "npx tsx scripts/athlete-data-pipeline.ts queue",
+    "pipeline:review": "npx tsx scripts/athlete-data-pipeline.ts review",
+    "pipeline:publish": "npx tsx scripts/athlete-data-pipeline.ts publish",
+    "pipeline:run": "npx tsx scripts/athlete-data-pipeline.ts run",
+    "pipeline:daemon": "bash scripts/pipeline-daemon.sh"
   },
   "dependencies": {
     "@capacitor/haptics": "^8.0.0",
@@ -69,11 +77,12 @@
     "@capacitor/ios": "^8.0.1",
     "@supabase/supabase-js": "^2.78.0",
     "@tailwindcss/postcss": "^4.1.9",
-    "@types/node": "^22",
+    "@types/node": "^22.19.8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
+    "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
     "typescript": "^5"

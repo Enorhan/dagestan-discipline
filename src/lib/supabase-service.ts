@@ -4,27 +4,22 @@
 
 import { supabase } from './supabase'
 import type { Database } from './database.types'
-import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
+import type { User, AuthChangeEvent, Session as AuthSession } from '@supabase/supabase-js'
 import {
   UserProfile,
   CustomWorkout,
-  SavedWorkout,
-  FeedItem,
-  WorkoutSearchFilters,
   WorkoutBuilderState,
   CustomWorkoutExercise,
   AuthState,
   WorkoutFocus,
 } from './social-types'
-import type { SportType, Drill, Routine, LearningPath, ActivityLog, SessionLog, DrillDifficulty } from './types'
+import type { SportType, Drill, Routine, LearningPath, ActivityLog, SessionLog, DrillDifficulty, Equipment, WeightUnit, Session, WeekDay } from './types'
 
 // Type aliases for database rows - used for return type annotations
 type DbProfile = Database['public']['Tables']['profiles']['Row']
 type DbUserStats = Database['public']['Tables']['user_stats']['Row']
 type DbCustomWorkout = Database['public']['Tables']['custom_workouts']['Row']
 type DbCustomWorkoutExercise = Database['public']['Tables']['custom_workout_exercises']['Row']
-type DbFollow = Database['public']['Tables']['follows']['Row']
-type DbSavedWorkout = Database['public']['Tables']['saved_workouts']['Row']
 type DbSessionLog = Database['public']['Tables']['session_logs']['Row']
 type DbActivityLog = Database['public']['Tables']['activity_logs']['Row']
 type DbDrill = Database['public']['Tables']['drills']['Row']
@@ -35,9 +30,27 @@ type DbLearningPathDrill = Database['public']['Tables']['learning_path_drills'][
 type DbUserRecentlyViewed = Database['public']['Tables']['user_recently_viewed']['Row']
 type DbSubscription = Database['public']['Tables']['subscriptions']['Row']
 type DbSubscriptionPlan = Database['public']['Tables']['subscription_plans']['Row']
+type DbTrainingProgram = Database['public']['Tables']['training_programs']['Row']
+type DbTrainingProgramVersion = Database['public']['Tables']['training_program_versions']['Row']
+type DbTrainingProgramState = Database['public']['Tables']['training_program_state']['Row']
+type DbExerciseFavorite = Database['public']['Tables']['exercise_favorites']['Row']
+type DbExerciseCompletion = Database['public']['Tables']['exercise_completions']['Row']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
+
+export interface TrainingProgramSnapshot {
+  programId: string
+  sport: SportType
+  trainingDays: number
+  currentVersionId: string | null
+  originalVersionId: string | null
+  sessions: Session[]
+}
+
+interface TrainingProgramData {
+  sessions: Session[]
+}
 
 // ============================================
 // TYPE CONVERTERS
@@ -56,6 +69,10 @@ function dbProfileToUserProfile(
     bio: profile.bio ?? undefined,
     sport: profile.sport as SportType,
     createdAt: profile.created_at ?? new Date().toISOString(),
+    trainingDays: profile.training_days ?? undefined,
+    weightUnit: (profile.weight_unit as WeightUnit) ?? undefined,
+    equipment: (profile.equipment as Equipment | null) ?? null,
+    onboardingCompleted: profile.onboarding_completed ?? null,
     workoutCount: stats?.workout_count ?? 0,
     followerCount: stats?.follower_count ?? 0,
     followingCount: stats?.following_count ?? 0,
@@ -238,7 +255,7 @@ export const supabaseService = {
     }
   },
 
-  onAuthStateChange(callback: (event: AuthChangeEvent, session: Session | null) => void) {
+  onAuthStateChange(callback: (event: AuthChangeEvent, session: AuthSession | null) => void) {
     return db.auth.onAuthStateChange(callback)
   },
 
@@ -272,6 +289,10 @@ export const supabaseService = {
     if (updates.avatarUrl !== undefined) dbUpdates.avatar_url = updates.avatarUrl
     if (updates.bio !== undefined) dbUpdates.bio = updates.bio
     if (updates.sport) dbUpdates.sport = updates.sport
+    if (updates.trainingDays !== undefined) dbUpdates.training_days = updates.trainingDays
+    if (updates.weightUnit) dbUpdates.weight_unit = updates.weightUnit
+    if (updates.equipment !== undefined) dbUpdates.equipment = updates.equipment
+    if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted
 
     const { error } = await db
       .from('profiles')
@@ -284,135 +305,6 @@ export const supabaseService = {
     if (!profile) throw new Error('Profile not found after update')
 
     return profile
-  },
-
-  async searchUsers(query: string, sport?: SportType): Promise<UserProfile[]> {
-    let queryBuilder = db
-      .from('profiles')
-      .select('*')
-      .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
-      .limit(20)
-
-    if (sport) {
-      queryBuilder = queryBuilder.eq('sport', sport)
-    }
-
-    const { data: profiles, error } = await queryBuilder
-
-    if (error || !profiles) return []
-
-    // Get stats for all users
-    const userIds = (profiles as DbProfile[]).map((p: DbProfile) => p.id)
-    const { data: allStats } = await db
-      .from('user_stats')
-      .select('*')
-      .in('user_id', userIds)
-
-    const statsMap = new Map((allStats as DbUserStats[] | null)?.map((s: DbUserStats) => [s.user_id, s]) ?? [])
-
-    return (profiles as DbProfile[]).map((p: DbProfile) => dbProfileToUserProfile(p, statsMap.get(p.id) as DbUserStats | undefined))
-  },
-
-  // ============================================
-  // SOCIAL (FOLLOWS)
-  // ============================================
-
-  async followUser(userId: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-    if (currentUser.id === userId) throw new Error('Cannot follow yourself')
-
-    const { error } = await db.from('follows').insert({
-      follower_id: currentUser.id,
-      following_id: userId,
-    })
-
-    if (error && !error.message.includes('duplicate')) {
-      throw new Error(error.message)
-    }
-  },
-
-  async unfollowUser(userId: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { error } = await db
-      .from('follows')
-      .delete()
-      .eq('follower_id', currentUser.id)
-      .eq('following_id', userId)
-
-    if (error) throw new Error(error.message)
-  },
-
-  async getFollowers(userId: string): Promise<UserProfile[]> {
-    const { data: follows, error } = await db
-      .from('follows')
-      .select('follower_id')
-      .eq('following_id', userId)
-
-    if (error || !follows) return []
-
-    const followerIds = (follows as DbFollow[]).map((f: DbFollow) => f.follower_id)
-    if (followerIds.length === 0) return []
-
-    const { data: profiles } = await db
-      .from('profiles')
-      .select('*')
-      .in('id', followerIds)
-
-    if (!profiles) return []
-
-    const { data: allStats } = await db
-      .from('user_stats')
-      .select('*')
-      .in('user_id', followerIds)
-
-    const statsMap = new Map((allStats as DbUserStats[] | null)?.map((s: DbUserStats) => [s.user_id, s]) ?? [])
-
-    return (profiles as DbProfile[]).map((p: DbProfile) => dbProfileToUserProfile(p, statsMap.get(p.id) as DbUserStats | undefined))
-  },
-
-  async getFollowing(userId: string): Promise<UserProfile[]> {
-    const { data: follows, error } = await db
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', userId)
-
-    if (error || !follows) return []
-
-    const followingIds = (follows as DbFollow[]).map((f: DbFollow) => f.following_id)
-    if (followingIds.length === 0) return []
-
-    const { data: profiles } = await db
-      .from('profiles')
-      .select('*')
-      .in('id', followingIds)
-
-    if (!profiles) return []
-
-    const { data: allStats } = await db
-      .from('user_stats')
-      .select('*')
-      .in('user_id', followingIds)
-
-    const statsMap = new Map((allStats as DbUserStats[] | null)?.map((s: DbUserStats) => [s.user_id, s]) ?? [])
-
-    return (profiles as DbProfile[]).map((p: DbProfile) => dbProfileToUserProfile(p, statsMap.get(p.id) as DbUserStats | undefined))
-  },
-
-  async isFollowing(userId: string): Promise<boolean> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return false
-
-    const { data } = await db
-      .from('follows')
-      .select('id')
-      .eq('follower_id', currentUser.id)
-      .eq('following_id', userId)
-      .single()
-
-    return !!data
   },
 
   // ============================================
@@ -445,7 +337,7 @@ export const supabaseService = {
         difficulty: state.difficulty,
         estimated_duration: estimatedDuration,
         sport_relevance: state.sportRelevance,
-        visibility: state.visibility,
+        visibility: 'private',
         save_count: 0,
       })
       .select()
@@ -506,7 +398,7 @@ export const supabaseService = {
     if (updates.focus) dbUpdates.focus = updates.focus
     if (updates.difficulty) dbUpdates.difficulty = updates.difficulty
     if (updates.sportRelevance) dbUpdates.sport_relevance = updates.sportRelevance
-    if (updates.visibility) dbUpdates.visibility = updates.visibility
+    dbUpdates.visibility = 'private'
     if (updates.exercises) {
       dbUpdates.estimated_duration = this.calculateDuration(updates.exercises)
     }
@@ -616,164 +508,277 @@ export const supabaseService = {
     return (workouts as DbCustomWorkout[]).map((w: DbCustomWorkout) => dbWorkoutToCustomWorkout(w, exercisesMap.get(w.id) ?? [], creator ?? undefined))
   },
 
-  async getFeedWorkouts(filters?: WorkoutSearchFilters): Promise<FeedItem[]> {
-    const currentUser = await this.getCurrentUser()
+  // ============================================
+  // TRAINING PROGRAMS
+  // ============================================
 
-    let queryBuilder = db
-      .from('custom_workouts')
+  async getActiveProgram(): Promise<TrainingProgramSnapshot | null> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return null
+
+    const { data: program, error } = await db
+      .from('training_programs')
       .select('*')
-      .eq('visibility', 'public')
-
-    if (filters?.query) {
-      queryBuilder = queryBuilder.or(
-        `name.ilike.%${filters.query}%,description.ilike.%${filters.query}%`
-      )
-    }
-    if (filters?.focus) {
-      queryBuilder = queryBuilder.eq('focus', filters.focus)
-    }
-    if (filters?.difficulty) {
-      queryBuilder = queryBuilder.eq('difficulty', filters.difficulty)
-    }
-    if (filters?.sport) {
-      queryBuilder = queryBuilder.contains('sport_relevance', [filters.sport])
-    }
-
-    if (filters?.sortBy === 'popular' || filters?.sortBy === 'saves') {
-      queryBuilder = queryBuilder.order('save_count', { ascending: false })
-    } else {
-      queryBuilder = queryBuilder.order('created_at', { ascending: false })
-    }
-
-    const { data: workouts, error } = await queryBuilder.limit(50)
-
-    if (error || !workouts) return []
-
-    // Get all required data in parallel
-    const typedWorkouts = workouts as DbCustomWorkout[]
-    const workoutIds = typedWorkouts.map((w: DbCustomWorkout) => w.id)
-    const creatorIds = [...new Set(typedWorkouts.map((w: DbCustomWorkout) => w.creator_id))]
-
-    const [
-      { data: allExercises },
-      { data: profiles },
-      { data: allStats },
-      { data: savedWorkouts },
-      { data: following },
-    ] = await Promise.all([
-      db.from('custom_workout_exercises').select('*').in('workout_id', workoutIds),
-      db.from('profiles').select('*').in('id', creatorIds),
-      db.from('user_stats').select('*').in('user_id', creatorIds),
-      currentUser
-        ? db.from('saved_workouts').select('workout_id').eq('user_id', currentUser.id)
-        : Promise.resolve({ data: [] }),
-      currentUser
-        ? db.from('follows').select('following_id').eq('follower_id', currentUser.id)
-        : Promise.resolve({ data: [] }),
-    ])
-
-    const exercisesMap = new Map<string, DbCustomWorkoutExercise[]>()
-    ;(allExercises as DbCustomWorkoutExercise[] | null)?.forEach((e: DbCustomWorkoutExercise) => {
-      const list = exercisesMap.get(e.workout_id) ?? []
-      list.push(e)
-      exercisesMap.set(e.workout_id, list)
-    })
-
-    const statsMap = new Map((allStats as DbUserStats[] | null)?.map((s: DbUserStats) => [s.user_id, s]) ?? [])
-    const profilesMap = new Map(
-      (profiles as DbProfile[] | null)?.map((p: DbProfile) => [p.id, dbProfileToUserProfile(p, statsMap.get(p.id) as DbUserStats | undefined)]) ?? []
-    )
-
-    const savedIds = new Set((savedWorkouts as {workout_id: string}[] | null)?.map((s: {workout_id: string}) => s.workout_id) ?? [])
-    const followingIds = new Set((following as {following_id: string}[] | null)?.map((f: {following_id: string}) => f.following_id) ?? [])
-
-    return typedWorkouts.map((w: DbCustomWorkout) => {
-      const creator = profilesMap.get(w.creator_id) ?? {
-        id: 'unknown',
-        username: 'unknown',
-        displayName: 'Unknown User',
-        sport: 'wrestling' as SportType,
-        createdAt: new Date().toISOString(),
-        workoutCount: 0,
-        followerCount: 0,
-        followingCount: 0,
-        totalSaves: 0,
-      }
-
-      return {
-        workout: dbWorkoutToCustomWorkout(w, exercisesMap.get(w.id) ?? [], creator),
-        creator,
-        isSaved: savedIds.has(w.id),
-        isFollowing: followingIds.has(w.creator_id),
-      }
-    })
-  },
-
-  async saveWorkout(workoutId: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { error } = await db.from('saved_workouts').insert({
-      user_id: currentUser.id,
-      workout_id: workoutId,
-    })
-
-    if (error && !error.message.includes('duplicate')) {
-      throw new Error(error.message)
-    }
-
-    // Increment save count on workout
-    const { data: workout } = await db
-      .from('custom_workouts')
-      .select('save_count')
-      .eq('id', workoutId)
+      .eq('user_id', currentUser.id)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .single()
 
-    await db
-      .from('custom_workouts')
-      .update({ save_count: (workout?.save_count ?? 0) + 1 })
-      .eq('id', workoutId)
+    if (error || !program) return null
+
+    let version: DbTrainingProgramVersion | null = null
+    if (program.current_version_id) {
+      const { data: currentVersion } = await db
+        .from('training_program_versions')
+        .select('*')
+        .eq('id', program.current_version_id)
+        .single()
+      version = currentVersion ?? null
+    }
+
+    const data = (version?.data as TrainingProgramData | null) ?? null
+    const sessions = Array.isArray(data?.sessions) ? (data?.sessions as Session[]) : []
+
+    return {
+      programId: program.id,
+      sport: program.sport as SportType,
+      trainingDays: program.training_days,
+      currentVersionId: program.current_version_id ?? null,
+      originalVersionId: program.original_version_id ?? null,
+      sessions,
+    }
   },
 
-  async unsaveWorkout(workoutId: string): Promise<void> {
+  async createProgram(params: {
+    sport: SportType
+    trainingDays: number
+    sessions: Session[]
+    label?: string
+  }): Promise<TrainingProgramSnapshot> {
     const currentUser = await this.getCurrentUser()
     if (!currentUser) throw new Error('Must be logged in')
 
-    const { error } = await db
-      .from('saved_workouts')
-      .delete()
+    await db
+      .from('training_programs')
+      .update({ status: 'inactive', updated_at: new Date().toISOString() })
       .eq('user_id', currentUser.id)
-      .eq('workout_id', workoutId)
+      .eq('status', 'active')
 
-    if (error) throw new Error(error.message)
+    const { data: program, error: programError } = await db
+      .from('training_programs')
+      .insert({
+        user_id: currentUser.id,
+        sport: params.sport,
+        training_days: params.trainingDays,
+        status: 'active',
+      })
+      .select()
+      .single()
+
+    if (programError || !program) throw new Error(programError?.message ?? 'Failed to create program')
+
+    const { data: version, error: versionError } = await db
+      .from('training_program_versions')
+      .insert({
+        program_id: program.id,
+        version_number: 1,
+        is_original: true,
+        label: params.label ?? 'Original',
+        data: { sessions: params.sessions },
+        created_by: currentUser.id,
+      })
+      .select()
+      .single()
+
+    if (versionError || !version) throw new Error(versionError?.message ?? 'Failed to create program version')
+
+    await db
+      .from('training_programs')
+      .update({
+        current_version_id: version.id,
+        original_version_id: version.id,
+      })
+      .eq('id', program.id)
+
+    return {
+      programId: program.id,
+      sport: program.sport as SportType,
+      trainingDays: program.training_days,
+      currentVersionId: version.id,
+      originalVersionId: version.id,
+      sessions: params.sessions,
+    }
   },
 
-  async getSavedWorkouts(): Promise<SavedWorkout[]> {
+  async saveProgramVersion(programId: string, sessions: Session[], label?: string): Promise<string> {
     const currentUser = await this.getCurrentUser()
-    if (!currentUser) return []
+    if (!currentUser) throw new Error('Must be logged in')
 
-    const { data: saved, error } = await db
-      .from('saved_workouts')
+    const { data: latest } = await db
+      .from('training_program_versions')
+      .select('version_number')
+      .eq('program_id', programId)
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .single()
+
+    const nextVersionNumber = (latest?.version_number ?? 0) + 1
+
+    const { data: version, error } = await db
+      .from('training_program_versions')
+      .insert({
+        program_id: programId,
+        version_number: nextVersionNumber,
+        is_original: false,
+        label: label ?? `Version ${nextVersionNumber}`,
+        data: { sessions },
+        created_by: currentUser.id,
+      })
+      .select()
+      .single()
+
+    if (error || !version) throw new Error(error?.message ?? 'Failed to save program version')
+
+    await db
+      .from('training_programs')
+      .update({ current_version_id: version.id, updated_at: new Date().toISOString() })
+      .eq('id', programId)
+
+    return version.id
+  },
+
+  async setProgramVersion(programId: string, versionId: string): Promise<Session[]> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) throw new Error('Must be logged in')
+
+    const { data: version, error } = await db
+      .from('training_program_versions')
+      .select('*')
+      .eq('id', versionId)
+      .single()
+
+    if (error || !version) throw new Error(error?.message ?? 'Failed to load program version')
+
+    await db
+      .from('training_programs')
+      .update({ current_version_id: versionId, updated_at: new Date().toISOString() })
+      .eq('id', programId)
+
+    const data = (version.data as TrainingProgramData | null) ?? null
+    return Array.isArray(data?.sessions) ? (data?.sessions as Session[]) : []
+  },
+
+  async getOriginalProgramSessions(programId: string): Promise<Session[]> {
+    const { data: program } = await db
+      .from('training_programs')
+      .select('original_version_id')
+      .eq('id', programId)
+      .single()
+
+    if (!program?.original_version_id) return []
+    return this.setProgramVersion(programId, program.original_version_id)
+  },
+
+  async getProgramState(): Promise<WeekDay[] | null> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return null
+
+    const { data } = await db
+      .from('training_program_state')
       .select('*')
       .eq('user_id', currentUser.id)
-      .order('saved_at', { ascending: false })
+      .single()
 
-    if (error || !saved) return []
+    if (!data) return null
+    const payload = data as DbTrainingProgramState
+    return (payload.week_progress as unknown as WeekDay[]) ?? null
+  },
 
-    const typedSaved = saved as DbSavedWorkout[]
-    const workoutIds = typedSaved.map((s: DbSavedWorkout) => s.workout_id)
-    const workoutsPromises = workoutIds.map((id: string) => this.getWorkout(id))
-    const workouts = await Promise.all(workoutsPromises)
+  async upsertProgramState(programId: string | null, weekProgress: WeekDay[]): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return
 
-    const workoutsMap = new Map(workouts.filter(Boolean).map(w => [w!.id, w!]))
+    await db
+      .from('training_program_state')
+      .upsert({
+        user_id: currentUser.id,
+        program_id: programId,
+        week_progress: weekProgress,
+        updated_at: new Date().toISOString(),
+      })
+  },
 
-    return typedSaved.map((s: DbSavedWorkout) => ({
-      id: s.id,
-      userId: s.user_id,
-      workoutId: s.workout_id,
-      workout: workoutsMap.get(s.workout_id),
-      savedAt: s.saved_at ?? new Date().toISOString(),
+  // ============================================
+  // EXERCISE FAVORITES & COMPLETIONS
+  // ============================================
+
+  async getExerciseFavorites(): Promise<Set<string>> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return new Set()
+
+    const { data } = await db
+      .from('exercise_favorites')
+      .select('exercise_id')
+      .eq('user_id', currentUser.id)
+
+    const ids = (data as DbExerciseFavorite[] | null)?.map((row) => row.exercise_id) ?? []
+    return new Set(ids)
+  },
+
+  async setExerciseFavorite(exerciseId: string, shouldFavorite: boolean): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) throw new Error('Must be logged in')
+
+    if (shouldFavorite) {
+      const { error } = await db
+        .from('exercise_favorites')
+        .insert({ user_id: currentUser.id, exercise_id: exerciseId })
+      if (error && !error.message.includes('duplicate')) throw new Error(error.message)
+    } else {
+      const { error } = await db
+        .from('exercise_favorites')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('exercise_id', exerciseId)
+      if (error) throw new Error(error.message)
+    }
+  },
+
+  async getExerciseCompletions(): Promise<Set<string>> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return new Set()
+
+    const { data } = await db
+      .from('exercise_completions')
+      .select('exercise_id')
+      .eq('user_id', currentUser.id)
+      .order('completed_at', { ascending: false })
+      .limit(200)
+
+    const ids = (data as DbExerciseCompletion[] | null)?.map((row) => row.exercise_id) ?? []
+    return new Set(ids)
+  },
+
+  async logExerciseCompletions(exerciseIds: string[], sessionLogId?: string, source?: string): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser || exerciseIds.length === 0) return
+
+    const inserts = exerciseIds.map((exerciseId) => ({
+      user_id: currentUser.id,
+      exercise_id: exerciseId,
+      session_log_id: sessionLogId ?? null,
+      source: source ?? null,
+      completed_at: new Date().toISOString(),
     }))
+
+    const { error } = await db
+      .from('exercise_completions')
+      .insert(inserts)
+
+    if (error) {
+      console.debug('Failed to log exercise completions:', error.message)
+    }
   },
 
   // ============================================
@@ -1224,4 +1229,3 @@ export const supabaseService = {
 
 // Export type for the service
 export type SupabaseService = typeof supabaseService
-

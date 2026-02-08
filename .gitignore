@@ -5,6 +5,10 @@ node_modules/
 .next/
 out/
 
+# Local pipeline artifacts / scratch
+.pipeline_artifacts/
+tmp/
+
 # Build outputs
 build/
 dist/
@@ -52,3 +56,5 @@ coverage/
 *.log
 .vercel
 
+# Supabase CLI temp state
+supabase/.temp/

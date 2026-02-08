@@ -20,22 +20,21 @@ export type Screen =
   | 'routine-player'
   | 'learning-path'
   | 'body-part-selector'
+  | 'athlete-detail'
+  | 'program-session-editor'
   // Exercise screens
-  | 'exercises-main'
   | 'sport-exercise-categories'
   | 'sport-category-exercises'
+  | 'exercise-detail'
   // Social screens
   | 'auth-login'
   | 'auth-signup'
   | 'workout-builder'
-  | 'community-feed'
   | 'user-profile'
-  | 'user-profile-other'
-  | 'search-discover'
-  | 'saved-workouts'
   | 'workout-detail'
   | 'edit-profile'
   | 'loading'
+  | 'navigation-not-set'
 
 // Exercise categories for sport-specific exercises
 export type ExerciseCategory =
@@ -106,8 +105,137 @@ export interface Exercise {
 
 export interface AthleteExerciseGroup {
   athlete: string
+  athleteId?: string
   sport: SportType
+  achievements?: string[]
   exercises: string[]
+}
+
+// Enhanced exercise data for display in lists
+export interface EnhancedExerciseData {
+  id: string
+  name: string
+  category: string
+  muscleGroups: string[]
+  equipment: string[]
+  description?: string
+  videoUrl?: string
+  isWeighted: boolean
+  sport: SportType
+  // Athlete-specific data
+  athleteId: string
+  athleteName: string
+  athleteAchievements: string[]
+  reps?: string
+  sets?: string
+  weight?: string
+  duration?: string
+  frequency?: string
+  priority: number
+  notes?: string
+}
+
+// Enhanced athlete group with full exercise data
+export interface EnhancedAthleteExerciseGroup {
+  athleteId: string
+  athleteName: string
+  sport: SportType
+  achievements: string[]
+  exercises: EnhancedExerciseData[]
+  imageUrl?: string
+}
+
+// Exercise counts by category
+export interface ExerciseCounts {
+  bySport: Record<SportType, number>
+  byCategory: Record<ExerciseCategory, number>
+  bySportAndCategory: Record<string, number> // "wrestling-legs" -> count
+  athletesBySport: Record<SportType, number>
+}
+
+// Sort options for exercise lists
+export type ExerciseSortOption = 'athlete' | 'name' | 'priority' | 'equipment'
+
+// Filter options for exercise lists
+export interface ExerciseFilters {
+  equipment?: string[]
+  hasVideo?: boolean
+  hasAthleteData?: boolean
+}
+
+// Experience levels for exercise recommendations
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced'
+
+// Elite athlete's ACTUAL workout data (from research)
+export interface AthleteExerciseData {
+  athleteId: string
+  athleteName: string
+  athleteSport: SportType
+  athleteAchievements: string[]
+
+  // Raw data from research (optional fields - only when specified in sources)
+  reps?: string          // "42 reps", "1000 reps", "10 reps at 200kg"
+  sets?: string          // Rarely specified
+  weight?: string        // "180kg", "50-60kg", "200kg"
+  duration?: string      // "20s sprint / 40s rest"
+  frequency?: string     // "Daily", "3x per week"
+  priority: number       // 1-10 importance for this athlete
+  notes?: string         // Context from sources
+
+  // Metadata
+  source: 'research'     // Always 'research' for athlete data
+  verified: boolean      // True if from verified sources
+}
+
+// Science-based recommendations for users
+export interface ExerciseRecommendation {
+  experienceLevel: ExperienceLevel
+
+  // Recommended ranges
+  setsRange: { min: number; max: number }
+  repsRange: { min: number; max: number }
+  restRange: { min: number; max: number } // in seconds
+
+  // Guidance
+  tempo?: string                    // "3-1-1-0" (eccentric-pause-concentric-pause)
+  progressionNotes?: string         // How to make it harder
+  regressionNotes?: string          // How to make it easier
+
+  // Metadata
+  source: 'recommendation'          // Always 'recommendation'
+  basedOn: 'exercise-science'       // Methodology
+}
+
+// Combined view for UI - exercise with both athlete data and recommendations
+export interface ExerciseWithGuidance {
+  // Base exercise info
+  id: string
+  name: string
+  category: string
+  muscleGroups: string[]
+  description?: string
+  equipment?: string[]
+  isWeighted: boolean
+  sport?: SportType
+  athleteSpecific: boolean
+  videoUrl?: string
+
+  // Elite athlete data (if available) - can have multiple athletes
+  athleteData?: AthleteExerciseData[]
+
+  // User recommendations (based on their level)
+  recommendations?: ExerciseRecommendation
+}
+
+// Athlete profile
+export interface Athlete {
+  id: string
+  name: string
+  sport: SportType
+  nationality?: string
+  achievements?: string[]
+  bio?: string
+  imageUrl?: string
 }
 
 export interface Session {

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Dagestan Discipline">
+  <rect width="64" height="64" rx="12" fill="#0a0a0a"/>
+  <path d="M14 48V16h11l10 20 9-20h6v32h-8V30l-8 18h-4l-9-18v18h-7z" fill="#fafafa"/>
+  <circle cx="52" cy="12" r="4" fill="#8b0000"/>
+</svg>

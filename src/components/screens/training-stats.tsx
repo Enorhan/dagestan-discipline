@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { Screen, ActivityType, ActivityLog, SessionLog } from '@/lib/types'
-import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { Button } from '@/components/ui/button'
 import { Gi, Wrestling, Trophy, Boxing, Drill, Flame, Stretch } from '@/components/ui/icons'
@@ -10,13 +10,15 @@ import { Gi, Wrestling, Trophy, Boxing, Drill, Flame, Stretch } from '@/componen
 interface TrainingStatsProps {
   sessionHistory: SessionLog[]
   activityLogs: ActivityLog[]
+  completedExerciseCount?: number
   currentStreak: number
   longestStreak: number
   weightUnit: 'lbs' | 'kg'
   onClose: () => void
-  trainingTarget: Screen
   onNavigate: (screen: Screen) => void
   isLoading?: boolean
+  onStartAction?: () => void
+  hasWorkoutToday?: boolean
 }
 
 // Activity type labels and icons
@@ -36,13 +38,15 @@ type ViewMode = 'month' | 'year'
 export function TrainingStats({
   sessionHistory,
   activityLogs,
+  completedExerciseCount = 0,
   currentStreak,
   longestStreak,
   weightUnit,
   onClose,
-  trainingTarget,
   onNavigate,
-  isLoading = false
+  isLoading = false,
+  onStartAction,
+  hasWorkoutToday = false
 }: TrainingStatsProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -219,7 +223,7 @@ export function TrainingStats({
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
               Training Summary
             </p>
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <div className="card-elevated rounded-xl p-5 text-center stagger-item">
                 <p className="text-4xl font-black text-foreground tabular-nums">{totalSessions}</p>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mt-2">Sessions</p>
@@ -227,6 +231,10 @@ export function TrainingStats({
               <div className="card-elevated rounded-xl p-5 text-center stagger-item" style={{ animationDelay: '50ms' }}>
                 <p className="text-4xl font-black text-foreground tabular-nums">{totalHours.toFixed(1)}</p>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mt-2">Hours</p>
+              </div>
+              <div className="card-elevated rounded-xl p-5 text-center stagger-item" style={{ animationDelay: '100ms' }}>
+                <p className="text-4xl font-black text-foreground tabular-nums">{completedExerciseCount}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mt-2">Exercises</p>
               </div>
             </div>
           </div>
@@ -344,11 +352,14 @@ export function TrainingStats({
         </ScreenShellContent>
       </div>
 
-      <BottomNav
-        active="home"
-        trainingTarget={trainingTarget}
-        onNavigate={onNavigate}
-      />
+      <ScreenShellFooter>
+        <BottomNav
+          active="profile"
+          onNavigate={onNavigate}
+          onStartAction={onStartAction}
+          hasWorkoutToday={hasWorkoutToday}
+        />
+      </ScreenShellFooter>
     </ScreenShell>
   )
 }

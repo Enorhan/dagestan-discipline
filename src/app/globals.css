@@ -157,6 +157,43 @@ html {
 }
 
 /* ============================================
+   UI Token Normalization
+   Keeps older white/black utility usage visually aligned
+   with the design token system across all ScreenShell views.
+   ============================================ */
+.ui-tokenized [class~="text-white"] {
+  color: var(--color-foreground);
+}
+
+.ui-tokenized [class*="text-white/"] {
+  color: color-mix(in oklab, var(--color-foreground) 70%, transparent);
+}
+
+.ui-tokenized [class~="bg-black"] {
+  background-color: var(--color-background);
+}
+
+.ui-tokenized [class*="bg-white/"] {
+  background-color: color-mix(in oklab, var(--color-card) 72%, transparent);
+}
+
+.ui-tokenized [class*="border-white/"] {
+  border-color: color-mix(in oklab, var(--color-border) 88%, transparent);
+}
+
+.ui-tokenized [class*="from-black"] {
+  --tw-gradient-from: color-mix(in oklab, var(--color-background) 95%, transparent) var(--tw-gradient-from-position);
+}
+
+.ui-tokenized [class*="via-black"] {
+  --tw-gradient-via: color-mix(in oklab, var(--color-background) 88%, transparent) var(--tw-gradient-via-position);
+}
+
+.ui-tokenized [class*="to-black"] {
+  --tw-gradient-to: color-mix(in oklab, var(--color-background) 95%, transparent) var(--tw-gradient-to-position);
+}
+
+/* ============================================
    TYPOGRAPHY SCALE (from design-tokens)
    ============================================ */
 .type-xs { font-size: 0.75rem; line-height: 1rem; }

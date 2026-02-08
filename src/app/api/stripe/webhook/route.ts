@@ -2,20 +2,30 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-01-28.clover',
-})
+function getStripeClient() {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    throw new Error('Missing STRIPE_SECRET_KEY')
+  }
+  return new Stripe(secretKey, {
+    apiVersion: '2026-01-28.clover',
+  })
+}
 
-// Initialize Supabase client with service role for admin operations
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabaseAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceKey) {
+    throw new Error('Missing Supabase admin environment variables')
+  }
+  return createClient(url, serviceKey)
+}
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripeClient()
+  const supabase = getSupabaseAdminClient()
   const body = await request.text()
   const signature = request.headers.get('stripe-signature')
 
@@ -36,19 +46,19 @@ export async function POST(request: NextRequest) {
   try {
     switch (event.type) {
       case 'checkout.session.completed':
-        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session)
+        await handleCheckoutSessionCompleted(stripe, supabase, event.data.object as Stripe.Checkout.Session)
         break
 
       case 'invoice.paid':
-        await handleInvoicePaid(event.data.object as Stripe.Invoice)
+        await handleInvoicePaid(stripe, supabase, event.data.object as Stripe.Invoice)
         break
 
       case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription)
+        await handleSubscriptionUpdated(supabase, event.data.object as Stripe.Subscription)
         break
 
       case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription)
+        await handleSubscriptionDeleted(supabase, event.data.object as Stripe.Subscription)
         break
 
       default:
@@ -62,7 +72,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutSessionCompleted(
+  stripe: Stripe,
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  session: Stripe.Checkout.Session
+) {
   const { userId, programId, mode } = session.metadata || {}
 
   if (!userId) {
@@ -129,7 +143,11 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   }
 }
 
-async function handleInvoicePaid(invoice: Stripe.Invoice) {
+async function handleInvoicePaid(
+  stripe: Stripe,
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  invoice: Stripe.Invoice
+) {
   // Access subscription from parent or lines
   const subscriptionId = invoice.parent?.subscription_details?.subscription
     || (invoice.lines.data[0]?.parent?.subscription_item_details?.subscription)
@@ -164,7 +182,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   if (error) console.error('Error updating subscription period:', error)
 }
 
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  subscription: Stripe.Subscription
+) {
   // Get billing period from the first subscription item
   const firstItem = subscription.items.data[0]
   const currentPeriodStart = firstItem?.current_period_start
@@ -188,7 +209,10 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   if (error) console.error('Error updating subscription:', error)
 }
 
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+async function handleSubscriptionDeleted(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  subscription: Stripe.Subscription
+) {
   const { error } = await supabase
     .from('subscriptions')
     .update({
@@ -199,4 +223,3 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 
   if (error) console.error('Error canceling subscription:', error)
 }
-

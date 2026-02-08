@@ -7,22 +7,25 @@ import { haptics } from '@/lib/haptics'
 /**
  * Bottom Navigation Component - Design System
  *
- * Instagram/Twitter-style bottom tab navigation.
+ * Instagram/TikTok-style bottom tab navigation.
  * Features:
  * - 5 primary tabs with icons
+ * - Prominent center action button
  * - Active state indicators with smooth transitions
  * - Haptic feedback on tap
  * - Safe area handling for iOS
  * - Meets 44pt minimum touch target
  */
 
-type NavKey = 'home' | 'training' | 'community' | 'week' | 'profile'
+type NavKey = 'home' | 'start' | 'learn' | 'profile'
 
 interface BottomNavProps {
   active: NavKey
-  trainingTarget: Screen
   onNavigate: (screen: Screen) => void
+  onStartAction?: () => void // Smart action for center button
+  hasWorkoutToday?: boolean // Determines center button behavior
   variant?: 'fixed' | 'inline'
+  hideLearnTab?: boolean
 }
 
 interface NavItemProps {
@@ -30,9 +33,43 @@ interface NavItemProps {
   active: boolean
   onClick: () => void
   icon: ReactNode
+  isCenter?: boolean // For prominent center button styling
 }
 
-function NavItem({ label, active, onClick, icon }: NavItemProps) {
+function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProps) {
+  if (isCenter) {
+    // Prominent center action button (Instagram/TikTok style)
+    return (
+      <button
+        onClick={onClick}
+        className={[
+          // Base styles
+          'flex-1 min-h-[56px] min-w-[44px]',
+          'flex items-center justify-center',
+          // Touch feedback
+          'active:scale-95',
+          'transition-all duration-normal',
+        ].join(' ')}
+        aria-label={label}
+      >
+        <div className={[
+          // Prominent styling
+          'w-14 h-14 rounded-full',
+          'flex items-center justify-center',
+          'bg-primary shadow-lg',
+          '-mt-2', // Slightly elevated
+          'transition-all duration-normal',
+          'hover:shadow-xl hover:scale-105',
+          // Glow effect
+          'shadow-primary/50',
+        ].join(' ')}>
+          {icon}
+        </div>
+        <span className="sr-only">{label}</span>
+      </button>
+    )
+  }
+
   return (
     <button
       onClick={onClick}
@@ -73,9 +110,11 @@ function NavItem({ label, active, onClick, icon }: NavItemProps) {
 
 export function BottomNav({
   active,
-  trainingTarget,
   onNavigate,
+  onStartAction,
+  hasWorkoutToday = false,
   variant = 'fixed',
+  hideLearnTab = false,
 }: BottomNavProps) {
   // Container styles based on variant
   const containerStyles = variant === 'fixed'
@@ -98,6 +137,7 @@ export function BottomNav({
       aria-label="Main navigation"
     >
       <div className="mx-auto flex max-w-lg items-center justify-around">
+        {/* Home Tab */}
         <NavItem
           label="Home"
           active={active === 'home'}
@@ -112,50 +152,52 @@ export function BottomNav({
             </svg>
           }
         />
+
+        {/* Center Action Button - Prominent */}
         <NavItem
-          label="Training"
-          active={active === 'training'}
+          label={hasWorkoutToday ? "Start Workout" : "Create Workout"}
+          active={active === 'start'}
           onClick={() => {
-            haptics.light()
-            onNavigate(trainingTarget)
+            haptics.medium()
+            if (onStartAction) {
+              onStartAction()
+            }
           }}
+          isCenter
           icon={
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 8h12M6 16h12" />
-              <path d="M3 8h3v8H3zM18 8h3v8h-3z" />
-            </svg>
+            hasWorkoutToday ? (
+              // Play icon for starting workout
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-primary-foreground">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            ) : (
+              // Plus icon for creating workout
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-primary-foreground">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            )
           }
         />
-        <NavItem
-          label="Community"
-          active={active === 'community'}
-          onClick={() => {
-            haptics.light()
-            onNavigate('community-feed')
-          }}
-          icon={
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-          }
-        />
-        <NavItem
-          label="Week"
-          active={active === 'week'}
-          onClick={() => {
-            haptics.light()
-            onNavigate('week-view')
-          }}
-          icon={
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 6h16M4 10h16M4 14h10" />
-              <path d="M4 18h6" />
-            </svg>
-          }
-        />
+
+        {!hideLearnTab && (
+          <NavItem
+            label="Learn"
+            active={active === 'learn'}
+            onClick={() => {
+              haptics.light()
+              onNavigate('training-hub')
+            }}
+            icon={
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+            }
+          />
+        )}
+
+        {/* Profile Tab */}
         <NavItem
           label="Profile"
           active={active === 'profile'}

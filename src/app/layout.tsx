@@ -1,16 +1,10 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { OfflineBanner } from '@/components/ui/offline-banner'
 import { AuthProvider } from '@/contexts/auth-context'
-
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"]
-});
 
 export const metadata: Metadata = {
   title: 'Dagestan Discipline',
@@ -51,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased bg-background text-foreground`}>
+      <body className="antialiased bg-background text-foreground">
         <OfflineBanner />
         <ErrorBoundary>
           <AuthProvider>

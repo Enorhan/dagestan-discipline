@@ -4,39 +4,36 @@ import React, { useState, useEffect } from 'react'
 import { Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
-import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { haptics } from '@/lib/haptics'
 import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile as UserProfileType, CustomWorkout, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
-import { Settings, Plus, ChevronRight, Edit, Bookmark, BarChart } from '@/components/ui/icons'
+import { Settings, Plus, ChevronRight, Edit, BarChart } from '@/components/ui/icons'
 
 interface UserProfileProps {
   user: UserProfileType
   isOwnProfile: boolean
   currentUser: UserProfileType | null
-  trainingTarget: Screen
   onNavigate: (screen: Screen) => void
   onSelectWorkout: (workout: CustomWorkout) => void
   onBack?: () => void
+  onStartAction?: () => void
+  hasWorkoutToday?: boolean
 }
 
-export function UserProfileScreen({ 
-  user, 
-  isOwnProfile, 
+export function UserProfileScreen({
+  user,
+  isOwnProfile,
   currentUser,
-  trainingTarget, 
   onNavigate,
   onSelectWorkout,
-  onBack
+  onBack,
+  onStartAction,
+  hasWorkoutToday = false
 }: UserProfileProps) {
-  const [activeTab, setActiveTab] = useState<'workouts' | 'saved'>('workouts')
   const [workouts, setWorkouts] = useState<CustomWorkout[]>([])
-  const [savedWorkouts, setSavedWorkouts] = useState<CustomWorkout[]>([])
-  const [isFollowing, setIsFollowing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -45,22 +42,11 @@ export function UserProfileScreen({
   const loadData = async () => {
     setIsLoading(true)
     try {
+      const userWorkouts = await supabaseService.getUserWorkouts(user.id)
       if (isOwnProfile) {
-        const myWorkouts = await supabaseService.getUserWorkouts(user.id)
-        setWorkouts(myWorkouts)
-
-        const saved = await supabaseService.getSavedWorkouts()
-        const savedWithDetails = saved.map(s => s.workout).filter(Boolean) as CustomWorkout[]
-        setSavedWorkouts(savedWithDetails)
+        setWorkouts(userWorkouts)
       } else {
-        // For other users, show only their public workouts
-        const userWorkouts = await supabaseService.getUserWorkouts(user.id)
-        // Filter to only public workouts for non-own profiles
         setWorkouts(userWorkouts.filter(w => w.visibility === 'public'))
-
-        // Check if following
-        const isFollowingUser = await supabaseService.isFollowing(user.id)
-        setIsFollowing(isFollowingUser)
       }
     } catch (e) {
       console.error('Failed to load profile data:', e)
@@ -69,50 +55,16 @@ export function UserProfileScreen({
     }
   }
 
-  const handleFollow = async () => {
-    if (!currentUser) {
-      onNavigate('auth-login')
-      return
-    }
-
-    // Show confirmation for unfollow
-    if (isFollowing) {
-      setShowUnfollowConfirm(true)
-      return
-    }
-
-    haptics.medium()
-    try {
-      await supabaseService.followUser(user.id)
-      setIsFollowing(true)
-    } catch (e) {
-      console.error('Failed to follow:', e)
-    }
-  }
-
-  const confirmUnfollow = async () => {
-    haptics.medium()
-    try {
-      await supabaseService.unfollowUser(user.id)
-      setIsFollowing(false)
-    } catch (e) {
-      console.error('Failed to unfollow:', e)
-    } finally {
-      setShowUnfollowConfirm(false)
-    }
-  }
-
-  const displayWorkouts = activeTab === 'workouts' ? workouts : savedWorkouts
 
   return (
     <ScreenShell>
       <ScreenShellContent maxWidth>
         <div className="px-6 safe-area-top pb-32">
-          {/* Header */}
-          {!isOwnProfile && onBack && (
-            <BackButton onClick={onBack} label="Back" />
+          {onBack && (
+            <div className="pt-2">
+              <BackButton onClick={onBack} label="Back" />
+            </div>
           )}
-
           {/* Profile Header */}
           <div className="flex items-start gap-4 mt-4 mb-6">
             {/* Avatar */}
@@ -154,18 +106,10 @@ export function UserProfileScreen({
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-4">
+          <div className="grid grid-cols-1 gap-1.5 sm:gap-3 mb-4">
             <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
               <p className="text-2xl font-black text-foreground">{user.workoutCount}</p>
               <p className="text-xs text-muted-foreground uppercase">Workouts</p>
-            </div>
-            <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
-              <p className="text-2xl font-black text-foreground">{user.followerCount}</p>
-              <p className="text-xs text-muted-foreground uppercase">Followers</p>
-            </div>
-            <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
-              <p className="text-2xl font-black text-foreground">{user.followingCount}</p>
-              <p className="text-xs text-muted-foreground uppercase">Following</p>
             </div>
           </div>
 
@@ -197,8 +141,8 @@ export function UserProfileScreen({
             </Button>
           )}
 
-          {/* Follow/Edit Button */}
-          {isOwnProfile ? (
+          {/* Edit Button */}
+          {isOwnProfile && (
             <Button
               onClick={() => onNavigate('edit-profile')}
               variant="outline"
@@ -209,51 +153,9 @@ export function UserProfileScreen({
               <Edit size={18} />
               Edit Profile
             </Button>
-          ) : (
-            <Button
-              onClick={handleFollow}
-              variant={isFollowing ? 'outline' : 'primary'}
-              size="md"
-              fullWidth
-              withHaptic={false}
-              className="rounded-xl font-semibold mb-6 normal-case tracking-normal"
-            >
-              {isFollowing ? 'Following' : 'Follow'}
-            </Button>
           )}
 
-          {/* Tabs */}
-          {isOwnProfile && (
-            <div className="flex gap-2 mb-4">
-              <Button
-                onClick={() => setActiveTab('workouts')}
-                variant="ghost"
-                size="sm"
-                className={`flex-1 h-10 rounded-lg font-medium text-sm normal-case tracking-normal ${
-                  activeTab === 'workouts'
-                    ? 'bg-primary text-primary-foreground border border-primary'
-                    : 'bg-card text-muted-foreground border border-border/60'
-                }`}
-              >
-                My Workouts
-              </Button>
-              <Button
-                onClick={() => setActiveTab('saved')}
-                variant="ghost"
-                size="sm"
-                className={`flex-1 h-10 rounded-lg font-medium text-sm flex items-center justify-center gap-1 normal-case tracking-normal ${
-                  activeTab === 'saved'
-                    ? 'bg-primary text-primary-foreground border border-primary'
-                    : 'bg-card text-muted-foreground border border-border/60'
-                }`}
-              >
-                <Bookmark size={16} />
-                Saved
-              </Button>
-            </div>
-          )}
-
-          {/* Workouts List */}
+          {/* Workouts */}
           {isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
@@ -263,28 +165,25 @@ export function UserProfileScreen({
                 </div>
               ))}
             </div>
-          ) : displayWorkouts.length === 0 ? (
-            <EmptyWorkouts 
-              isOwnProfile={isOwnProfile} 
-              isSavedTab={activeTab === 'saved'}
+          ) : workouts.length === 0 ? (
+            <EmptyWorkouts
+              isOwnProfile={isOwnProfile}
               onCreateWorkout={() => onNavigate('workout-builder')}
-              onBrowse={() => onNavigate('community-feed')}
             />
           ) : (
             <div className="space-y-3">
-              {displayWorkouts.map(workout => (
+              {workouts.map(workout => (
                 <WorkoutListItem
                   key={workout.id}
                   workout={workout}
                   onTap={() => onSelectWorkout(workout)}
-                  showVisibility={isOwnProfile && activeTab === 'workouts'}
                 />
               ))}
             </div>
           )}
 
           {/* Create Workout Button */}
-          {isOwnProfile && activeTab === 'workouts' && displayWorkouts.length > 0 && (
+          {isOwnProfile && workouts.length > 0 && (
             <Button
               onClick={() => {
                 haptics.medium()
@@ -304,20 +203,14 @@ export function UserProfileScreen({
       </ScreenShellContent>
 
       <ScreenShellFooter>
-        <BottomNav active="profile" trainingTarget={trainingTarget} onNavigate={onNavigate} />
+        <BottomNav
+          active="profile"
+          onNavigate={onNavigate}
+          onStartAction={onStartAction}
+          hasWorkoutToday={hasWorkoutToday}
+        />
       </ScreenShellFooter>
 
-      {/* Unfollow Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showUnfollowConfirm}
-        title="Unfollow User?"
-        message={`Stop following ${user.displayName}? You won't see their workouts in your feed.`}
-        confirmText="Unfollow"
-        cancelText="Keep Following"
-        variant="destructive"
-        onConfirm={confirmUnfollow}
-        onClose={() => setShowUnfollowConfirm(false)}
-      />
     </ScreenShell>
   )
 }
@@ -325,12 +218,10 @@ export function UserProfileScreen({
 // Workout List Item Component
 function WorkoutListItem({
   workout,
-  onTap,
-  showVisibility
+  onTap
 }: {
   workout: CustomWorkout
   onTap: () => void
-  showVisibility: boolean
 }) {
   return (
     <Button
@@ -343,15 +234,6 @@ function WorkoutListItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-semibold text-foreground truncate">{workout.name}</h3>
-            {showVisibility && (
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                workout.visibility === 'public'
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-card text-muted-foreground'
-              }`}>
-                {workout.visibility === 'public' ? '🌐' : '🔒'}
-              </span>
-            )}
           </div>
           <p className="text-sm text-muted-foreground line-clamp-1 mb-2">
             {workout.description || 'No description'}
@@ -381,41 +263,11 @@ function WorkoutListItem({
 // Empty Workouts Component
 function EmptyWorkouts({
   isOwnProfile,
-  isSavedTab,
-  onCreateWorkout,
-  onBrowse
+  onCreateWorkout
 }: {
   isOwnProfile: boolean
-  isSavedTab: boolean
   onCreateWorkout: () => void
-  onBrowse: () => void
 }) {
-  if (isSavedTab) {
-    return (
-      <div className="text-center py-12">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-card flex items-center justify-center">
-          <Bookmark size={32} className="text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-bold text-foreground mb-2">No saved workouts</h3>
-        <p className="text-sm text-muted-foreground mb-4 max-w-xs mx-auto">
-          Browse the community to find workouts you love
-        </p>
-        <Button
-          onClick={() => {
-            haptics.medium()
-            onBrowse()
-          }}
-          variant="primary"
-          size="md"
-          withHaptic={false}
-          className="px-6 py-3"
-        >
-          Browse Community
-        </Button>
-      </div>
-    )
-  }
-
   if (isOwnProfile) {
     return (
       <div className="text-center py-12">
@@ -424,7 +276,7 @@ function EmptyWorkouts({
         </div>
         <h3 className="text-lg font-bold text-foreground mb-2">No workouts yet</h3>
         <p className="text-sm text-muted-foreground mb-4 max-w-xs mx-auto">
-          Create your first workout and share it with the community
+          Create your first workout to get started
         </p>
         <Button
           onClick={() => {

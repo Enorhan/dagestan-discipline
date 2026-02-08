@@ -37,7 +37,7 @@ export function StreakRing({ currentStreak, longestStreak, weekProgress = [] }: 
   }, [currentStreak])
 
   // Calculate ring progress (7 segments for week)
-  const completedDays = weekProgress.filter(d => d.completed).length
+  const completedDays = weekProgress.filter(d => d.planned && d.completed).length
   const plannedDays = weekProgress.filter(d => d.planned).length
   const weekProgress_pct = plannedDays > 0 ? (completedDays / plannedDays) * 100 : 0
 
@@ -149,4 +149,3 @@ export function StreakRing({ currentStreak, longestStreak, weekProgress = [] }: 
     </div>
   )
 }
-

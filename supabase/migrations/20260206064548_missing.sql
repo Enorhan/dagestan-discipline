@@ -1,0 +1,2 @@
+-- Placeholder migration to align local history with remote.
+-- This migration was previously created empty.

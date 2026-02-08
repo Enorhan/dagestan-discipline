@@ -106,7 +106,7 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
               Create Account
             </h1>
             <p className="text-muted-foreground mt-2">
-              Join the community and share workouts
+              Create an account to track your training
             </p>
           </div>
 

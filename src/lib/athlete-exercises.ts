@@ -6,122 +6,122 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       athlete: 'Aleksandr Karelin',
       sport: 'wrestling',
       exercises: [
-        'Rodd i timmar',
-        'Löpning genom skogen med en stock på ryggen',
+        'Rowing for hours',
+        'Running through forest with log on back',
         'Overhead press (190 kg)',
-        'Träning med 32 kg kettlebells',
-        'Zercher-marklyft (10 reps på 200 kg)',
-        'Bänkpress (204 kg+)',
-        'Chin-ups (50 reps på 1 minut)',
-        'Pull-ups (upp till 42 reps)',
-        'Backflips och splits',
-        'Bära ett kylskåp uppför trappor',
-        'Hopp-knäböj (jump squats)',
-        'Björngång (bear crawls) i backe',
+        'Training with 32 kg kettlebells',
+        'Zercher deadlift (10 reps at 200 kg)',
+        'Bench press (204 kg+)',
+        'Chin-ups (50 reps in 1 minute)',
+        'Pull-ups (up to 42 reps)',
+        'Backflips and splits',
+        'Carrying a refrigerator up stairs',
+        'Jump squats',
+        'Bear crawls uphill',
         'Duck walks',
-        'Zercher-marscher samt nackbryggning'
+        'Zercher carries and neck bridging'
       ]
     },
     {
       athlete: 'Jordan Burroughs',
       sport: 'wrestling',
       exercises: [
-        'Air Dyne-sprintar (20s spurt/40s vila)',
-        'Pull-ups (viktade och vanliga)',
+        'Air Dyne sprints (20s sprint/40s rest)',
+        'Pull-ups (weighted and bodyweight)',
         'Band step and press',
         'Chin-ups',
         'Band snap downs',
-        'Battle rope (alternate steps och double slams)',
-        'Stance- och rörelseövningar',
-        'Brottningsdriller',
-        'Träning med Weck Method Clubs (plank drivers, low swipes, lateral mills)',
+        'Battle rope (alternate steps and double slams)',
+        'Stance and movement drills',
+        'Wrestling drills',
+        'Weck Method Clubs training (plank drivers, low swipes, lateral mills)',
         'Burpee jumping high pull',
-        'Marklyft (dumbbell deadlift)',
+        'Dumbbell deadlift',
         'Single arm coiled high pull',
         'Bailer',
         'Hinge curls',
-        'Knästående hopp med Bulgarian Bag',
-        'Knästående boxhopp',
-        'Släd-dragslunges',
+        'Kneeling jumps with Bulgarian Bag',
+        'Kneeling box jumps',
+        'Sled drag lunges',
         'Chest supported row',
-        'Benkomplex (utfall och hopp)',
-        'Medicinbolls-slams',
+        'Leg complex (lunges and jumps)',
+        'Medicine ball slams',
         'Dumbbell pummel curls',
-        'Slider side lunges med kettlebell',
+        'Slider side lunges with kettlebell',
         'L-sit pull-up',
         'Split jumps',
         'Dumbbell clean and press',
         'Tuck crunches',
         'Dumbbell Romanian deadlift',
         'Split hinge pulse',
-        'Renegade row och greppträning med Captains of Crush'
+        'Renegade row and grip training with Captains of Crush'
       ]
     },
     {
       athlete: 'Abdulrashid Sadulaev',
       sport: 'wrestling',
       exercises: [
-        'Träning med Dopa-band (skott, sprawl-försvar, hand-fighting)',
+        'Dopa-band training (shots, sprawl defense, hand-fighting)',
         'Burpee box jumps',
         'Partner carries',
-        'Djurinspirerade rörelser som björngång och army crawls',
+        'Animal-inspired movements like bear crawls and army crawls',
         'Penetration steps',
         'Duck walks',
-        'Hopp-knäböj',
-        'Sprinter',
-        'Benlös repklättring',
-        'Armhävningar',
+        'Jump squats',
+        'Sprints',
+        'Legless rope climbing',
+        'Push-ups',
         'Resistance band snap-downs',
-        'Nackbryggning och rörelsedriller'
+        'Neck bridging and movement drills'
       ]
     },
     {
       athlete: 'Kyle Snyder',
       sport: 'wrestling',
       exercises: [
-        'Tung bänkpress (180 kg)',
-        'Sittande strikt axelpress',
+        'Heavy bench press (180 kg)',
+        'Seated strict shoulder press',
         'Push-press',
-        'Viktade chin-ups',
-        'Pin squats och pin presses'
+        'Weighted chin-ups',
+        'Pin squats and pin presses'
       ]
     },
     {
       athlete: 'Zaurbek Sidakov',
       sport: 'wrestling',
       exercises: [
-        'Dynamisk uppvärmning',
-        'Takedown-driller (triple extension focus)',
-        'Knäböj',
-        'Zercher-marklyft',
-        'Bänkpress',
-        'Frivändningar (cleans)',
-        'Ryck (snatch)',
-        'Viktade hopp',
-        'Outside step och split step'
+        'Dynamic warm-up',
+        'Takedown drills (triple extension focus)',
+        'Squats',
+        'Zercher deadlift',
+        'Bench press',
+        'Power cleans',
+        'Snatch',
+        'Weighted jumps',
+        'Outside step and split step'
       ]
     },
     {
       athlete: 'Cael Sanderson',
       sport: 'wrestling',
       exercises: [
-        '50 pull-ups varje dag',
-        'Frivändningar (power cleans)',
-        'Väggsittning',
-        'Repklättring',
-        'Sprinter och axelpress'
+        '50 pull-ups every day',
+        'Power cleans',
+        'Wall sit',
+        'Rope climbing',
+        'Sprints and shoulder press'
       ]
     },
     {
       athlete: 'Dan Gable',
       sport: 'wrestling',
       exercises: [
-        'Löpning (18 varv med ökande tempo)',
-        'Repklättring',
+        'Running (18 laps with increasing tempo)',
+        'Rope climbing',
         'Chin-ups',
-        'Armhävningar',
-        'Skuggbrottning',
-        'Reaktionsdriller och "knockouts" (sprawl-drills)'
+        'Push-ups',
+        'Shadow wrestling',
+        'Reaction drills and knockouts (sprawl drills)'
       ]
     },
     {
@@ -129,9 +129,9 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'wrestling',
       exercises: [
         'Functional Patterns (FP)',
-        'Kabelmaskinsarbete',
-        'Kettlebell-övningar för bröstryggsrörlighet',
-        'Landmine rotations och face pulls'
+        'Cable machine work',
+        'Kettlebell exercises for thoracic mobility',
+        'Landmine rotations and face pulls'
       ]
     },
     {
@@ -139,9 +139,9 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'wrestling',
       exercises: [
         'Movement prep',
-        'Isometrisk styrka',
-        'Greppträning',
-        'Enbent Romanian deadlift (RDL) och plankan'
+        'Isometric strength training',
+        'Grip training',
+        'Single-leg Romanian deadlift (RDL) and plank'
       ]
     },
     {
@@ -149,18 +149,18 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'wrestling',
       exercises: [
         'Hand-fighting (arm-drags, snap-downs)',
-        'Par terre-försvar och högvolymsträning'
+        'Par terre defense and high-volume training'
       ]
     },
     {
       athlete: 'Randy Couture',
       sport: 'wrestling',
       exercises: [
-        'Skivstångscirkel',
-        'Explosiva armhävningar över box',
-        'Boxhopp',
-        'Hopprep',
-        'Pull-ups och visualisering'
+        'Barbell complex',
+        'Explosive push-ups over box',
+        'Box jumps',
+        'Jump rope',
+        'Pull-ups and visualization'
       ]
     }
   ],
@@ -169,77 +169,77 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       athlete: 'Shohei Ono',
       sport: 'judo',
       exercises: [
-        'Frivändning och stöt (Clean & Jerk)',
-        'Knäböj (Back/Front squats)',
-        'Hopp-knäböj',
-        'Viktade step-ups',
-        'Band-uchikomi',
-        'Repklättring',
+        'Clean & Jerk',
+        'Back/Front squats',
+        'Jump squats',
+        'Weighted step-ups',
+        'Band uchikomi',
+        'Rope climbing',
         'Farmer carries',
-        'Bänkpress',
-        'Skivstångsrodd',
-        'Axelpress',
+        'Bench press',
+        'Barbell row',
+        'Shoulder press',
         'Pull-ups',
-        'Medicinbolls-slams',
-        'Släd-push',
-        'Bounding-driller',
-        'Isometriska uchikomi-håll',
-        'Wrist roller och gi sleeve pulls'
+        'Medicine ball slams',
+        'Sled push',
+        'Bounding drills',
+        'Isometric uchikomi holds',
+        'Wrist roller and gi sleeve pulls'
       ]
     },
     {
       athlete: 'Teddy Riner',
       sport: 'judo',
       exercises: [
-        'Bänkpress (150–230 kg)',
-        'Enarmsmarklyft (50–60 kg)',
-        'HIIT på trappmaskin',
+        'Bench press (150–230 kg)',
+        'Single-arm deadlift (50–60 kg)',
+        'HIIT on stair machine',
         'Pull-ups',
-        'Hopprep',
-        'Sittande kabelrodd',
-        'Armhävningar',
-        'Crunches med rotation och hamstringsträning'
+        'Jump rope',
+        'Seated cable row',
+        'Push-ups',
+        'Crunches with rotation and hamstring training'
       ]
     },
     {
       athlete: 'Masahiko Kimura',
       sport: 'judo',
       exercises: [
-        '1 000 armhävningar (Hindu push-ups)',
-        '1 km grodhopp (bunny hops)',
-        'Huvudstående mot vägg',
-        'Enarms skivstångspress',
-        'Bänkpress',
-        '200 sit-ups från partners rygg',
-        '200 partner-viktade knäböj',
-        '500 Shuto (slag)',
-        'Osoto Gari mot ett träd i en timme dagligen och randori'
+        '1,000 Hindu push-ups',
+        '1 km bunny hops',
+        'Headstand against wall',
+        'Single-arm barbell press',
+        'Bench press',
+        '200 sit-ups from partner\'s back',
+        '200 partner-weighted squats',
+        '500 Shuto (strikes)',
+        'Osoto Gari against a tree for one hour daily and randori'
       ]
     },
     {
       athlete: 'Kayla Harrison',
       sport: 'judo',
       exercises: [
-        'Frivändningar',
-        'Frontböj',
+        'Power cleans',
+        'Front squats',
         'Push jerks',
-        'Repklättring (med pull-ups)',
-        'Släd-push/pull',
-        'Medicinbolls-armhävningar',
+        'Rope climbing (with pull-ups)',
+        'Sled push/pull',
+        'Medicine ball push-ups',
         'V-ups',
-        'Medicinbolls-V-sit twists',
-        'Band-uchikomi och triangle turtle turnovers'
+        'Medicine ball V-sit twists',
+        'Band uchikomi and triangle turtle turnovers'
       ]
     },
     {
       athlete: 'Uta Abe',
       sport: 'judo',
       exercises: [
-        'Snabbhet i fotarbete',
+        'Footwork speed drills',
         'Resistance band uchikomi',
         'Assault Bike',
-        'Avancerade plankvariationer',
-        'Boxhopp och hopp-knäböj'
+        'Advanced plank variations',
+        'Box jumps and jump squats'
       ]
     },
     {
@@ -247,62 +247,62 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'judo',
       exercises: [
         'Back Squat (215 kg)',
-        'Bänkpress (150 kg) och power cleans (130 kg)'
+        'Bench press (150 kg) and power cleans (130 kg)'
       ]
     },
     {
       athlete: 'An Baul',
       sport: 'judo',
       exercises: [
-        'Knäböj',
-        'Marklyft',
-        'Frivändningar',
-        'Dragövningar och bänkpress'
+        'Squats',
+        'Deadlift',
+        'Power cleans',
+        'Pulling exercises and bench press'
       ]
     },
     {
       athlete: 'Gwak Donghan',
       sport: 'judo',
       exercises: [
-        'Marklyft',
-        'Knäböj',
-        'Repklättring och pull-ups med gi-grepp'
+        'Deadlift',
+        'Squats',
+        'Rope climbing and pull-ups with gi grip'
       ]
     },
     {
       athlete: 'Cho Guham',
       sport: 'judo',
       exercises: [
-        'Knäböj och frivändningar'
+        'Squats and power cleans'
       ]
     },
     {
       athlete: 'Satoshi Ishii',
       sport: 'judo',
       exercises: [
-        'Chest-to-chest dragövningar (kabel eller partner) och kettlebell-svingar'
+        'Chest-to-chest pulling exercises (cable or partner) and kettlebell swings'
       ]
     },
     {
       athlete: 'Shintaro Higashi',
       sport: 'judo',
       exercises: [
-        'Cirkelträning för ne-waza (guard-passeringar, triangelattacker)'
+        'Circuit training for ne-waza (guard passes, triangle attacks)'
       ]
     },
     {
       athlete: 'Travis Stevens',
       sport: 'judo',
       exercises: [
-        'Driller för fotsvep (solo)',
-        'Timing-driller med handdrag och gi-svepsdriller'
+        'Foot sweep drills (solo)',
+        'Timing drills with hand pulls and gi sweep drills'
       ]
     },
     {
       athlete: 'Hifumi Abe',
       sport: 'judo',
       exercises: [
-        'Solo tekniska driller och rörlighetsträning för höft och fotled'
+        'Solo technical drills and mobility training for hip and ankle'
       ]
     }
   ],
@@ -311,45 +311,45 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       athlete: 'Gordon Ryan',
       sport: 'bjj',
       exercises: [
-        'Hypertrofiträning (4x20 reps)',
+        'Hypertrophy training (4x20 reps)',
         'Drop-set',
         'Superset',
-        'Bänkpress (flat/incline)',
+        'Bench press (flat/incline)',
         'Floor press',
         'Trap bar deadlift',
         'T-bar rows',
-        'Pull-ups (viktade)',
-        'Hantelrodd',
-        'Hantel-shrugs',
+        'Weighted pull-ups',
+        'Dumbbell row',
+        'Dumbbell shrugs',
         'Arnold press',
-        'Axeltryck',
+        'Shoulder press',
         'Lateral raises',
         'Front/rear delt raises',
         'Bicep/hammer/concentration curls',
         'Skull crushers',
         'Kickbacks',
-        'Diamond pushups',
+        'Diamond push-ups',
         'Triceps pushdowns',
         'Walking lunges',
-        'Knäböj',
-        'GHD-situps',
+        'Squats',
+        'GHD sit-ups',
         'Hanging leg raises',
         'Windshield wipers',
-        'Gymnastik och positionsdriller'
+        'Gymnastics and position drills'
       ]
     },
     {
       athlete: 'Marcus "Buchecha" Almeida',
       sport: 'bjj',
       exercises: [
-        'Medball pushup switches',
-        'Medball V-ups',
+        'Medicine ball push-up switches',
+        'Medicine ball V-ups',
         'Banded lateral side pulls',
-        'Medball mountain climbers',
-        'Medball burpees',
-        'Medball Russian twists',
-        'Medball lunge to rotation',
-        'Donkey kicks och prisoner jacks'
+        'Medicine ball mountain climbers',
+        'Medicine ball burpees',
+        'Medicine ball Russian twists',
+        'Medicine ball lunge to rotation',
+        'Donkey kicks and prisoner jacks'
       ]
     },
     {
@@ -357,61 +357,61 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'bjj',
       exercises: [
         'Olympic clean and press',
-        'Hill sprints (backintervaller)',
+        'Hill sprints (interval training)',
         'Overhead squat',
-        'Positionssparring (5 minuters scenarier) och bänkpress'
+        'Position sparring (5 minute scenarios) and bench press'
       ]
     },
     {
       athlete: 'Andre Galvao',
       sport: 'bjj',
       exercises: [
-        'Plyometrisk cirkel (cone jumps, laterala hopp, gorilla jumps) och kettlebell-svingar'
+        'Plyometric circuit (cone jumps, lateral jumps, gorilla jumps) and kettlebell swings'
       ]
     },
     {
       athlete: 'Tomoyuki Hashimoto',
       sport: 'bjj',
       exercises: [
-        'Berimbolo-driller',
+        'Berimbolo drills',
         'Inverted guard drills',
-        'Spider guard-repetitioner och core-träning för passeringar'
+        'Spider guard repetitions and core training for passing'
       ]
     },
     {
       athlete: 'Shinya Aoki',
       sport: 'bjj',
       exercises: [
-        'Flying armbar-repetitioner',
-        'Triangle leg-smothering och driller för heel hooks/ankle locks'
+        'Flying armbar repetitions',
+        'Triangle leg-smothering and drills for heel hooks/ankle locks'
       ]
     },
     {
       athlete: 'Mikey Musumeci',
       sport: 'bjj',
       exercises: [
-        'Extrem teknisk drilling (upp till 12h/dag) och Muay Thai-träning'
+        'Extreme technical drilling (up to 12h/day) and Muay Thai training'
       ]
     },
     {
       athlete: 'Marcelo Garcia',
       sport: 'bjj',
       exercises: [
-        'Högvolyms-sparring och fokus på rörliga sekvenser (scrambles)'
+        'High-volume sparring and focus on scramble sequences'
       ]
     },
     {
       athlete: 'Yuki Nakai',
       sport: 'bjj',
       exercises: [
-        'Nanatei Kosen Judo och Shooto wrestling-driller'
+        'Nanatei Kosen Judo and Shooto wrestling drills'
       ]
     },
     {
       athlete: 'Rikako Yuasa',
       sport: 'bjj',
       exercises: [
-        'Dynamisk och offensiv guard-träning'
+        'Dynamic and offensive guard training'
       ]
     }
   ]
@@ -420,16 +420,17 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
 const keywordSets: Array<{ category: ExerciseCategory; keywords: string[] }> = [
   {
     category: 'neck',
-    keywords: ['nackbrygg', 'neck bridge', 'nacke', 'neck', 'huvudstående', 'headstand']
+    keywords: ['neck bridge', 'neck bridging', 'neck', 'headstand', 'nackbrygg', 'nacke', 'huvudstående']
   },
   {
     category: 'core',
     keywords: [
       'plank',
-      'plankan',
       'sit-up',
+      'sit-ups',
       'situps',
       'crunch',
+      'crunches',
       'v-up',
       'v-ups',
       'v-sit',
@@ -443,75 +444,88 @@ const keywordSets: Array<{ category: ExerciseCategory; keywords: string[] }> = [
       'core',
       'tuck crunch',
       'triangle turtle',
-      'v-sit'
+      'ghd',
+      'hollow',
+      'plankan'
     ]
   },
   {
     category: 'chest',
     keywords: [
       'bench',
-      'bänkpress',
+      'bench press',
       'push-up',
+      'push-ups',
       'pushups',
-      'armhäv',
       'floor press',
-      'diamond pushup',
-      'medball pushup',
-      'medicinbolls-armhäv',
-      'chest'
+      'diamond push',
+      'medicine ball push',
+      'chest',
+      'bänkpress',
+      'armhäv'
     ]
   },
   {
     category: 'shoulders',
     keywords: [
       'overhead',
-      'axel',
       'shoulder',
+      'shoulder press',
       'arnold',
       'lateral raise',
       'delt',
       'face pull',
       'landmine',
       'push press',
-      'axelpress',
-      'shoulder press'
+      'push-press',
+      'axel',
+      'axelpress'
     ]
   },
   {
     category: 'back',
     keywords: [
       'row',
-      'rodd',
+      'rows',
       't-bar',
       't bar',
-      'skivstångsrodd',
       'pull-up',
+      'pull-ups',
       'pull ups',
       'chin-up',
+      'chin-ups',
       'chin ups',
       'rope climb',
-      'repklättring',
+      'rope climbing',
       'lat',
       'lats',
       'upper back',
       'gi pull',
       'gi sleeve',
+      'gi grip',
       'shrug',
-      'shrugs'
+      'shrugs',
+      'rodd',
+      'repklättring',
+      'skivstångsrodd'
     ]
   },
   {
     category: 'arms',
     keywords: [
       'curl',
+      'curls',
       'bicep',
       'tricep',
       'hammer',
       'skull crusher',
+      'skull crushers',
       'pushdown',
+      'pushdowns',
       'kickback',
+      'kickbacks',
       'forearm',
-      'grip',
+      'grip training',
       'captains of crush',
       'wrist roller'
     ]
@@ -520,84 +534,101 @@ const keywordSets: Array<{ category: ExerciseCategory; keywords: string[] }> = [
     category: 'legs',
     keywords: [
       'squat',
-      'knäböj',
+      'squats',
       'deadlift',
-      'marklyft',
       'lunge',
       'lunges',
       'step-up',
-      'step ups',
       'step-ups',
+      'step ups',
       'jump',
-      'hopp',
+      'jumps',
       'duck walk',
+      'duck walks',
       'split jump',
       'walking lunge',
-      'boxhopp',
+      'box jump',
+      'box jumps',
+      'hill sprint',
       'hill sprints',
-      'backintervaller',
-      'sprinter',
       'sprint',
+      'sprints',
       'sled',
-      'släd',
-      'kettlebell-sving',
-      'kettlebell swing'
+      'kettlebell swing',
+      'kettlebell swings',
+      'knäböj',
+      'marklyft',
+      'hopp',
+      'boxhopp',
+      'släd'
     ]
   },
   {
     category: 'full-body',
     keywords: [
       'burpee',
+      'burpees',
       'circuit',
-      'cirkel',
       'carry',
       'carries',
       'farmer',
       'farmers',
       'kettlebell',
       'clean',
+      'cleans',
       'snatch',
       'jerk',
       'battle rope',
       'air dyne',
       'assault bike',
       'hiit',
-      'hopprep',
       'jump rope',
-      'löpning',
-      'trappmaskin',
+      'running',
+      'rowing',
+      'stair machine',
       'bounding',
-      'grodhopp',
+      'bunny hop',
       'bunny hops',
+      'medicine ball',
       'medball',
-      'medicinboll',
       'slam',
       'slams',
-      'gymnastik',
+      'gymnastics',
       'drill',
-      'driller',
+      'drills',
       'uchikomi',
       'sparring',
-      'positionssparring',
+      'position sparring',
       'hand-fighting',
-      'handdrag',
       'takedown',
       'par terre',
       'shadow',
-      'skuggbrottning',
+      'shadow wrestling',
       'stance',
       'guard',
       'berimbolo',
       'osoto gari',
       'randori',
       'scramble',
+      'scrambles',
       'foot sweep',
-      'fotsvep',
       'snap-down',
+      'snap-downs',
       'arm-drags',
       'sprawl',
-      'penetration steps',
+      'penetration',
       'movement prep',
+      'isometric',
+      'visualization',
+      'animal',
+      'bear crawl',
+      'army crawl',
+      'cirkel',
+      'hopprep',
+      'löpning',
+      'gymnastik',
+      'driller',
+      'skuggbrottning',
       'isometrisk',
       'visualisering'
     ]
@@ -652,7 +683,8 @@ const splitOutsideParens = (text: string, separator: string): string[] => {
 }
 
 const splitExercise = (exercise: string): string[] => {
-  const separators = [' och ', ' samt ']
+  // Support both English and Swedish conjunctions
+  const separators = [' and ', ' och ', ' samt ']
   let segments = [exercise]
   for (const separator of separators) {
     segments = segments.flatMap(segment => splitOutsideParens(segment, separator))

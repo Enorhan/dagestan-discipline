@@ -1,20 +1,17 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
 import { supabaseService } from '@/lib/supabase-service'
 import { CustomWorkout, UserProfile, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
-import { Bookmark, Copy, Play, Users, Clock, Dumbbell, ChevronRight } from '@/components/ui/icons'
+import { Copy, Play, Clock, Dumbbell } from '@/components/ui/icons'
 
 interface WorkoutDetailProps {
   workout: CustomWorkout
   currentUser: UserProfile | null
-  onNavigate: (screen: Screen) => void
-  onSelectUser: (user: UserProfile) => void
   onStartWorkout: (workout: CustomWorkout) => void
   onCopyWorkout: (workout: CustomWorkout) => void
   onBack: () => void
@@ -23,13 +20,10 @@ interface WorkoutDetailProps {
 export function WorkoutDetail({ 
   workout, 
   currentUser,
-  onNavigate, 
-  onSelectUser,
   onStartWorkout,
   onCopyWorkout,
   onBack 
 }: WorkoutDetailProps) {
-  const [isSaved, setIsSaved] = useState(false)
   const [creator, setCreator] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -42,10 +36,6 @@ export function WorkoutDetail({
   const loadData = async () => {
     setIsLoading(true)
     try {
-      // Check if saved
-      const saved = await supabaseService.getSavedWorkouts()
-      setIsSaved(saved.some(s => s.workoutId === workout.id))
-
       // Get creator info
       const creatorProfile = await supabaseService.getProfile(workout.creatorId)
       setCreator(creatorProfile)
@@ -53,25 +43,6 @@ export function WorkoutDetail({
       console.error('Failed to load workout data:', e)
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const handleSave = async () => {
-    if (!currentUser) {
-      onNavigate('auth-login')
-      return
-    }
-
-    haptics.medium()
-    try {
-      if (isSaved) {
-        await supabaseService.unsaveWorkout(workout.id)
-      } else {
-        await supabaseService.saveWorkout(workout.id)
-      }
-      setIsSaved(!isSaved)
-    } catch (e) {
-      console.error('Failed to save workout:', e)
     }
   }
 
@@ -95,34 +66,13 @@ export function WorkoutDetail({
           <div className="mt-4 mb-6">
             <div className="flex items-start justify-between gap-3 mb-3">
               <h1 className="text-xl sm:text-2xl font-black text-foreground flex-1">{workout.name}</h1>
-              {!isOwnWorkout && (
-                <Button
-                  onClick={handleSave}
-                  variant="ghost"
-                  size="icon"
-                  withHaptic={false}
-                  className={`w-10 h-10 rounded-full ${
-                    isSaved ? 'bg-primary' : 'bg-card'
-                  }`}
-                >
-                  <Bookmark 
-                    size={20} 
-                    className={isSaved ? 'text-primary-foreground fill-primary-foreground' : 'text-foreground'} 
-                  />
-                </Button>
-              )}
             </div>
             <p className="text-muted-foreground">{workout.description || 'No description'}</p>
           </div>
 
           {/* Creator */}
           {creator && !isOwnWorkout && (
-            <Button
-              onClick={() => onSelectUser(creator)}
-              variant="ghost"
-              size="sm"
-              className="w-full card-elevated rounded-xl p-4 flex items-center gap-3 mb-6 normal-case tracking-normal h-auto items-start justify-start"
-            >
+            <div className="w-full card-elevated rounded-xl p-4 flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
                 {creator.avatarUrl ? (
                   <img src={creator.avatarUrl} alt={creator.displayName} className="w-full h-full rounded-full object-cover" />
@@ -136,12 +86,11 @@ export function WorkoutDetail({
                 <p className="font-semibold text-foreground text-sm">{creator.displayName}</p>
                 <p className="text-xs text-muted-foreground">@{creator.username}</p>
               </div>
-              <ChevronRight size={20} className="text-muted-foreground" />
-            </Button>
+            </div>
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-6">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-3 mb-6">
             <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
               <Clock size={18} className="mx-auto mb-1.5 sm:mb-2 text-primary" />
               <p className="text-lg font-black text-foreground">{workout.estimatedDuration}</p>
@@ -151,11 +100,6 @@ export function WorkoutDetail({
               <Dumbbell size={18} className="mx-auto mb-1.5 sm:mb-2 text-primary" />
               <p className="text-lg font-black text-foreground">{workout.exercises.length}</p>
               <p className="text-xs text-muted-foreground uppercase">Exercises</p>
-            </div>
-            <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
-              <Bookmark size={18} className="mx-auto mb-1.5 sm:mb-2 text-primary" />
-              <p className="text-lg font-black text-foreground">{workout.saveCount}</p>
-              <p className="text-xs text-muted-foreground uppercase">Saves</p>
             </div>
           </div>
 
