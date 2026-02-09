@@ -8,7 +8,7 @@ import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { ExerciseNavigator } from '@/components/ui/exercise-navigator'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { X, Pause, Play, ChevronRight } from '@/components/ui/icons'
+import { X, Pause, Play, ChevronRight, ChevronLeft } from '@/components/ui/icons'
 
 const sessionVisualTheme = (focus: string | undefined) => {
   const f = (focus ?? '').toLowerCase()
@@ -371,6 +371,12 @@ export function WorkoutSession({
     onPreviousSet()
   }
 
+  const handleSkipWithHaptic = () => {
+    if (isPaused || isLastExercise) return
+    haptics.warning()
+    onSkipExercise(currentExercise.id)
+  }
+
   const queueWeightUndo = (previous: string) => {
     setWeightUndo({ previous })
     if (weightUndoTimeoutRef.current) {
@@ -499,40 +505,6 @@ export function WorkoutSession({
               >
                 Exercises
                 <ChevronRight size={14} className="text-white/40" />
-              </button>
-
-              <button
-                onClick={handlePreviousSetWithHaptic}
-                disabled={!canGoPrevious || isPaused}
-                className={[
-                  'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
-                  visualTheme.chipBg,
-                  visualTheme.chipBorder,
-                  'text-[11px] font-bold uppercase tracking-[0.2em]',
-                  (!canGoPrevious || isPaused) ? 'opacity-40 cursor-not-allowed' : 'text-white/70 hover:text-white transition-colors'
-                ].join(' ')}
-                aria-label="Go to previous set"
-              >
-                Prev
-              </button>
-
-              <button
-                onClick={() => {
-                  if (isPaused || isLastExercise) return
-                  haptics.warning()
-                  onSkipExercise(currentExercise.id)
-                }}
-                disabled={isPaused || isLastExercise}
-                className={[
-                  'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
-                  visualTheme.chipBg,
-                  visualTheme.chipBorder,
-                  'text-[11px] font-bold uppercase tracking-[0.2em]',
-                  (isPaused || isLastExercise) ? 'opacity-40 cursor-not-allowed' : 'text-white/70 hover:text-white transition-colors'
-                ].join(' ')}
-                aria-label="Skip to next exercise"
-              >
-                Skip
               </button>
             </div>
           </div>
@@ -867,29 +839,61 @@ export function WorkoutSession({
 
       {/* Confirm Set CTA */}
       <ScreenShellFooter className="px-6">
-        <Button
-          onClick={handleConfirmSetWithHaptic}
-          disabled={isPaused}
-          variant="primary"
-          size="xl"
-          fullWidth
-          withHaptic={false}
-          className={`h-20 font-black text-xl tracking-wide uppercase transition-all hover:opacity-90 active:scale-[0.99] rounded-2xl relative glow-primary-subtle ${
-            confirmPulse ? 'animate-[button-pulse_250ms_ease-out]' : ''
-          } ${isPaused ? 'opacity-60 cursor-not-allowed' : ''}`}
-          aria-label={isLastSet && isLastExercise ? 'Finish session' : 'Confirm set'}
-        >
-          <span className={showSetCheck ? 'opacity-0' : 'opacity-100'}>
-            {isLastSet && isLastExercise ? 'Finish Session' : 'Confirm Set'}
-          </span>
-          {showSetCheck && (
-            <span className="absolute inset-0 flex items-center justify-center animate-[check-pop_200ms_ease-out]">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+        <div className="flex items-stretch gap-3">
+          <Button
+            onClick={handlePreviousSetWithHaptic}
+            disabled={!canGoPrevious || isPaused}
+            variant="ghost"
+            size="lg"
+            withHaptic={false}
+            leftIcon={<ChevronLeft size={18} />}
+            className={`w-[92px] rounded-2xl border border-white/10 bg-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors ${
+              (!canGoPrevious || isPaused) ? 'opacity-40 cursor-not-allowed' : ''
+            }`}
+            aria-label="Go to previous set"
+          >
+            Prev
+          </Button>
+
+          <Button
+            onClick={handleConfirmSetWithHaptic}
+            disabled={isPaused}
+            variant="primary"
+            size="xl"
+            fullWidth
+            withHaptic={false}
+            className={`h-20 flex-1 font-black text-xl tracking-wide uppercase transition-all hover:opacity-90 active:scale-[0.99] rounded-2xl relative glow-primary-subtle ${
+              confirmPulse ? 'animate-[button-pulse_250ms_ease-out]' : ''
+            } ${isPaused ? 'opacity-60 cursor-not-allowed' : ''}`}
+            aria-label={isLastSet && isLastExercise ? 'Finish session' : 'Confirm set'}
+          >
+            <span className={showSetCheck ? 'opacity-0' : 'opacity-100'}>
+              {isLastSet && isLastExercise ? 'Finish Session' : 'Confirm Set'}
             </span>
-          )}
-        </Button>
+            {showSetCheck && (
+              <span className="absolute inset-0 flex items-center justify-center animate-[check-pop_200ms_ease-out]">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
+            )}
+          </Button>
+
+          <Button
+            onClick={handleSkipWithHaptic}
+            disabled={isPaused || isLastExercise}
+            variant="ghost"
+            size="lg"
+            withHaptic={false}
+            rightIcon={<ChevronRight size={18} />}
+            className={`w-[92px] rounded-2xl border border-white/10 bg-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors ${
+              (isPaused || isLastExercise) ? 'opacity-40 cursor-not-allowed' : ''
+            }`}
+            aria-label="Skip to next exercise"
+          >
+            Skip
+          </Button>
+        </div>
         <p className="mt-3 text-center text-xs text-muted-foreground uppercase tracking-wide">
           {isLastSet && isLastExercise
             ? 'Next: Reflection'
