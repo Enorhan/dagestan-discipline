@@ -8,6 +8,65 @@ import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { ExerciseNavigator } from '@/components/ui/exercise-navigator'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { X, Pause, Play, ChevronRight } from '@/components/ui/icons'
+
+const sessionVisualTheme = (focus: string | undefined) => {
+  const f = (focus ?? '').toLowerCase()
+  if (f.includes('push') || f.includes('press') || f.includes('bench')) {
+    return {
+      headerGradient: 'from-blue-950 via-blue-900 to-background',
+      chipText: 'text-blue-200',
+      chipBg: 'bg-blue-500/15',
+      chipBorder: 'border-blue-500/20',
+    }
+  }
+  if (f.includes('pull') || f.includes('grip') || f.includes('row')) {
+    return {
+      headerGradient: 'from-emerald-950 via-emerald-900 to-background',
+      chipText: 'text-emerald-200',
+      chipBg: 'bg-emerald-500/15',
+      chipBorder: 'border-emerald-500/20',
+    }
+  }
+  if (f.includes('legs') || f.includes('squat') || f.includes('hips')) {
+    return {
+      headerGradient: 'from-orange-950 via-orange-900 to-background',
+      chipText: 'text-orange-200',
+      chipBg: 'bg-orange-500/15',
+      chipBorder: 'border-orange-500/20',
+    }
+  }
+  if (f.includes('core') || f.includes('neck')) {
+    return {
+      headerGradient: 'from-rose-950 via-rose-900 to-background',
+      chipText: 'text-rose-200',
+      chipBg: 'bg-rose-500/15',
+      chipBorder: 'border-rose-500/20',
+    }
+  }
+  if (f.includes('conditioning') || f.includes('circuit') || f.includes('round')) {
+    return {
+      headerGradient: 'from-red-950 via-red-900 to-background',
+      chipText: 'text-red-200',
+      chipBg: 'bg-red-500/15',
+      chipBorder: 'border-red-500/20',
+    }
+  }
+  if (f.includes('mobility') || f.includes('movement') || f.includes('recovery')) {
+    return {
+      headerGradient: 'from-purple-950 via-purple-900 to-background',
+      chipText: 'text-purple-200',
+      chipBg: 'bg-purple-500/15',
+      chipBorder: 'border-purple-500/20',
+    }
+  }
+  return {
+    headerGradient: 'from-primary/30 via-background to-background',
+    chipText: 'text-foreground',
+    chipBg: 'bg-white/10',
+    chipBorder: 'border-white/10',
+  }
+}
 
 interface WorkoutSessionProps {
   session: Session | null
@@ -180,6 +239,8 @@ export function WorkoutSession({
   const suggestedWeight = suggestionBase ? suggestionBase + suggestionIncrement : null
   const suggestedDisplay = suggestedWeight ? formatWeightValue(toDisplayWeight(suggestedWeight)) : null
 
+  const visualTheme = sessionVisualTheme(session.focus)
+
   // Update elapsed time every second (paused time excluded)
   useEffect(() => {
     if (!sessionStartTime) return
@@ -349,133 +410,157 @@ export function WorkoutSession({
 
       <div className="flex-1 flex flex-col max-w-lg mx-auto w-full min-h-0">
       <ScreenShellContent className="pb-24">
-        {/* Header */}
-        <header className="px-6 safe-area-top pb-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-              {session.day}
-            </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Exercise {currentExerciseIndex + 1} of {totalExercises} · Set {currentSet} of {currentExercise.sets}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-lg font-bold text-foreground tabular-nums" aria-live="polite">
-              {formatElapsedTime(elapsedTime)}
-            </p>
-            <div className="mt-2 flex items-center justify-end gap-2 flex-wrap">
+        {/* Hero Header (Training Hub style) */}
+        <div className="relative overflow-hidden">
+          <div className={`absolute inset-0 bg-gradient-to-b ${visualTheme.headerGradient} opacity-50`} />
+          <div className="absolute inset-0 bg-grid-white/[0.02]" />
+
+          <div className="relative z-10 px-6 safe-area-top pb-8">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  haptics.light()
+                  setShowEndConfirm(true)
+                }}
+                className="min-h-[44px] px-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-white/70 hover:text-white transition-colors flex items-center gap-2"
+                aria-label="End session"
+              >
+                <X size={18} strokeWidth={3} />
+                <span className="text-sm font-bold tracking-tight uppercase">End</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <div className="min-h-[44px] px-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
+                      Time
+                    </p>
+                    <p className="text-lg font-black text-white tabular-nums" aria-live="polite">
+                      {formatElapsedTime(elapsedTime)}
+                    </p>
+                  </div>
+                  <div className="w-px h-6 bg-white/10" />
+                  <button
+                    onClick={handlePauseToggle}
+                    className="min-h-[44px] min-w-[44px] h-11 w-11 rounded-xl bg-white/10 border border-white/10 text-white/80 hover:text-white transition-colors flex items-center justify-center"
+                    aria-label={isPaused ? 'Resume session' : 'Pause session'}
+                  >
+                    {isPaused ? <Play size={18} /> : <Pause size={18} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-7">
+              <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
+                {session.day}
+              </p>
+              <h1 className="text-4xl font-black tracking-tight text-foreground uppercase mt-2 leading-none">
+                {session.focus}
+              </h1>
+              <p className="text-sm text-white/60 mt-3 leading-relaxed">
+                Exercise {currentExerciseIndex + 1} of {totalExercises} · Set {currentSet} of {currentExercise.sets}
+              </p>
+            </div>
+
+            {/* Quick Controls */}
+            <div className="mt-5 flex flex-wrap gap-2">
               {onWeightUnitChange && !isBodyweightOnly && (
-                <Button
+                <button
                   onClick={() => {
                     haptics.light()
                     onWeightUnitChange(weightUnit === 'lbs' ? 'kg' : 'lbs')
                   }}
-                  variant="ghost"
-                  size="sm"
-                  withHaptic={false}
-                  className="text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors px-3 rounded-lg hover:bg-card/40"
+                  className={[
+                    'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
+                    visualTheme.chipBg,
+                    visualTheme.chipBorder,
+                    visualTheme.chipText,
+                    'text-[11px] font-bold uppercase tracking-[0.2em] hover:opacity-90 transition-opacity'
+                  ].join(' ')}
                   aria-label={`Switch to ${weightUnit === 'lbs' ? 'kg' : 'lbs'}`}
                 >
                   {weightUnit}
-                </Button>
+                </button>
               )}
-              <Button
+
+              <button
                 onClick={() => {
                   haptics.light()
                   setShowNavigator(true)
                 }}
-                variant="ghost"
-                size="sm"
-                withHaptic={false}
-                className="text-xs font-medium text-primary uppercase tracking-wide hover:text-primary/80 transition-colors px-3 rounded-lg hover:bg-primary/10"
+                className={[
+                  'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
+                  visualTheme.chipBg,
+                  visualTheme.chipBorder,
+                  'text-[11px] font-bold uppercase tracking-[0.2em] text-white/80 hover:text-white transition-colors flex items-center gap-2'
+                ].join(' ')}
                 aria-label="Open exercise navigator"
               >
                 Exercises
-              </Button>
-              <Button
+                <ChevronRight size={14} className="text-white/40" />
+              </button>
+
+              <button
                 onClick={handlePreviousSetWithHaptic}
                 disabled={!canGoPrevious || isPaused}
-                variant="ghost"
-                size="sm"
-                withHaptic={false}
-                className={`text-xs font-medium uppercase tracking-wide transition-colors px-3 rounded-lg ${
-                  !canGoPrevious || isPaused
-                    ? 'text-muted-foreground/40 cursor-not-allowed'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-card/40'
-                }`}
+                className={[
+                  'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
+                  visualTheme.chipBg,
+                  visualTheme.chipBorder,
+                  'text-[11px] font-bold uppercase tracking-[0.2em]',
+                  (!canGoPrevious || isPaused) ? 'opacity-40 cursor-not-allowed' : 'text-white/70 hover:text-white transition-colors'
+                ].join(' ')}
                 aria-label="Go to previous set"
               >
-                ← Previous
-              </Button>
-              <Button
+                Prev
+              </button>
+
+              <button
                 onClick={() => {
                   if (isPaused || isLastExercise) return
                   haptics.warning()
                   onSkipExercise(currentExercise.id)
                 }}
                 disabled={isPaused || isLastExercise}
-                variant="ghost"
-                size="sm"
-                withHaptic={false}
-                className={`text-xs font-medium uppercase tracking-wide transition-colors px-3 rounded-lg ${
-                  isPaused || isLastExercise
-                    ? 'text-muted-foreground/40 cursor-not-allowed'
-                    : 'text-primary hover:text-primary/80 hover:bg-primary/10'
-                }`}
+                className={[
+                  'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
+                  visualTheme.chipBg,
+                  visualTheme.chipBorder,
+                  'text-[11px] font-bold uppercase tracking-[0.2em]',
+                  (isPaused || isLastExercise) ? 'opacity-40 cursor-not-allowed' : 'text-white/70 hover:text-white transition-colors'
+                ].join(' ')}
                 aria-label="Skip to next exercise"
               >
-                Skip →
-              </Button>
-              <Button
-                onClick={() => {
-                  haptics.light()
-                  setShowEndConfirm(true)
-                }}
-                variant="ghost"
-                size="sm"
-                withHaptic={false}
-                className="text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-destructive transition-colors px-3 rounded-lg hover:bg-card/40"
-                aria-label="End session"
-              >
-                End
-              </Button>
-              <Button
-                onClick={handlePauseToggle}
-                variant="ghost"
-                size="sm"
-                withHaptic={false}
-                className="text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors px-3 rounded-lg hover:bg-card/40"
-                aria-label={isPaused ? 'Resume session' : 'Pause session'}
-              >
-                {isPaused ? 'Resume' : 'Pause'}
-              </Button>
+                Skip
+              </button>
             </div>
           </div>
-        </header>
+        </div>
 
         {/* Now / Next */}
         <div className="px-6 pb-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="bg-card/50 rounded-lg p-3">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.3em]">
+            <div className="rounded-2xl p-4 border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95">
+              <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.3em]">
                 Now
               </p>
-              <p className="text-sm font-semibold text-foreground mt-2">
+              <p className="text-sm font-bold text-white mt-2">
                 {currentExercise.name}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-white/60 mt-1">
                 Set {currentSet} of {currentExercise.sets}
               </p>
             </div>
-            <div className="bg-card/50 rounded-lg p-3">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.3em]">
+            <div className="rounded-2xl p-4 border border-white/10 bg-gradient-to-br from-white/5 via-black/80 to-black/95">
+              <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.3em]">
                 Next
               </p>
-              <p className="text-sm font-semibold text-foreground mt-2">
+              <p className="text-sm font-bold text-white mt-2">
                 {isLastSet && isLastExercise ? 'Finish session' : (nextExercise?.name ?? 'Next exercise')}
               </p>
               {!(isLastSet && isLastExercise) && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-white/60 mt-1">
                   Set {nextSetNumber}
                 </p>
               )}
@@ -487,9 +572,9 @@ export function WorkoutSession({
         <div className="px-6 flex flex-col justify-center min-h-0">
         {/* Current Exercise - HERO */}
         <div className="mb-6">
-          <h1 className="type-title text-foreground tracking-tight leading-none text-balance">
+          <h2 className="type-title text-foreground tracking-tight leading-none text-balance">
             {currentExercise.name}
-          </h1>
+          </h2>
 
           {/* Prescription - LARGE */}
           <div className="mt-4 flex items-baseline gap-3">
@@ -545,15 +630,15 @@ export function WorkoutSession({
         <div className="mb-8">
           {!isBodyweightOnly && (
             <div className="mb-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-              <div className="rounded-lg bg-card/40 px-3 py-2">
-                <p className="uppercase tracking-wide">Last set</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95 px-4 py-3">
+                <p className="uppercase tracking-[0.2em] text-white/50 text-[10px] font-bold">Last set</p>
+                <p className="mt-2 text-sm font-bold text-white">
                   {lastWeightDisplay ? `${lastWeightDisplay} ${weightUnit}` : '—'}
                 </p>
               </div>
-              <div className="rounded-lg bg-card/40 px-3 py-2">
-                <p className="uppercase tracking-wide">Best set</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 via-black/80 to-black/95 px-4 py-3">
+                <p className="uppercase tracking-[0.2em] text-white/50 text-[10px] font-bold">Best set</p>
+                <p className="mt-2 text-sm font-bold text-white">
                   {lastBestDisplay ? `${lastBestDisplay} ${weightUnit}` : '—'}
                 </p>
               </div>
@@ -765,15 +850,17 @@ export function WorkoutSession({
           role="status"
           aria-label={`Set ${currentSet} of ${currentExercise.sets}. ${remainingSets} sets remaining, approximately ${remainingMinutes} minutes left.`}
         >
-          <p className="text-3xl font-bold text-foreground tabular-nums" aria-hidden="true">
-            {currentSet}<span className="text-muted-foreground">/{currentExercise.sets}</span>
-          </p>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1" aria-hidden="true">
-            Sets
-          </p>
-          <p className="text-xs text-muted-foreground mt-3" aria-hidden="true">
-            {remainingSets} sets left · ~{remainingMinutes} min remaining
-          </p>
+          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95 px-6 py-5">
+            <p className="text-3xl font-black text-white tabular-nums" aria-hidden="true">
+              {currentSet}<span className="text-white/40">/{currentExercise.sets}</span>
+            </p>
+            <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.3em] mt-1" aria-hidden="true">
+              Sets
+            </p>
+            <p className="text-xs text-white/60 mt-3" aria-hidden="true">
+              {remainingSets} sets left · ~{remainingMinutes} min remaining
+            </p>
+          </div>
         </div>
         </div>
       </ScreenShellContent>
@@ -787,7 +874,7 @@ export function WorkoutSession({
           size="xl"
           fullWidth
           withHaptic={false}
-          className={`h-20 font-black text-xl tracking-wide uppercase transition-all hover:opacity-90 active:scale-[0.99] rounded-lg relative ${
+          className={`h-20 font-black text-xl tracking-wide uppercase transition-all hover:opacity-90 active:scale-[0.99] rounded-2xl relative glow-primary-subtle ${
             confirmPulse ? 'animate-[button-pulse_250ms_ease-out]' : ''
           } ${isPaused ? 'opacity-60 cursor-not-allowed' : ''}`}
           aria-label={isLastSet && isLastExercise ? 'Finish session' : 'Confirm set'}

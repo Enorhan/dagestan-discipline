@@ -2071,12 +2071,15 @@ export default function App() {
         <CategoryList
           category={selectedCategory}
           onBack={() => setCurrentScreen('training-hub')}
+          onNavigate={setCurrentScreen}
           onSelectDrill={(drill) => {
             setSelectedDrill(drill)
             setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
             setCurrentScreen('drill-detail')
           }}
           initialSubcategory={selectedSubcategory || undefined}
+          onStartAction={handleCenterAction}
+          hasWorkoutToday={hasWorkoutToday}
         />
       ) : renderNavigationNotSet(
         'No category was selected before opening this page.',
