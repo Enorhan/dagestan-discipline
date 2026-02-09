@@ -642,12 +642,26 @@ export default function App() {
           })
 
           const programState = await supabaseService.getProgramState()
-          if (programState && programState.length > 0) {
+          const hasPlannedDays = programState?.some((d) => d && (d as any).planned === true) ?? false
+          const isShapeValid = Array.isArray(programState) && programState.length === 7
+
+          if (programState && isShapeValid && hasPlannedDays) {
             setWeekProgress(programState)
           } else {
+            // If an older/invalid state exists (no planned days), rebuild the schedule but keep completion marks when possible.
             const defaultProgress = buildWeekProgress(programSnapshot.trainingDays)
-            setWeekProgress(defaultProgress)
-            await supabaseService.upsertProgramState(programSnapshot.programId, defaultProgress)
+            const completedByDay = new Map<string, boolean>()
+            if (Array.isArray(programState)) {
+              for (const d of programState as any[]) {
+                if (d?.day) completedByDay.set(String(d.day), !!d.completed)
+              }
+            }
+            const merged = defaultProgress.map((d) => ({
+              ...d,
+              completed: completedByDay.get(d.day) ?? d.completed,
+            }))
+            setWeekProgress(merged)
+            await supabaseService.upsertProgramState(programSnapshot.programId, merged)
           }
         }
 
@@ -676,7 +690,7 @@ export default function App() {
     }
 
     fetchSupabaseData()
-  }, [currentUser, isScreenshotMode])
+  }, [currentUser?.id, isScreenshotMode])
 
   useEffect(() => {
     if (currentScreen !== 'loading' || !loadingComplete) return
