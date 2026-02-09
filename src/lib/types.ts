@@ -1,6 +1,8 @@
 export type Screen =
   | 'onboarding-sport'
   | 'onboarding-schedule'
+  | 'onboarding-level'
+  | 'onboarding-intake'
   | 'onboarding-equipment'
   | 'home'
   | 'week-view'
@@ -165,6 +167,9 @@ export interface ExerciseFilters {
 
 // Experience levels for exercise recommendations
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced'
+
+// Primary training goal used for program generation (MVP)
+export type PrimaryGoal = 'balanced' | 'strength' | 'power' | 'conditioning'
 
 // Elite athlete's ACTUAL workout data (from research)
 export interface AthleteExerciseData {

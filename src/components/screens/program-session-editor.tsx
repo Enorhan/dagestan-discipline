@@ -1,16 +1,18 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Exercise, Session } from '@/lib/types'
+import { Exercise, Session, SportType } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ExerciseModal, ExerciseDraft } from '@/components/ui/exercise-modal'
+import { ExerciseLibraryModal } from '@/components/ui/exercise-library-modal'
 import { Trash } from '@/components/ui/icons'
 
 interface ProgramSessionEditorProps {
+  sport: SportType
   session: Session
   dayLabel: string
   onSave: (session: Session) => void
@@ -27,16 +29,17 @@ const estimateDurationMinutes = (exercises: Exercise[]) => {
   return Math.max(1, Math.ceil(totalSeconds / 60))
 }
 
-export function ProgramSessionEditor({ session, dayLabel, onSave, onClose }: ProgramSessionEditorProps) {
+export function ProgramSessionEditor({ sport, session, dayLabel, onSave, onClose }: ProgramSessionEditorProps) {
   const [focus, setFocus] = useState(session.focus)
   const [exercises, setExercises] = useState<Exercise[]>(() => session.exercises.map(ex => ({ ...ex })))
-  const [showExerciseModal, setShowExerciseModal] = useState(false)
+  const [showLibraryModal, setShowLibraryModal] = useState(false)
+  const [showCustomModal, setShowCustomModal] = useState(false)
 
   const duration = useMemo(() => estimateDurationMinutes(exercises), [exercises])
 
   const handleAddExercise = (draft: ExerciseDraft) => {
     const newExercise: Exercise = {
-      id: `ex-${Date.now()}`,
+      id: `custom-${Date.now()}`,
       name: draft.name,
       sets: draft.sets,
       reps: draft.reps,
@@ -45,7 +48,7 @@ export function ProgramSessionEditor({ session, dayLabel, onSave, onClose }: Pro
       notes: draft.notes,
     }
     setExercises(prev => [...prev, newExercise])
-    setShowExerciseModal(false)
+    setShowCustomModal(false)
     haptics.medium()
   }
 
@@ -107,15 +110,25 @@ export function ProgramSessionEditor({ session, dayLabel, onSave, onClose }: Pro
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Estimated time</p>
               <p className="text-lg font-semibold text-foreground mt-1">{duration} min</p>
             </div>
-            <Button
-              onClick={() => setShowExerciseModal(true)}
-              variant="primary"
-              size="sm"
-              className="h-10 px-4"
-              withHaptic={false}
-            >
-              Add Exercise
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setShowLibraryModal(true)}
+                variant="primary"
+                size="sm"
+                className="h-10 px-4"
+                withHaptic={false}
+              >
+                Add From Library
+              </Button>
+              <Button
+                onClick={() => setShowCustomModal(true)}
+                variant="outline"
+                size="sm"
+                className="h-10 px-4"
+              >
+                Custom
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -246,10 +259,31 @@ export function ProgramSessionEditor({ session, dayLabel, onSave, onClose }: Pro
         </div>
       </ScreenShellFooter>
 
-      {showExerciseModal && (
+      {showCustomModal && (
         <ExerciseModal
           onAdd={handleAddExercise}
-          onClose={() => setShowExerciseModal(false)}
+          onClose={() => setShowCustomModal(false)}
+        />
+      )}
+
+      {showLibraryModal && (
+        <ExerciseLibraryModal
+          sport={sport}
+          title="Add Exercise"
+          onClose={() => setShowLibraryModal(false)}
+          onPick={(picked) => {
+            const newExercise: Exercise = {
+              id: picked.id,
+              name: picked.name,
+              sets: 4,
+              reps: 8,
+              restTime: 90,
+              videoUrl: picked.videoUrl ?? undefined,
+            }
+            setExercises((prev) => [...prev, newExercise])
+            setShowLibraryModal(false)
+            haptics.medium()
+          }}
         />
       )}
     </ScreenShell>

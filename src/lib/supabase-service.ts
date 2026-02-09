@@ -13,7 +13,7 @@ import {
   AuthState,
   WorkoutFocus,
 } from './social-types'
-import type { SportType, Drill, Routine, LearningPath, ActivityLog, SessionLog, DrillDifficulty, Equipment, WeightUnit, Session, WeekDay } from './types'
+import type { SportType, Drill, Routine, LearningPath, ActivityLog, SessionLog, DrillDifficulty, Equipment, WeightUnit, Session, WeekDay, ExperienceLevel, PrimaryGoal } from './types'
 
 // Type aliases for database rows - used for return type annotations
 type DbProfile = Database['public']['Tables']['profiles']['Row']
@@ -73,6 +73,12 @@ function dbProfileToUserProfile(
     weightUnit: (profile.weight_unit as WeightUnit) ?? undefined,
     equipment: (profile.equipment as Equipment | null) ?? null,
     onboardingCompleted: profile.onboarding_completed ?? null,
+    experienceLevel: (profile.experience_level as ExperienceLevel) ?? undefined,
+    bodyweightKg: profile.bodyweight_kg ?? null,
+    primaryGoal: (profile.primary_goal as PrimaryGoal) ?? undefined,
+    combatSessionsPerWeek: profile.combat_sessions_per_week ?? 0,
+    sessionMinutes: profile.session_minutes ?? 45,
+    injuryNotes: profile.injury_notes ?? null,
     workoutCount: stats?.workout_count ?? 0,
     followerCount: stats?.follower_count ?? 0,
     followingCount: stats?.following_count ?? 0,
@@ -293,6 +299,12 @@ export const supabaseService = {
     if (updates.weightUnit) dbUpdates.weight_unit = updates.weightUnit
     if (updates.equipment !== undefined) dbUpdates.equipment = updates.equipment
     if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted
+    if (updates.experienceLevel) dbUpdates.experience_level = updates.experienceLevel
+    if (updates.bodyweightKg !== undefined) dbUpdates.bodyweight_kg = updates.bodyweightKg
+    if (updates.primaryGoal) dbUpdates.primary_goal = updates.primaryGoal
+    if (updates.combatSessionsPerWeek !== undefined) dbUpdates.combat_sessions_per_week = updates.combatSessionsPerWeek
+    if (updates.sessionMinutes !== undefined) dbUpdates.session_minutes = updates.sessionMinutes
+    if (updates.injuryNotes !== undefined) dbUpdates.injury_notes = updates.injuryNotes
 
     const { error } = await db
       .from('profiles')
@@ -609,6 +621,129 @@ export const supabaseService = {
       originalVersionId: version.id,
       sessions: params.sessions,
     }
+  },
+
+  /**
+   * Best-effort resolver: takes blueprint sessions (exercise names + placeholder ids)
+   * and replaces exercises with real `exercises.id` UUIDs from Supabase when possible.
+   *
+   * This is important because exercise completion logging has an FK to `exercises(id)`.
+   */
+  async resolveProgramSessionsToLibraryExercises(params: {
+    sport: SportType
+    sessions: Session[]
+    equipment?: Equipment | null
+  }): Promise<Session[]> {
+    const sport = params.sport
+    const equipment = params.equipment ?? null
+
+    // Fetch a pool of exercises for this sport + general exercises.
+    const { data, error } = await db
+      .from('exercises')
+      .select('id, name, sport, category, equipment, is_weighted, video_url')
+      .or(`sport.eq.${sport},sport.is.null`)
+      .limit(2000)
+
+    if (error || !Array.isArray(data) || data.length === 0) {
+      return params.sessions
+    }
+
+    type DbExerciseRow = {
+      id: string
+      name: string
+      sport: string | null
+      category: string
+      equipment: string[] | null
+      is_weighted: boolean | null
+      video_url: string | null
+    }
+
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    const tokenSet = (value: string) => new Set(normalize(value).split(' ').filter(Boolean))
+
+    const scoreNameMatch = (needle: string, candidate: string): number => {
+      if (!needle || !candidate) return 0
+      if (needle === candidate) return 100
+      if (candidate.includes(needle)) return 85
+      if (needle.includes(candidate)) return 75
+
+      const needleTokens = tokenSet(needle)
+      const candTokens = tokenSet(candidate)
+      let overlap = 0
+      for (const t of needleTokens) {
+        if (candTokens.has(t)) overlap++
+      }
+      const denom = Math.max(needleTokens.size, 1)
+      return Math.round((overlap / denom) * 60)
+    }
+
+    const pool = (data as DbExerciseRow[]).map((row) => ({
+      ...row,
+      norm: normalize(row.name),
+      tokens: tokenSet(row.name),
+    }))
+
+    const isBodyweightMode = equipment === 'bodyweight'
+
+    const pickBest = (targetName: string, usedIds: Set<string>): DbExerciseRow | null => {
+      const targetNorm = normalize(targetName)
+      if (!targetNorm) return null
+
+      let best: { score: number; row: DbExerciseRow } | null = null
+
+      for (const row of pool) {
+        if (usedIds.has(row.id)) continue
+
+        let score = scoreNameMatch(targetNorm, row.norm)
+        if (score <= 0) continue
+
+        // Prefer sport-specific exercises over "general" (null sport).
+        if (row.sport === sport) score += 6
+
+        // Prefer bodyweight-friendly options if the user has no gym access.
+        if (isBodyweightMode) {
+          const eq = row.equipment ?? []
+          const eqNorm = eq.map((e) => normalize(e))
+          const bodyweightTagged = eqNorm.some((e) => e.includes('bodyweight') || e === 'none')
+          const clearlyWeighted = row.is_weighted === true || eqNorm.some((e) => e.includes('barbell') || e.includes('dumbbell') || e.includes('kettlebell'))
+          if (bodyweightTagged) score += 10
+          if (clearlyWeighted) score -= 12
+        }
+
+        if (!best || score > best.score) {
+          best = { score, row }
+        }
+      }
+
+      // Require a minimum confidence to avoid bad matches.
+      if (!best || best.score < 55) return null
+      return best.row
+    }
+
+    return params.sessions.map((s) => {
+      const used = new Set<string>()
+      const resolvedExercises = s.exercises.map((e) => {
+        const match = pickBest(e.name, used)
+        if (!match) return e
+
+        used.add(match.id)
+        return {
+          ...e,
+          id: match.id,
+          name: match.name,
+          videoUrl: match.video_url ?? e.videoUrl,
+        }
+      })
+
+      return { ...s, exercises: resolvedExercises }
+    })
   },
 
   async saveProgramVersion(programId: string, sessions: Session[], label?: string): Promise<string> {

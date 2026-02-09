@@ -1,12 +1,14 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory, Athlete, ExperienceLevel, EnhancedExerciseData } from '@/lib/types'
+import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory, Athlete, ExperienceLevel, EnhancedExerciseData, PrimaryGoal } from '@/lib/types'
 import { generateWeeklyProgram } from '@/lib/data'
 import { allDrills, routines, learningPaths } from '@/lib/drills-data'
 import { analytics } from '@/lib/analytics'
 import { OnboardingSport } from '@/components/screens/onboarding-sport'
 import { OnboardingSchedule } from '@/components/screens/onboarding-schedule'
+import { OnboardingLevel } from '@/components/screens/onboarding-level'
+import { OnboardingIntake } from '@/components/screens/onboarding-intake'
 import { OnboardingEquipment } from '@/components/screens/onboarding-equipment'
 import { Home } from '@/components/screens/home'
 import { WeekView } from '@/components/screens/week-view'
@@ -53,6 +55,8 @@ const DEFAULT_SCREENSHOT_DELAY_MS = 400
 const IMPLEMENTED_SCREENS: ReadonlySet<Screen> = new Set([
   'onboarding-sport',
   'onboarding-schedule',
+  'onboarding-level',
+  'onboarding-intake',
   'onboarding-equipment',
   'home',
   'settings',
@@ -199,6 +203,16 @@ interface UndoAction {
 }
 
 export default function App() {
+  type ProgramMetaState = {
+    sport: SportType
+    trainingDays: number
+    equipment: Equipment | null
+    level: ExperienceLevel
+    primaryGoal: PrimaryGoal
+    combatSessionsPerWeek: number
+    sessionMinutes: number
+  }
+
   // Core state
   const [currentScreen, setCurrentScreen] = useState<Screen>('auth-login')
   const [navigationError, setNavigationError] = useState<{ message: string; details?: string } | null>(null)
@@ -206,12 +220,17 @@ export default function App() {
   const [trainingDays, setTrainingDays] = useState(4)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
   const [weightUnit, setWeightUnit] = useState<WeightUnit>('lbs')
+  const [bodyweightKg, setBodyweightKg] = useState<number | null>(null)
+  const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoal>('balanced')
+  const [combatSessionsPerWeek, setCombatSessionsPerWeek] = useState(0)
+  const [sessionMinutes, setSessionMinutes] = useState(45)
+  const [injuryNotes, setInjuryNotes] = useState('')
   const [generatedProgram, setGeneratedProgram] = useState<Session[] | null>(null)
   const [currentDayIndex, setCurrentDayIndex] = useState(0)
   const [programId, setProgramId] = useState<string | null>(null)
   const [savedProgramSessions, setSavedProgramSessions] = useState<Session[] | null>(null)
   const [hasProgramChanges, setHasProgramChanges] = useState(false)
-  const [programMeta, setProgramMeta] = useState<{ sport: SportType; trainingDays: number } | null>(null)
+  const [programMeta, setProgramMeta] = useState<ProgramMetaState | null>(null)
   const [sessionOverride, setSessionOverride] = useState<Session | null>(null)
   const [sessionSource, setSessionSource] = useState<'program' | 'custom' | 'extra' | null>(null)
   const [editingSessionDayIndex, setEditingSessionDayIndex] = useState<number | null>(null)
@@ -353,6 +372,12 @@ export default function App() {
         if (authState.user.trainingDays) setTrainingDays(authState.user.trainingDays)
         if (authState.user.equipment !== undefined) setEquipment(authState.user.equipment ?? null)
         if (authState.user.weightUnit) setWeightUnit(authState.user.weightUnit)
+        if (authState.user.experienceLevel) setUserExperienceLevel(authState.user.experienceLevel)
+        if (authState.user.bodyweightKg !== undefined) setBodyweightKg(authState.user.bodyweightKg ?? null)
+        if (authState.user.primaryGoal) setPrimaryGoal(authState.user.primaryGoal)
+        if (authState.user.combatSessionsPerWeek !== undefined) setCombatSessionsPerWeek(authState.user.combatSessionsPerWeek ?? 0)
+        if (authState.user.sessionMinutes !== undefined) setSessionMinutes(authState.user.sessionMinutes ?? 45)
+        if (authState.user.injuryNotes !== undefined) setInjuryNotes(authState.user.injuryNotes ?? '')
 
         const stored = localStorage.getItem(STORAGE_KEY)
         if (!stored) {
@@ -419,6 +444,16 @@ export default function App() {
         setSelectedLearningPath(data.selectedLearningPath ?? null)
         setLearningPathProgress(data.learningPathProgress ?? {})
 
+        // Intake: only apply localStorage values if the profile doesn't have them yet.
+        if (!authState.user.experienceLevel && data.userExperienceLevel) setUserExperienceLevel(data.userExperienceLevel)
+        if (authState.user.bodyweightKg === undefined && data.bodyweightKg !== undefined) setBodyweightKg(data.bodyweightKg)
+        if (!authState.user.primaryGoal && data.primaryGoal) setPrimaryGoal(data.primaryGoal)
+        if (authState.user.combatSessionsPerWeek === undefined && data.combatSessionsPerWeek !== undefined) {
+          setCombatSessionsPerWeek(data.combatSessionsPerWeek)
+        }
+        if (authState.user.sessionMinutes === undefined && data.sessionMinutes !== undefined) setSessionMinutes(data.sessionMinutes)
+        if (authState.user.injuryNotes === undefined && typeof data.injuryNotes === 'string') setInjuryNotes(data.injuryNotes)
+
         if (data.sessionStartTime && ['workout-session', 'rest-timer'].includes(savedScreen)) {
           setShowResumePrompt(true)
         }
@@ -441,6 +476,12 @@ export default function App() {
       trainingDays,
       equipment,
       weightUnit,
+      userExperienceLevel,
+      bodyweightKg,
+      primaryGoal,
+      combatSessionsPerWeek,
+      sessionMinutes,
+      injuryNotes,
       generatedProgram,
       currentDayIndex,
       sessionOverride,
@@ -477,6 +518,12 @@ export default function App() {
     trainingDays,
     equipment,
     weightUnit,
+    userExperienceLevel,
+    bodyweightKg,
+    primaryGoal,
+    combatSessionsPerWeek,
+    sessionMinutes,
+    injuryNotes,
     generatedProgram,
     currentDayIndex,
     sessionOverride,
@@ -534,10 +581,44 @@ export default function App() {
         if (!programSnapshot) {
           const fallbackSport = currentUser.sport ?? selectedSport
           const fallbackDays = currentUser.trainingDays ?? trainingDays
-          const sessions = generateWeeklyProgram(fallbackSport, fallbackDays)
+          const blueprint = generateWeeklyProgram(fallbackSport, fallbackDays, {
+            level: currentUser.experienceLevel ?? userExperienceLevel,
+            equipment: currentUser.equipment ?? equipment,
+            primaryGoal: currentUser.primaryGoal ?? primaryGoal,
+            combatSessionsPerWeek: currentUser.combatSessionsPerWeek ?? combatSessionsPerWeek,
+            sessionMinutes: currentUser.sessionMinutes ?? sessionMinutes,
+          })
+          const sessions = await supabaseService.resolveProgramSessionsToLibraryExercises({
+            sport: fallbackSport,
+            sessions: blueprint,
+            equipment: currentUser.equipment ?? equipment,
+          })
           programSnapshot = await supabaseService.createProgram({
             sport: fallbackSport,
             trainingDays: fallbackDays,
+            sessions,
+            label: 'Original',
+          })
+        }
+        // Defensive: if an older/buggy program exists with empty sessions, regenerate so workouts are runnable.
+        if (programSnapshot && programSnapshot.sessions.some((s) => !Array.isArray(s.exercises) || s.exercises.length === 0)) {
+          const regenSport = programSnapshot.sport
+          const regenDays = programSnapshot.trainingDays
+          const blueprint = generateWeeklyProgram(regenSport, regenDays, {
+            level: currentUser.experienceLevel ?? userExperienceLevel,
+            equipment: currentUser.equipment ?? equipment,
+            primaryGoal: currentUser.primaryGoal ?? primaryGoal,
+            combatSessionsPerWeek: currentUser.combatSessionsPerWeek ?? combatSessionsPerWeek,
+            sessionMinutes: currentUser.sessionMinutes ?? sessionMinutes,
+          })
+          const sessions = await supabaseService.resolveProgramSessionsToLibraryExercises({
+            sport: regenSport,
+            sessions: blueprint,
+            equipment: currentUser.equipment ?? equipment,
+          })
+          programSnapshot = await supabaseService.createProgram({
+            sport: regenSport,
+            trainingDays: regenDays,
             sessions,
             label: 'Original',
           })
@@ -550,7 +631,15 @@ export default function App() {
           setHasProgramChanges(false)
           setSelectedSport(programSnapshot.sport)
           setTrainingDays(programSnapshot.trainingDays)
-          setProgramMeta({ sport: programSnapshot.sport, trainingDays: programSnapshot.trainingDays })
+          setProgramMeta({
+            sport: programSnapshot.sport,
+            trainingDays: programSnapshot.trainingDays,
+            equipment: currentUser.equipment ?? equipment,
+            level: currentUser.experienceLevel ?? userExperienceLevel,
+            primaryGoal: currentUser.primaryGoal ?? primaryGoal,
+            combatSessionsPerWeek: currentUser.combatSessionsPerWeek ?? combatSessionsPerWeek,
+            sessionMinutes: currentUser.sessionMinutes ?? sessionMinutes,
+          })
 
           const programState = await supabaseService.getProgramState()
           if (programState && programState.length > 0) {
@@ -573,6 +662,12 @@ export default function App() {
         setCompletedExercises(supabaseCompletions)
         if (currentUser.equipment !== undefined) setEquipment(currentUser.equipment ?? null)
         if (currentUser.weightUnit) setWeightUnit(currentUser.weightUnit)
+        if (currentUser.experienceLevel) setUserExperienceLevel(currentUser.experienceLevel)
+        if (currentUser.bodyweightKg !== undefined) setBodyweightKg(currentUser.bodyweightKg ?? null)
+        if (currentUser.primaryGoal) setPrimaryGoal(currentUser.primaryGoal)
+        if (currentUser.combatSessionsPerWeek !== undefined) setCombatSessionsPerWeek(currentUser.combatSessionsPerWeek ?? 0)
+        if (currentUser.sessionMinutes !== undefined) setSessionMinutes(currentUser.sessionMinutes ?? 45)
+        if (currentUser.injuryNotes !== undefined) setInjuryNotes(currentUser.injuryNotes ?? '')
       } catch (error) {
         console.debug('Failed to fetch Supabase data, using localStorage cache:', error)
       } finally {
@@ -1296,6 +1391,9 @@ export default function App() {
     // Save session log
     const tempId = Date.now().toString()
     const completedExerciseIds = currentSession.exercises.map(ex => ex.id)
+    const uuidIds = completedExerciseIds.filter((id) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+    )
     const sessionLog: SessionLog = {
       id: tempId,
       date: new Date().toISOString(),
@@ -1312,7 +1410,8 @@ export default function App() {
     setSessionHistory(prev => [...prev, sessionLog])
     setCompletedExercises(prev => {
       const next = new Set(prev)
-      completedExerciseIds.forEach(id => next.add(id))
+      // Only persist "completed" markers for real library exercises (UUID-backed).
+      uuidIds.forEach(id => next.add(id))
       return next
     })
 
@@ -1336,12 +1435,11 @@ export default function App() {
       const targetDay = newProgress[targetIndex]
       if (!targetDay) return prev
 
-      const isExtraSession = sessionSource === 'extra' || sessionSource === 'custom'
       newProgress[targetIndex] = {
         ...targetDay,
-        // Extra/custom sessions on unplanned days become planned and completed.
-        // This increments planned count once for that day, while repeat same-day sessions won't.
-        planned: isExtraSession ? (targetDay.planned || true) : targetDay.planned,
+        // Extra/custom sessions should not mutate the user's planned schedule.
+        // Otherwise it corrupts the planned-day -> program-session mapping.
+        planned: targetDay.planned,
         completed: true,
       }
       return newProgress
@@ -1367,7 +1465,7 @@ export default function App() {
       })
       // Update with the real ID from Supabase
       setSessionHistory(prev => prev.map(s => s.id === tempId ? savedLog : s))
-      await supabaseService.logExerciseCompletions(completedExerciseIds, savedLog.id, sessionSource ?? 'session')
+      await supabaseService.logExerciseCompletions(uuidIds, savedLog.id, sessionSource ?? 'session')
     } catch (error) {
       console.debug('Failed to save session to Supabase, cached locally:', error)
     }
@@ -1517,8 +1615,40 @@ export default function App() {
         <OnboardingSchedule
           trainingDays={trainingDays}
           onDaysChange={setTrainingDays}
-          onContinue={() => setCurrentScreen('onboarding-equipment')}
+          onContinue={() => setCurrentScreen('onboarding-level')}
           onBack={() => setCurrentScreen('onboarding-sport')}
+        />
+      )
+      break
+
+    case 'onboarding-level':
+      screen = (
+        <OnboardingLevel
+          level={userExperienceLevel}
+          onLevelChange={setUserExperienceLevel}
+          onContinue={() => setCurrentScreen('onboarding-intake')}
+          onBack={() => setCurrentScreen('onboarding-schedule')}
+        />
+      )
+      break
+
+    case 'onboarding-intake':
+      screen = (
+        <OnboardingIntake
+          bodyweightKg={bodyweightKg}
+          weightUnit={weightUnit}
+          primaryGoal={primaryGoal}
+          combatSessionsPerWeek={combatSessionsPerWeek}
+          sessionMinutes={sessionMinutes}
+          injuryNotes={injuryNotes}
+          onBodyweightKgChange={setBodyweightKg}
+          onWeightUnitChange={setWeightUnit}
+          onPrimaryGoalChange={setPrimaryGoal}
+          onCombatSessionsChange={setCombatSessionsPerWeek}
+          onSessionMinutesChange={setSessionMinutes}
+          onInjuryNotesChange={setInjuryNotes}
+          onContinue={() => setCurrentScreen('onboarding-equipment')}
+          onBack={() => setCurrentScreen('onboarding-level')}
         />
       )
       break
@@ -1529,11 +1659,31 @@ export default function App() {
           equipment={equipment}
           onEquipmentChange={setEquipment}
           onStart={async () => {
-            const program = generateWeeklyProgram(selectedSport, trainingDays)
+            const programBlueprint = generateWeeklyProgram(selectedSport, trainingDays, {
+              level: userExperienceLevel,
+              equipment,
+              primaryGoal,
+              combatSessionsPerWeek,
+              sessionMinutes,
+            })
+            const program = await supabaseService.resolveProgramSessionsToLibraryExercises({
+              sport: selectedSport,
+              sessions: programBlueprint,
+              equipment,
+            })
             const defaultProgress = buildWeekProgress(trainingDays)
             setGeneratedProgram(program)
             setWeekProgress(defaultProgress)
             setCurrentDayIndex(0)
+            setProgramMeta({
+              sport: selectedSport,
+              trainingDays,
+              equipment,
+              level: userExperienceLevel,
+              primaryGoal,
+              combatSessionsPerWeek,
+              sessionMinutes,
+            })
 
             if (currentUser) {
               try {
@@ -1542,6 +1692,12 @@ export default function App() {
                   trainingDays,
                   equipment,
                   weightUnit,
+                  experienceLevel: userExperienceLevel,
+                  bodyweightKg,
+                  primaryGoal,
+                  combatSessionsPerWeek,
+                  sessionMinutes,
+                  injuryNotes: injuryNotes.trim() ? injuryNotes.trim() : null,
                   onboardingCompleted: true,
                 })
                 setCurrentUser(updatedProfile)
@@ -1558,7 +1714,15 @@ export default function App() {
                 setProgramId(newProgram.programId)
                 setSavedProgramSessions(newProgram.sessions)
                 setHasProgramChanges(false)
-                setProgramMeta({ sport: newProgram.sport, trainingDays: newProgram.trainingDays })
+                setProgramMeta({
+                  sport: newProgram.sport,
+                  trainingDays: newProgram.trainingDays,
+                  equipment,
+                  level: userExperienceLevel,
+                  primaryGoal,
+                  combatSessionsPerWeek,
+                  sessionMinutes,
+                })
                 await supabaseService.upsertProgramState(newProgram.programId, defaultProgress)
               } catch (error) {
                 console.debug('Failed to create program during onboarding:', error)
@@ -1567,7 +1731,7 @@ export default function App() {
 
             setCurrentScreen('home')
           }}
-          onBack={() => setCurrentScreen('onboarding-schedule')}
+          onBack={() => setCurrentScreen('onboarding-intake')}
         />
       )
       break
@@ -1597,6 +1761,12 @@ export default function App() {
           trainingDays={trainingDays}
           equipment={equipment}
           weightUnit={weightUnit}
+          experienceLevel={userExperienceLevel}
+          bodyweightKg={bodyweightKg}
+          primaryGoal={primaryGoal}
+          combatSessionsPerWeek={combatSessionsPerWeek}
+          sessionMinutes={sessionMinutes}
+          injuryNotes={injuryNotes}
           onSportChange={(sport) => {
             setSelectedSport(sport)
             setSelectedExerciseSport(null)
@@ -1604,6 +1774,12 @@ export default function App() {
           onDaysChange={setTrainingDays}
           onEquipmentChange={setEquipment}
           onWeightUnitChange={setWeightUnit}
+          onExperienceLevelChange={setUserExperienceLevel}
+          onBodyweightKgChange={setBodyweightKg}
+          onPrimaryGoalChange={setPrimaryGoal}
+          onCombatSessionsChange={setCombatSessionsPerWeek}
+          onSessionMinutesChange={setSessionMinutes}
+          onInjuryNotesChange={setInjuryNotes}
           onSave={async () => {
             if (currentUser) {
               try {
@@ -1612,6 +1788,12 @@ export default function App() {
                   trainingDays,
                   equipment,
                   weightUnit,
+                  experienceLevel: userExperienceLevel,
+                  bodyweightKg,
+                  primaryGoal,
+                  combatSessionsPerWeek,
+                  sessionMinutes,
+                  injuryNotes: injuryNotes.trim() ? injuryNotes.trim() : null,
                   onboardingCompleted: true,
                 })
                 setCurrentUser(updatedProfile)
@@ -1623,27 +1805,75 @@ export default function App() {
             const shouldRegenerate = !programMeta
               || programMeta.sport !== selectedSport
               || programMeta.trainingDays !== trainingDays
+              || programMeta.equipment !== equipment
+              || programMeta.level !== userExperienceLevel
+              || programMeta.primaryGoal !== primaryGoal
+              || programMeta.combatSessionsPerWeek !== combatSessionsPerWeek
+              || programMeta.sessionMinutes !== sessionMinutes
 
             if (shouldRegenerate) {
-              const sessions = generateWeeklyProgram(selectedSport, trainingDays)
               try {
-                const newProgram = await supabaseService.createProgram({
-                  sport: selectedSport,
-                  trainingDays,
-                  sessions,
-                  label: 'Original',
+                const blueprint = generateWeeklyProgram(selectedSport, trainingDays, {
+                  level: userExperienceLevel,
+                  equipment,
+                  primaryGoal,
+                  combatSessionsPerWeek,
+                  sessionMinutes,
                 })
-                setProgramId(newProgram.programId)
-                setGeneratedProgram(newProgram.sessions)
-                setSavedProgramSessions(newProgram.sessions)
-                setHasProgramChanges(false)
-                setProgramMeta({ sport: newProgram.sport, trainingDays: newProgram.trainingDays })
-                const defaultProgress = buildWeekProgress(newProgram.trainingDays)
-                setWeekProgress(defaultProgress)
-                await supabaseService.upsertProgramState(newProgram.programId, defaultProgress)
+                const resolved = await supabaseService.resolveProgramSessionsToLibraryExercises({
+                  sport: selectedSport,
+                  sessions: blueprint,
+                  equipment,
+                })
+
+                if (currentUser) {
+                  const newProgram = await supabaseService.createProgram({
+                    sport: selectedSport,
+                    trainingDays,
+                    sessions: resolved,
+                    label: 'Original',
+                  })
+                  setProgramId(newProgram.programId)
+                  setGeneratedProgram(newProgram.sessions)
+                  setSavedProgramSessions(newProgram.sessions)
+                  setHasProgramChanges(false)
+                  setProgramMeta({
+                    sport: newProgram.sport,
+                    trainingDays: newProgram.trainingDays,
+                    equipment,
+                    level: userExperienceLevel,
+                    primaryGoal,
+                    combatSessionsPerWeek,
+                    sessionMinutes,
+                  })
+                  const defaultProgress = buildWeekProgress(newProgram.trainingDays)
+                  setWeekProgress(defaultProgress)
+                  await supabaseService.upsertProgramState(newProgram.programId, defaultProgress)
+                } else {
+                  setGeneratedProgram(resolved)
+                  setSavedProgramSessions(resolved)
+                  setHasProgramChanges(false)
+                  setProgramMeta({
+                    sport: selectedSport,
+                    trainingDays,
+                    equipment,
+                    level: userExperienceLevel,
+                    primaryGoal,
+                    combatSessionsPerWeek,
+                    sessionMinutes,
+                  })
+                  const defaultProgress = buildWeekProgress(trainingDays)
+                  setWeekProgress(defaultProgress)
+                }
               } catch (error) {
                 console.debug('Failed to regenerate program:', error)
-                const fallbackProgram = generateWeeklyProgram(selectedSport, trainingDays)
+                const fallbackProgram = generateWeeklyProgram(selectedSport, trainingDays, {
+                  level: userExperienceLevel,
+                  equipment,
+                  primaryGoal,
+                  combatSessionsPerWeek,
+                  sessionMinutes,
+                })
                 setGeneratedProgram(fallbackProgram)
                 setHasProgramChanges(false)
               }
@@ -1940,6 +2170,7 @@ export default function App() {
       const dayLabel = weekProgress[dayIndex]?.day ?? 'Session'
       screen = session ? (
         <ProgramSessionEditor
+          sport={selectedSport}
           session={session}
           dayLabel={dayLabel}
           onSave={(updatedSession) => {

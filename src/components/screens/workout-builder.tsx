@@ -9,6 +9,7 @@ import { supabaseService } from '@/lib/supabase-service'
 import { Input, Textarea } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ExerciseModal, ExerciseDraft } from '@/components/ui/exercise-modal'
+import { ExerciseLibraryModal } from '@/components/ui/exercise-library-modal'
 import {
   CustomWorkout,
   CustomWorkoutExercise,
@@ -71,7 +72,8 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, onNavigate, on
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showExerciseModal, setShowExerciseModal] = useState(false)
+  const [showLibraryModal, setShowLibraryModal] = useState(false)
+  const [showCustomModal, setShowCustomModal] = useState(false)
   const [exerciseToDelete, setExerciseToDelete] = useState<CustomWorkoutExercise | null>(null)
 
   const handleSave = async () => {
@@ -116,7 +118,25 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, onNavigate, on
       ...prev,
       exercises: [...prev.exercises, newExercise]
     }))
-    setShowExerciseModal(false)
+    setShowCustomModal(false)
+    haptics.medium()
+  }
+
+  const addFromLibrary = (picked: { id: string; name: string; videoUrl?: string | null }) => {
+    setState((prev) => {
+      const newExercise: CustomWorkoutExercise = {
+        id: `ex-${Date.now()}`,
+        name: picked.name,
+        sets: 3,
+        reps: 10,
+        restTime: 60,
+        notes: '',
+        videoUrl: picked.videoUrl ?? undefined,
+        order: prev.exercises.length,
+      }
+      return { ...prev, exercises: [...prev.exercises, newExercise] }
+    })
+    setShowLibraryModal(false)
     haptics.medium()
   }
 
@@ -188,7 +208,7 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, onNavigate, on
           {step === 'exercises' && (
             <ExercisesStep
               exercises={state.exercises}
-              onAdd={() => setShowExerciseModal(true)}
+              onAdd={() => setShowLibraryModal(true)}
               onRemove={removeExercise}
               onUpdate={updateExercise}
             />
@@ -231,10 +251,23 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, onNavigate, on
       </ScreenShellFooter>
 
       {/* Exercise Modal */}
-      {showExerciseModal && (
+      {showCustomModal && (
         <ExerciseModal
           onAdd={addExercise}
-          onClose={() => setShowExerciseModal(false)}
+          onClose={() => setShowCustomModal(false)}
+        />
+      )}
+
+      {showLibraryModal && (
+        <ExerciseLibraryModal
+          title="Add Exercise"
+          onClose={() => setShowLibraryModal(false)}
+          onPick={(picked) => addFromLibrary(picked)}
+          onCustom={() => {
+            setShowLibraryModal(false)
+            setShowCustomModal(true)
+          }}
+          customLabel="Custom"
         />
       )}
 

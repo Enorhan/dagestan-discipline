@@ -2,7 +2,7 @@
 // SOCIAL WORKOUT SYSTEM TYPES
 // ============================================
 
-import { SportType, Exercise, DrillDifficulty, Equipment, WeightUnit } from './types'
+import { SportType, Exercise, DrillDifficulty, Equipment, WeightUnit, ExperienceLevel, PrimaryGoal } from './types'
 
 // User profile for social features
 export interface UserProfile {
@@ -17,6 +17,13 @@ export interface UserProfile {
   weightUnit?: WeightUnit
   equipment?: Equipment | null
   onboardingCompleted?: boolean | null
+  // Intake (program generation)
+  experienceLevel?: ExperienceLevel
+  bodyweightKg?: number | null
+  primaryGoal?: PrimaryGoal
+  combatSessionsPerWeek?: number
+  sessionMinutes?: number
+  injuryNotes?: string | null
   // Stats
   workoutCount: number
   followerCount: number

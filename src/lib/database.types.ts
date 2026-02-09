@@ -586,12 +586,18 @@ export type Database = {
         Row: {
           avatar_url: string | null
           bio: string | null
+          bodyweight_kg: number | null
+          combat_sessions_per_week: number
           created_at: string | null
           display_name: string
           equipment: string | null
+          experience_level: string
           id: string
+          injury_notes: string | null
           onboarding_completed: boolean | null
+          primary_goal: string
           sport: string
+          session_minutes: number
           training_days: number
           updated_at: string | null
           username: string
@@ -600,12 +606,18 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           bio?: string | null
+          bodyweight_kg?: number | null
+          combat_sessions_per_week?: number
           created_at?: string | null
           display_name: string
           equipment?: string | null
+          experience_level?: string
           id: string
+          injury_notes?: string | null
           onboarding_completed?: boolean | null
+          primary_goal?: string
           sport?: string
+          session_minutes?: number
           training_days?: number
           updated_at?: string | null
           username: string
@@ -614,12 +626,18 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           bio?: string | null
+          bodyweight_kg?: number | null
+          combat_sessions_per_week?: number
           created_at?: string | null
           display_name?: string
           equipment?: string | null
+          experience_level?: string
           id?: string
+          injury_notes?: string | null
           onboarding_completed?: boolean | null
+          primary_goal?: string
           sport?: string
+          session_minutes?: number
           training_days?: number
           updated_at?: string | null
           username?: string
