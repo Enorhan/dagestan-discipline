@@ -26,7 +26,7 @@ const categoryIcons: Record<DrillCategory, React.ReactNode> = {
 }
 
 // Component to fetch and display related drills
-function RelatedDrillsSection({ drillIds, onSelect }: { drillIds: string[]; onSelect: (id: string) => void }) {
+function RelatedDrillsSection({ drillIds, dataVersion, onSelect }: { drillIds: string[]; dataVersion: number; onSelect: (id: string) => void }) {
   const [relatedDrills, setRelatedDrills] = useState<Drill[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -51,7 +51,7 @@ function RelatedDrillsSection({ drillIds, onSelect }: { drillIds: string[]; onSe
     return () => {
       isMounted = false
     }
-  }, [drillIds])
+  }, [drillIds, dataVersion])
 
   if (isLoading) {
     return (
@@ -94,6 +94,7 @@ function RelatedDrillsSection({ drillIds, onSelect }: { drillIds: string[]; onSe
 interface DrillDetailProps {
   drill?: Drill
   drillId?: string
+  dataVersion?: number
   onBack: () => void
   onSelectRelatedDrill?: (drill: Drill) => void
   onAddToToday?: (drill: Drill) => void
@@ -103,6 +104,7 @@ interface DrillDetailProps {
 export function DrillDetail({
   drill: drillProp,
   drillId,
+  dataVersion = 0,
   onBack,
   onSelectRelatedDrill,
   onAddToToday,
@@ -117,23 +119,25 @@ export function DrillDetail({
     let isMounted = true
 
     const fetchDrill = async () => {
+      const resolvedId = drillProp?.id ?? drillId ?? null
+      if (!resolvedId) {
+        setIsLoading(false)
+        return
+      }
+
+      // Show the passed drill immediately, then refresh from Supabase in background (realtime-safe).
       if (drillProp) {
         setDrill(drillProp)
-        setIsLoading(false)
-        return
+      } else if (!drill) {
+        setIsLoading(true)
       }
 
-      if (!drillId) {
-        setIsLoading(false)
-        return
-      }
-
-      setIsLoading(true)
-      const fetchedDrill = await drillsService.getDrillById(drillId)
-      if (isMounted) {
+      const fetchedDrill = await drillsService.getDrillById(resolvedId)
+      if (!isMounted) return
+      if (fetchedDrill) {
         setDrill(fetchedDrill)
-        setIsLoading(false)
       }
+      setIsLoading(false)
     }
 
     fetchDrill()
@@ -141,7 +145,7 @@ export function DrillDetail({
     return () => {
       isMounted = false
     }
-  }, [drillProp, drillId])
+  }, [drillProp, drillId, dataVersion])
 
   // Track recently viewed when drill is loaded
   useEffect(() => {
@@ -359,6 +363,7 @@ export function DrillDetail({
         {drill.relatedDrills && drill.relatedDrills.length > 0 && (
           <RelatedDrillsSection
             drillIds={drill.relatedDrills}
+            dataVersion={dataVersion}
             onSelect={handleRelatedDrillClick}
           />
         )}

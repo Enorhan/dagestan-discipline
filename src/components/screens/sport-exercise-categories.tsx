@@ -125,6 +125,7 @@ const sportNames: Record<SportType, string> = {
 
 interface SportExerciseCategoriesProps {
   sport: SportType
+  dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onSelectCategory: (sport: SportType, category: ExerciseCategory) => void
@@ -152,6 +153,7 @@ const sportThemes: Record<SportType, { gradient: string; color: string; bg: stri
 
 export function SportExerciseCategories({
   sport,
+  dataVersion = 0,
   onNavigate,
   onBack,
   onSelectCategory,
@@ -175,7 +177,7 @@ export function SportExerciseCategories({
       }
     }
     fetchCounts()
-  }, [])
+  }, [dataVersion])
 
   const handleCategoryClick = (category: ExerciseCategory) => {
     haptics.light()

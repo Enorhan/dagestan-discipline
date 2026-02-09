@@ -69,6 +69,7 @@ const categoryIcons: Record<DrillCategory, React.ReactNode> = {
 
 interface TrainingHubProps {
   sport: SportType
+  dataVersion?: number
   currentWorkoutFocus?: string
   onNavigate: (screen: Screen) => void
   onSelectDrill: (drill: Drill) => void
@@ -87,6 +88,7 @@ interface TrainingHubProps {
 
 export function TrainingHub({
   sport,
+  dataVersion = 0,
   currentWorkoutFocus,
   onNavigate,
   onSelectDrill,
@@ -175,10 +177,11 @@ export function TrainingHub({
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [sport, dataVersion])
 
   const handleRefresh = useCallback(async () => {
     drillsService.clearCache()
+    athletesService.clearCache()
     const [drills, routines, paths, recent, athletes] = await Promise.all([
       drillsService.getDrills(),
       drillsService.getRoutines(),
@@ -191,6 +194,7 @@ export function TrainingHub({
     setLearningPathsData(paths)
     setRecentDrills(recent)
     setAthletesData(athletes)
+    setExerciseCounts(await athletesService.getExerciseCounts())
 
     // Recalculate drill counts
     const counts: Record<DrillCategory, number> = {

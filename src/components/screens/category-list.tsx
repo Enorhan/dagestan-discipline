@@ -121,6 +121,7 @@ const categoryThemes: Record<DrillCategory, { gradient: string; cardGradient: st
 
 interface CategoryListProps {
   category: DrillCategory
+  dataVersion?: number
   onBack: () => void
   onSelectDrill: (drill: Drill) => void
   onAddToToday?: (drill: Drill) => void
@@ -133,6 +134,7 @@ interface CategoryListProps {
 
 export function CategoryList({
   category,
+  dataVersion = 0,
   onBack,
   onSelectDrill,
   onAddToToday,
@@ -168,7 +170,7 @@ export function CategoryList({
     return () => {
       isMounted = false
     }
-  }, [category])
+  }, [category, dataVersion])
 
   // Get unique subcategories
   const subcategories = useMemo(() => {

@@ -884,7 +884,8 @@ export const supabaseService = {
             user_id: currentUser.id,
             workout_date: workoutDate,
             data: payload,
-            updated_at: new Date().toISOString(),
+            // Use the payload's timestamp to avoid endless realtime update loops.
+            updated_at: payload?.updatedAt ?? new Date().toISOString(),
           },
           { onConflict: 'user_id,workout_date' }
         )

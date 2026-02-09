@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 interface AthleteDetailProps {
   athlete: Athlete
   userLevel: ExperienceLevel
+  dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onStartAction?: () => void
@@ -22,6 +23,7 @@ interface AthleteDetailProps {
 export function AthleteDetail({
   athlete,
   userLevel,
+  dataVersion = 0,
   onNavigate,
   onBack,
   onStartAction,
@@ -55,7 +57,7 @@ export function AthleteDetail({
     return () => {
       isMounted = false
     }
-  }, [athlete.id, selectedLevel])
+  }, [athlete.id, selectedLevel, dataVersion])
 
   return (
     <ScreenShell>
@@ -164,4 +166,3 @@ export function AthleteDetail({
     </ScreenShell>
   )
 }
-

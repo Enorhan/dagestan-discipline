@@ -45,8 +45,11 @@ import { LoadingScreen } from '@/components/screens/loading-screen'
 import { NavigationNotSet } from '@/components/screens/navigation-not-set'
 import { TodayEditor } from '@/components/screens/today-editor'
 import { supabaseService } from '@/lib/supabase-service'
+import { supabase } from '@/lib/supabase'
 import stripeService from '@/lib/stripe-service'
 import { UserProfile, CustomWorkout } from '@/lib/social-types'
+import { drillsService } from '@/lib/drills-service'
+import { athletesService } from '@/lib/athletes-service'
 
 const STORAGE_KEY = 'dagestaniDiscipline.state'
 const UNDO_TTL_MS = 6000
@@ -318,6 +321,9 @@ export default function App() {
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null)
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const todayOverridePersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [contentDataVersion, setContentDataVersion] = useState(0)
+  const contentRealtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingContentInvalidationRef = useRef(false)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const hasHydratedRef = useRef(false)
@@ -367,6 +373,23 @@ export default function App() {
   const screenshotScreen = screenshotParams.screen
   const screenshotIntervalMs = screenshotParams.intervalMs
   const screenshotDelayMs = screenshotParams.delayMs
+
+  const queueContentInvalidation = useCallback((reason: string) => {
+    // Coalesce bursts of realtime events (pipelines can insert many rows).
+    pendingContentInvalidationRef.current = true
+
+    if (contentRealtimeDebounceRef.current) return
+    contentRealtimeDebounceRef.current = setTimeout(() => {
+      contentRealtimeDebounceRef.current = null
+      if (!pendingContentInvalidationRef.current) return
+      pendingContentInvalidationRef.current = false
+
+      console.debug('[realtime] content invalidated:', reason)
+      drillsService.clearCache()
+      athletesService.clearCache()
+      setContentDataVersion((v) => v + 1)
+    }, 350)
+  }, [])
 
   const getProgramIndexForDay = useCallback((dayIndex: number) => {
     let plannedCount = 0
@@ -698,6 +721,144 @@ export default function App() {
 
     hydrateState()
   }, [isScreenshotMode])
+
+  // Supabase Realtime: invalidate content caches and refresh screens when pipeline publishes new data.
+  useEffect(() => {
+    if (isScreenshotMode) return
+
+    const channel = supabase.channel('realtime-content')
+    const handler = (_payload: any) => {
+      queueContentInvalidation('content')
+    }
+
+    const tables = [
+      'athletes',
+      'athlete_exercises',
+      'exercises',
+      'exercise_recommendations',
+      'published_records',
+      'drills',
+      'routines',
+      'routine_drills',
+      'learning_paths',
+      'learning_path_drills',
+    ]
+
+    tables.forEach((table) => {
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table },
+        handler
+      )
+    })
+
+    channel.subscribe((status) => {
+      console.debug('[realtime] content channel:', status)
+    })
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [isScreenshotMode, queueContentInvalidation])
+
+  // Supabase Realtime: keep user-specific state in sync across devices.
+  useEffect(() => {
+    if (!currentUser?.id || isScreenshotMode) return
+
+    const userId = currentUser.id
+    const channel = supabase.channel(`realtime-user-${userId}`)
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'workout_day_overrides', filter: `user_id=eq.${userId}` },
+      (payload: any) => {
+        const eventType = String(payload?.eventType ?? '')
+        const row = payload?.new ?? payload?.old ?? null
+        const workoutDate = row?.workout_date ? String(row.workout_date) : null
+        if (!workoutDate) return
+
+        if (eventType === 'DELETE') {
+          setTodayOverridesByDate((prev) => {
+            if (!prev[workoutDate]) return prev
+            const next = { ...prev }
+            delete next[workoutDate]
+            return next
+          })
+          return
+        }
+
+        const raw = row?.data
+        const updatedAt = typeof row?.updated_at === 'string' ? row.updated_at : (typeof raw?.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString())
+
+        const normalized: TodayWorkoutOverride = {
+          baseSessionId: raw?.baseSessionId ?? null,
+          baseProgramDayIndex: typeof raw?.baseProgramDayIndex === 'number' ? raw.baseProgramDayIndex : null,
+          baseFingerprint: raw?.baseFingerprint ?? null,
+          addedExercises: Array.isArray(raw?.addedExercises) ? raw.addedExercises : [],
+          removedExerciseIds: Array.isArray(raw?.removedExerciseIds) ? raw.removedExerciseIds : [],
+          exerciseOrderIds: Array.isArray(raw?.exerciseOrderIds) ? raw.exerciseOrderIds : [],
+          exerciseEdits: (raw?.exerciseEdits && typeof raw.exerciseEdits === 'object') ? raw.exerciseEdits : {},
+          addedDrillIds: Array.isArray(raw?.addedDrillIds) ? raw.addedDrillIds : [],
+          removedDrillIds: Array.isArray(raw?.removedDrillIds) ? raw.removedDrillIds : [],
+          drillDoneIds: Array.isArray(raw?.drillDoneIds) ? raw.drillDoneIds : [],
+          drillsLoggedAt: typeof raw?.drillsLoggedAt === 'string' ? raw.drillsLoggedAt : null,
+          updatedAt,
+        }
+
+        setTodayOverridesByDate((prev) => {
+          const local = prev[workoutDate]
+          if (!local) return { ...prev, [workoutDate]: normalized }
+          const localTs = Date.parse(local.updatedAt ?? '')
+          const remoteTs = Date.parse(normalized.updatedAt ?? '')
+          if (Number.isFinite(remoteTs) && (!Number.isFinite(localTs) || remoteTs > localTs)) {
+            return { ...prev, [workoutDate]: normalized }
+          }
+          return prev
+        })
+      }
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'exercise_favorites', filter: `user_id=eq.${userId}` },
+      (payload: any) => {
+        const eventType = String(payload?.eventType ?? '')
+        const row = payload?.new ?? payload?.old ?? null
+        const exerciseId = row?.exercise_id ? String(row.exercise_id) : null
+        if (!exerciseId) return
+
+        setFavoriteExercises((prev) => {
+          const next = new Set(prev)
+          if (eventType === 'INSERT') next.add(exerciseId)
+          if (eventType === 'DELETE') next.delete(exerciseId)
+          return next
+        })
+      }
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'exercise_completions', filter: `user_id=eq.${userId}` },
+      (payload: any) => {
+        const row = payload?.new ?? null
+        const exerciseId = row?.exercise_id ? String(row.exercise_id) : null
+        if (!exerciseId) return
+        setCompletedExercises((prev) => {
+          const next = new Set(prev)
+          next.add(exerciseId)
+          return next
+        })
+      }
+    )
+
+    channel.subscribe((status) => {
+      console.debug('[realtime] user channel:', status)
+    })
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [currentUser?.id, isScreenshotMode])
 
   // Persist state
   useEffect(() => {
@@ -2762,6 +2923,7 @@ export default function App() {
       screen = (
         <TrainingHub
           sport={selectedSport}
+          dataVersion={contentDataVersion}
           currentWorkoutFocus={displaySession?.focus}
           onNavigate={setCurrentScreen}
           backScreen='home'
@@ -2805,6 +2967,7 @@ export default function App() {
       screen = selectedDrill ? (
         <DrillDetail
           drill={selectedDrill}
+          dataVersion={contentDataVersion}
           onBack={() => {
             if (selectedCategory) {
               setCurrentScreen('category-list')
@@ -2831,6 +2994,7 @@ export default function App() {
         <AthleteDetail
           athlete={selectedAthlete}
           userLevel={userExperienceLevel}
+          dataVersion={contentDataVersion}
           onNavigate={setCurrentScreen}
           onBack={() => setCurrentScreen('training-hub')}
           onStartAction={handleCenterAction}
@@ -2847,6 +3011,7 @@ export default function App() {
       screen = selectedCategory ? (
         <CategoryList
           category={selectedCategory}
+          dataVersion={contentDataVersion}
           onBack={() => setCurrentScreen('training-hub')}
           onNavigate={setCurrentScreen}
           onSelectDrill={(drill) => {
@@ -2894,6 +3059,7 @@ export default function App() {
       screen = learningPath ? (
         <LearningPathScreen
           path={learningPath}
+          dataVersion={contentDataVersion}
           completedSteps={completedSteps}
           onBack={() => setCurrentScreen('training-hub')}
           onNavigate={setCurrentScreen}
@@ -2926,6 +3092,7 @@ export default function App() {
     case 'body-part-selector':
       screen = (
         <BodyPartSelector
+          dataVersion={contentDataVersion}
           onBack={() => setCurrentScreen('training-hub')}
           onSelectBodyPart={(bodyPart) => {
             setSelectedCategory('injury-prevention')
@@ -3074,6 +3241,7 @@ export default function App() {
       screen = (
         <SportExerciseCategories
           sport={selectedExerciseSport ?? selectedSport}
+          dataVersion={contentDataVersion}
           onNavigate={setCurrentScreen}
           onBack={() => setCurrentScreen('training-hub')}
           onSelectCategory={(sport, category) => {
@@ -3092,6 +3260,7 @@ export default function App() {
         <SportCategoryExercises
           sport={selectedExerciseSport ?? selectedSport}
           category={selectedExerciseCategory}
+          dataVersion={contentDataVersion}
           onNavigate={setCurrentScreen}
           onBack={() => setCurrentScreen('sport-exercise-categories')}
           onExerciseSelect={(exercise) => {
@@ -3106,6 +3275,7 @@ export default function App() {
       ) : (
         <SportExerciseCategories
           sport={selectedExerciseSport ?? selectedSport}
+          dataVersion={contentDataVersion}
           onNavigate={setCurrentScreen}
           onBack={() => setCurrentScreen('training-hub')}
           onSelectCategory={(sport, category) => {
@@ -3123,6 +3293,7 @@ export default function App() {
       screen = selectedExercise ? (
         <ExerciseDetail
           exercise={selectedExercise}
+          dataVersion={contentDataVersion}
           onNavigate={setCurrentScreen}
           onBack={() => setCurrentScreen('sport-category-exercises')}
           isFavorite={favoriteExercises.has(selectedExercise.id)}

@@ -1,9 +1,10 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { DrillSubcategory } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { bodyPartInfo, getDrillsBySubcategory } from '@/lib/drills-data'
+import { drillsService } from '@/lib/drills-service'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Shield, Neck, Shoulder, Back, Hip, Knee, Hand } from '@/components/ui/icons'
@@ -19,13 +20,53 @@ const bodyPartIcons: Record<string, React.ReactNode> = {
 }
 
 interface BodyPartSelectorProps {
+  dataVersion?: number
   onBack: () => void
   onSelectBodyPart: (bodyPart: DrillSubcategory) => void
 }
 
 const bodyParts: DrillSubcategory[] = ['neck', 'shoulders', 'back', 'hips', 'knees', 'fingers']
 
-export function BodyPartSelector({ onBack, onSelectBodyPart }: BodyPartSelectorProps) {
+export function BodyPartSelector({ dataVersion = 0, onBack, onSelectBodyPart }: BodyPartSelectorProps) {
+  const [countsByBodyPart, setCountsByBodyPart] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {}
+    bodyParts.forEach((p) => {
+      initial[p] = getDrillsBySubcategory(p).length
+    })
+    return initial
+  })
+  const [isLoadingCounts, setIsLoadingCounts] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadCounts = async () => {
+      setIsLoadingCounts(true)
+      try {
+        const drills = await drillsService.getDrills({ category: 'injury-prevention' })
+        if (!mounted) return
+
+        const next: Record<string, number> = {}
+        bodyParts.forEach((p) => (next[p] = 0))
+        drills.forEach((d) => {
+          const sub = d.subcategory
+          if (sub && sub in next) next[sub] += 1
+        })
+        setCountsByBodyPart(next)
+      } catch {
+        // Best-effort: keep local fallback counts.
+      } finally {
+        if (mounted) setIsLoadingCounts(false)
+      }
+    }
+
+    loadCounts()
+
+    return () => {
+      mounted = false
+    }
+  }, [dataVersion])
+
   return (
     <ScreenShell>
       <ScreenShellContent className="pb-32">
@@ -40,6 +81,9 @@ export function BodyPartSelector({ onBack, onSelectBodyPart }: BodyPartSelectorP
           <p className="text-muted-foreground text-sm">
             Select a body part to see prehab exercises
           </p>
+          {isLoadingCounts && (
+            <p className="text-xs text-muted-foreground mt-2">Updating…</p>
+          )}
         </div>
 
         {/* Body Part Grid */}
@@ -47,7 +91,7 @@ export function BodyPartSelector({ onBack, onSelectBodyPart }: BodyPartSelectorP
           <div className="grid grid-cols-2 gap-3">
             {bodyParts.map(bodyPart => {
               const info = bodyPartInfo[bodyPart]
-              const drillCount = getDrillsBySubcategory(bodyPart).length
+              const drillCount = countsByBodyPart[bodyPart] ?? getDrillsBySubcategory(bodyPart).length
 
               return (
                 <Button

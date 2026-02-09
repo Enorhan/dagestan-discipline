@@ -68,6 +68,7 @@ const sportLabels: Record<SportType, string> = {
 interface SportCategoryExercisesProps {
   sport: SportType
   category: ExerciseCategory
+  dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onExerciseSelect?: (exercise: EnhancedExerciseData) => void
@@ -167,6 +168,7 @@ function Breadcrumb({
 export function SportCategoryExercises({
   sport,
   category,
+  dataVersion = 0,
   onNavigate,
   onBack,
   onExerciseSelect,
@@ -231,7 +233,7 @@ export function SportCategoryExercises({
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+  }, [fetchData, dataVersion])
 
   // Pull to refresh handler
   const handleRefresh = useCallback(() => {

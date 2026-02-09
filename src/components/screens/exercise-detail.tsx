@@ -17,6 +17,7 @@ import {
 
 interface ExerciseDetailProps {
   exercise: EnhancedExerciseData
+  dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
   isFavorite?: boolean
@@ -50,6 +51,7 @@ const sportThemes: Record<string, { gradient: string; color: string; bg: string 
 
 export function ExerciseDetail({
   exercise,
+  dataVersion = 0,
   onNavigate,
   onBack,
   isFavorite = false,
@@ -84,7 +86,7 @@ export function ExerciseDetail({
       }
     }
     fetchRecommendation()
-  }, [exercise.id, selectedLevel])
+  }, [exercise.id, selectedLevel, dataVersion])
 
   const levelButtons: { value: ExperienceLevel; label: string }[] = [
     { value: 'beginner', label: 'Beginner' },

@@ -11,6 +11,7 @@ import { Book, Check, ChevronRight, Clock, Refresh, Target } from '@/components/
 
 interface LearningPathScreenProps {
   path: LearningPath
+  dataVersion?: number
   completedSteps: number
   onBack: () => void
   onNavigate: (screen: Screen) => void
@@ -23,6 +24,7 @@ interface LearningPathScreenProps {
 
 export function LearningPathScreen({
   path,
+  dataVersion = 0,
   completedSteps,
   onBack,
   onNavigate,
@@ -59,7 +61,7 @@ export function LearningPathScreen({
     return () => {
       isMounted = false
     }
-  }, [path.id, path.drills])
+  }, [path.id, path.drills, dataVersion])
 
   const totalSteps = drills.length
   const boundedCompletedSteps = Math.min(completedSteps, totalSteps)
@@ -235,4 +237,3 @@ export function LearningPathScreen({
     </ScreenShell>
   )
 }
-
