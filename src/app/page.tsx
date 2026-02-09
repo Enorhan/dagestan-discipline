@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory, Athlete, ExperienceLevel, EnhancedExerciseData, PrimaryGoal } from '@/lib/types'
+import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory, Athlete, ExperienceLevel, EnhancedExerciseData, PrimaryGoal, Exercise } from '@/lib/types'
 import { generateWeeklyProgram } from '@/lib/data'
 import { allDrills, routines, learningPaths } from '@/lib/drills-data'
 import { analytics } from '@/lib/analytics'
@@ -43,6 +43,7 @@ import { EditProfile } from '@/components/screens/edit-profile'
 import { WorkoutDetail } from '@/components/screens/workout-detail'
 import { LoadingScreen } from '@/components/screens/loading-screen'
 import { NavigationNotSet } from '@/components/screens/navigation-not-set'
+import { TodayEditor } from '@/components/screens/today-editor'
 import { supabaseService } from '@/lib/supabase-service'
 import stripeService from '@/lib/stripe-service'
 import { UserProfile, CustomWorkout } from '@/lib/social-types'
@@ -59,6 +60,7 @@ const IMPLEMENTED_SCREENS: ReadonlySet<Screen> = new Set([
   'onboarding-intake',
   'onboarding-equipment',
   'home',
+  'today-editor',
   'settings',
   'log-activity',
   'training-stats',
@@ -122,6 +124,42 @@ const buildWeekProgress = (daysPerWeek: number): WeekDay[] => {
 const getTodayIndex = () => {
   const day = new Date().getDay()
   return day === 0 ? 6 : day - 1
+}
+
+const getLocalDateKey = (date: Date = new Date()) => {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const estimateDurationMinutes = (exercises: Exercise[]) => {
+  if (!Array.isArray(exercises) || exercises.length === 0) return 0
+  let totalSeconds = 0
+  for (const ex of exercises) {
+    const exerciseTime = ex.duration ?? (ex.reps ?? 10) * 3
+    totalSeconds += (exerciseTime * ex.sets) + (ex.restTime * Math.max(0, ex.sets - 1))
+  }
+  return Math.max(1, Math.ceil(totalSeconds / 60))
+}
+
+const fingerprintSession = (session: Session | null): string | null => {
+  if (!session) return null
+  const exercises = Array.isArray(session.exercises) ? session.exercises : []
+  const payload = {
+    id: session.id,
+    focus: session.focus,
+    duration: session.duration,
+    exercises: exercises.map((e) => ({
+      id: e.id,
+      name: e.name,
+      sets: e.sets,
+      reps: e.reps ?? null,
+      duration: e.duration ?? null,
+      restTime: e.restTime,
+    })),
+  }
+  return JSON.stringify(payload)
 }
 
 const SCREENSHOT_SCREENS: Screen[] = [
@@ -203,6 +241,21 @@ interface UndoAction {
   snapshot: UndoSnapshot
 }
 
+type TodayWorkoutOverride = {
+  baseSessionId: string | null
+  baseProgramDayIndex: number | null
+  baseFingerprint: string | null
+  addedExercises: Exercise[]
+  removedExerciseIds: string[]
+  exerciseOrderIds: string[]
+  exerciseEdits: Record<string, Partial<Exercise>>
+  addedDrillIds: string[]
+  removedDrillIds: string[]
+  drillDoneIds: string[]
+  drillsLoggedAt: string | null
+  updatedAt: string
+}
+
 export default function App() {
   type ProgramMetaState = {
     sport: SportType
@@ -234,6 +287,7 @@ export default function App() {
   const [programMeta, setProgramMeta] = useState<ProgramMetaState | null>(null)
   const [sessionOverride, setSessionOverride] = useState<Session | null>(null)
   const [sessionSource, setSessionSource] = useState<'program' | 'custom' | 'extra' | null>(null)
+  const [todayOverridesByDate, setTodayOverridesByDate] = useState<Record<string, TodayWorkoutOverride>>({})
   const [editingSessionDayIndex, setEditingSessionDayIndex] = useState<number | null>(null)
   const [loadingComplete, setLoadingComplete] = useState(false)
 
@@ -263,6 +317,7 @@ export default function App() {
   const [totalVolume, setTotalVolume] = useState(0)
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null)
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const todayOverridePersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const hasHydratedRef = useRef(false)
@@ -340,6 +395,150 @@ export default function App() {
   const programSession = programDayIndex >= 0 ? getSessionForDay(programDayIndex) : null
   const currentSession = sessionOverride ?? programSession
 
+  // "Workout instance" overrides (AAA-style): edits apply to the current calendar day only.
+  const todayKey = getLocalDateKey()
+  const todayProgramOverride = useMemo(() => {
+    return todayOverridesByDate[todayKey] ?? null
+  }, [todayOverridesByDate, todayKey])
+
+  const hasTodayBaseChanged = useMemo(() => {
+    if (!todayProgramOverride) return false
+    const currentFingerprint = fingerprintSession(programSession)
+    if (!todayProgramOverride.baseFingerprint || !currentFingerprint) return false
+    return todayProgramOverride.baseFingerprint !== currentFingerprint
+  }, [todayProgramOverride, programSession])
+
+  const effectiveProgramSession = useMemo((): Session | null => {
+    if (!programSession) return null
+    if (!todayProgramOverride) return programSession
+
+    const removed = new Set(todayProgramOverride.removedExerciseIds ?? [])
+    const combined = [
+      ...(programSession.exercises ?? []),
+      ...(todayProgramOverride.addedExercises ?? []),
+    ]
+
+    // Remove excluded exercises and dedupe by id (keep the first occurrence).
+    const seen = new Set<string>()
+    let exercises = combined.filter((ex) => {
+      if (!ex?.id) return false
+      if (removed.has(ex.id)) return false
+      if (seen.has(ex.id)) return false
+      seen.add(ex.id)
+      return true
+    })
+
+    // Apply per-exercise edits (sets/reps/rest/notes overrides).
+    const edits = (todayProgramOverride.exerciseEdits as Record<string, Partial<Exercise>> | undefined) ?? {}
+    exercises = exercises.map((ex) => {
+      const patch = edits[ex.id]
+      if (!patch) return ex
+      // Defensive: older localStorage payloads may contain nulls for optional fields.
+      const sanitized: Record<string, unknown> = { ...patch }
+      if ((sanitized as any).reps === null) delete (sanitized as any).reps
+      if ((sanitized as any).duration === null) delete (sanitized as any).duration
+      if ((sanitized as any).notes === null) delete (sanitized as any).notes
+      return { ...ex, ...(sanitized as Partial<Exercise>) }
+    })
+
+    // Apply user-defined ordering (AAA behavior). If not set, fall back to base order + appended additions.
+    const baseOrderSeed = [
+      ...(programSession.exercises ?? []).map((e) => e.id),
+      ...(todayProgramOverride.addedExercises ?? []).map((e) => e.id),
+    ]
+    const requestedOrder = Array.isArray(todayProgramOverride.exerciseOrderIds) && todayProgramOverride.exerciseOrderIds.length > 0
+      ? todayProgramOverride.exerciseOrderIds
+      : baseOrderSeed
+
+    const idsInList = new Set(exercises.map((e) => e.id))
+    const requestedInList = requestedOrder.filter((id) => idsInList.has(id))
+    const requestedSet = new Set(requestedInList)
+    const missing = exercises.map((e) => e.id).filter((id) => !requestedSet.has(id))
+    const finalOrder = [...requestedInList, ...missing]
+    const indexById = new Map<string, number>()
+    finalOrder.forEach((id, i) => indexById.set(id, i))
+
+    exercises = [...exercises].sort((a, b) => {
+      const ai = indexById.get(a.id) ?? 0
+      const bi = indexById.get(b.id) ?? 0
+      return ai - bi
+    })
+
+    return {
+      ...programSession,
+      exercises,
+      duration: estimateDurationMinutes(exercises),
+    }
+  }, [programSession, todayProgramOverride])
+
+  const displaySession = sessionOverride ?? effectiveProgramSession
+
+  const todayWorkoutExerciseIds = useMemo(() => {
+    const ids = new Set<string>()
+    const session = effectiveProgramSession
+    if (session?.exercises?.length) {
+      session.exercises.forEach((ex) => {
+        if (ex?.id) ids.add(ex.id)
+      })
+    }
+    return ids
+  }, [effectiveProgramSession])
+
+  const todayActiveDrillIds = useMemo(() => {
+    if (!todayProgramOverride) return []
+    const removed = new Set(todayProgramOverride.removedDrillIds ?? [])
+    const ids = (todayProgramOverride.addedDrillIds ?? []).filter((id) => id && !removed.has(id))
+    return Array.from(new Set(ids))
+  }, [todayProgramOverride])
+
+  const todayActiveDrillIdSet = useMemo(() => new Set(todayActiveDrillIds), [todayActiveDrillIds])
+
+  const todayRemovedDrillIds = useMemo(() => {
+    if (!todayProgramOverride) return []
+    const added = new Set(todayProgramOverride.addedDrillIds ?? [])
+    const ids = (todayProgramOverride.removedDrillIds ?? []).filter((id) => id && added.has(id))
+    return Array.from(new Set(ids))
+  }, [todayProgramOverride])
+
+  const todayDrillDoneIdSet = useMemo(() => {
+    return new Set(todayProgramOverride?.drillDoneIds ?? [])
+  }, [todayProgramOverride])
+
+  const todayDrillsLoggedAt = todayProgramOverride?.drillsLoggedAt ?? null
+
+  const todayRemovedExercises = useMemo(() => {
+    if (!programSession || !todayProgramOverride) return []
+    const removed = new Set(todayProgramOverride.removedExerciseIds ?? [])
+    const candidates = [
+      ...(programSession.exercises ?? []),
+      ...(todayProgramOverride.addedExercises ?? []),
+    ]
+    const seen = new Set<string>()
+    const list: Exercise[] = []
+    for (const ex of candidates) {
+      if (!ex?.id) continue
+      if (!removed.has(ex.id)) continue
+      if (seen.has(ex.id)) continue
+      seen.add(ex.id)
+      list.push(ex)
+    }
+    return list
+  }, [programSession, todayProgramOverride])
+
+  const hasTodayOverrides = useMemo(() => {
+    if (!todayProgramOverride) return false
+    return (
+      (todayProgramOverride.addedExercises?.length ?? 0) > 0
+      || (todayProgramOverride.removedExerciseIds?.length ?? 0) > 0
+      || (todayProgramOverride.exerciseOrderIds?.length ?? 0) > 0
+      || (Object.keys(todayProgramOverride.exerciseEdits ?? {}).length) > 0
+      || (todayProgramOverride.addedDrillIds?.length ?? 0) > 0
+      || (todayProgramOverride.removedDrillIds?.length ?? 0) > 0
+      || (todayProgramOverride.drillDoneIds?.length ?? 0) > 0
+      || !!todayProgramOverride.drillsLoggedAt
+    )
+  }, [todayProgramOverride])
+
   // Calculate completed and planned sessions
   const completedSessions = weekProgress.filter(d => d.planned && d.completed).length
   const plannedSessions = weekProgress.filter(d => d.planned).length
@@ -383,6 +582,7 @@ export default function App() {
           setCurrentUser(null)
           setFavoriteExercises(new Set())
           setCompletedExercises(new Set())
+          setTodayOverridesByDate({})
           setSetProgressByExercise({})
           setCurrentSessionWeights({})
           setTotalVolume(0)
@@ -416,6 +616,7 @@ export default function App() {
           setWeekProgress(DEFAULT_WEEK_PROGRESS)
           setSessionHistory([])
           setActivityLogs([])
+          setTodayOverridesByDate({})
           setSetProgressByExercise({})
           setCurrentSessionWeights({})
           setTotalVolume(0)
@@ -451,6 +652,7 @@ export default function App() {
         setCurrentDayIndex(data.currentDayIndex ?? 0)
         setSessionOverride(data.sessionOverride ?? null)
         setSessionSource(data.sessionSource ?? null)
+        setTodayOverridesByDate(data.todayOverridesByDate ?? {})
 
         setCurrentExerciseIndex(data.currentExerciseIndex ?? 0)
         setCurrentSet(data.currentSet ?? 1)
@@ -516,6 +718,7 @@ export default function App() {
       currentDayIndex,
       sessionOverride,
       sessionSource,
+      todayOverridesByDate,
       currentExerciseIndex,
       currentSet,
       sessionStartTime,
@@ -559,6 +762,7 @@ export default function App() {
     currentDayIndex,
     sessionOverride,
     sessionSource,
+    todayOverridesByDate,
     currentExerciseIndex,
     currentSet,
     sessionStartTime,
@@ -601,11 +805,13 @@ export default function App() {
           supabaseActivityLogs,
           supabaseFavorites,
           supabaseCompletions,
+          supabaseTodayOverride,
         ] = await Promise.all([
           supabaseService.getSessionLogs(),
           supabaseService.getActivityLogs(),
           supabaseService.getExerciseFavorites(),
           supabaseService.getExerciseCompletions(),
+          supabaseService.getWorkoutDayOverride(todayKey),
         ])
 
         // Program + state
@@ -714,6 +920,35 @@ export default function App() {
         if (currentUser.combatSessionsPerWeek !== undefined) setCombatSessionsPerWeek(currentUser.combatSessionsPerWeek ?? 0)
         if (currentUser.sessionMinutes !== undefined) setSessionMinutes(currentUser.sessionMinutes ?? 45)
         if (currentUser.injuryNotes !== undefined) setInjuryNotes(currentUser.injuryNotes ?? '')
+
+        if (supabaseTodayOverride?.data) {
+          const raw = supabaseTodayOverride.data as any
+          const normalized: TodayWorkoutOverride = {
+            baseSessionId: raw?.baseSessionId ?? null,
+            baseProgramDayIndex: typeof raw?.baseProgramDayIndex === 'number' ? raw.baseProgramDayIndex : null,
+            baseFingerprint: raw?.baseFingerprint ?? null,
+            addedExercises: Array.isArray(raw?.addedExercises) ? raw.addedExercises : [],
+            removedExerciseIds: Array.isArray(raw?.removedExerciseIds) ? raw.removedExerciseIds : [],
+            exerciseOrderIds: Array.isArray(raw?.exerciseOrderIds) ? raw.exerciseOrderIds : [],
+            exerciseEdits: (raw?.exerciseEdits && typeof raw.exerciseEdits === 'object') ? raw.exerciseEdits : {},
+            addedDrillIds: Array.isArray(raw?.addedDrillIds) ? raw.addedDrillIds : [],
+            removedDrillIds: Array.isArray(raw?.removedDrillIds) ? raw.removedDrillIds : [],
+            drillDoneIds: Array.isArray(raw?.drillDoneIds) ? raw.drillDoneIds : [],
+            drillsLoggedAt: typeof raw?.drillsLoggedAt === 'string' ? raw.drillsLoggedAt : null,
+            updatedAt: supabaseTodayOverride.updatedAt,
+          }
+
+          setTodayOverridesByDate((prev) => {
+            const local = prev[todayKey]
+            if (!local) return { ...prev, [todayKey]: normalized }
+            const localTs = Date.parse(local.updatedAt ?? '')
+            const remoteTs = Date.parse(normalized.updatedAt ?? '')
+            if (Number.isFinite(remoteTs) && (!Number.isFinite(localTs) || remoteTs > localTs)) {
+              return { ...prev, [todayKey]: normalized }
+            }
+            return prev
+          })
+        }
       } catch (error) {
         console.debug('Failed to fetch Supabase data, using localStorage cache:', error)
       } finally {
@@ -723,6 +958,29 @@ export default function App() {
 
     fetchSupabaseData()
   }, [currentUser?.id, isScreenshotMode])
+
+  const todayOverrideUpdatedAt = todayOverridesByDate[todayKey]?.updatedAt
+
+  useEffect(() => {
+    if (!currentUser || isScreenshotMode) return
+    const override = todayOverridesByDate[todayKey]
+    if (!override) return
+
+    if (todayOverridePersistTimeoutRef.current) {
+      clearTimeout(todayOverridePersistTimeoutRef.current)
+    }
+
+    todayOverridePersistTimeoutRef.current = setTimeout(() => {
+      void supabaseService.upsertWorkoutDayOverride(todayKey, override)
+    }, 700)
+
+    return () => {
+      if (todayOverridePersistTimeoutRef.current) {
+        clearTimeout(todayOverridePersistTimeoutRef.current)
+        todayOverridePersistTimeoutRef.current = null
+      }
+    }
+  }, [currentUser?.id, isScreenshotMode, todayKey, todayOverrideUpdatedAt])
 
   useEffect(() => {
     if (currentScreen !== 'loading' || !loadingComplete) return
@@ -1440,7 +1698,7 @@ export default function App() {
     setTotalVolume(0)
 
     if (source === 'program') {
-      setSessionOverride(null)
+      setSessionOverride(session)
       setSessionSource('program')
       setCurrentDayIndex(dayIndex ?? currentDayIndex)
     } else {
@@ -1456,8 +1714,9 @@ export default function App() {
   const handleStartSession = useCallback(() => {
     const dayIndex = nextPlannedDayIndex
     const session = dayIndex >= 0 ? getSessionForDay(dayIndex) : null
-    beginSession(session, 'program', dayIndex)
-  }, [beginSession, getSessionForDay, nextPlannedDayIndex])
+    // If the user edited "today", start the effective instance instead of the raw template session.
+    beginSession(effectiveProgramSession ?? session, 'program', dayIndex)
+  }, [beginSession, getSessionForDay, nextPlannedDayIndex, effectiveProgramSession])
 
   const handleStartSessionForDay = useCallback((dayIndex: number) => {
     const session = getSessionForDay(dayIndex)
@@ -1483,6 +1742,332 @@ export default function App() {
     }
     beginSession(session, 'extra', getTodayIndex())
   }, [beginSession])
+
+  const mutateTodayOverride = useCallback((mutator: (current: TodayWorkoutOverride) => TodayWorkoutOverride) => {
+    const key = getLocalDateKey()
+    const baseSessionId = programSession?.id ?? null
+    const baseProgramDayIndex = programDayIndex >= 0 ? programDayIndex : null
+    const baseFingerprint = fingerprintSession(programSession)
+
+    setTodayOverridesByDate((prev) => {
+      const existing = prev[key]
+      const defaults: TodayWorkoutOverride = {
+        baseSessionId,
+        baseProgramDayIndex,
+        baseFingerprint,
+        addedExercises: [],
+        removedExerciseIds: [],
+        exerciseOrderIds: [],
+        exerciseEdits: {},
+        addedDrillIds: [],
+        removedDrillIds: [],
+        drillDoneIds: [],
+        drillsLoggedAt: null,
+        updatedAt: new Date().toISOString(),
+      }
+
+      const seed: TodayWorkoutOverride = existing
+        ? {
+            ...defaults,
+            ...existing,
+            // Keep the original fingerprint for guardrails. Only fill if missing.
+            baseFingerprint: existing.baseFingerprint ?? defaults.baseFingerprint,
+            exerciseOrderIds: Array.isArray(existing.exerciseOrderIds) ? existing.exerciseOrderIds : [],
+            exerciseEdits: (existing.exerciseEdits as Record<string, Partial<Exercise>> | undefined) ?? {},
+            drillDoneIds: Array.isArray(existing.drillDoneIds) ? existing.drillDoneIds : [],
+            drillsLoggedAt: existing.drillsLoggedAt ?? null,
+          }
+        : defaults
+
+      const next = mutator(seed)
+      return {
+        ...prev,
+        [key]: {
+          ...next,
+          baseSessionId,
+          baseProgramDayIndex,
+          updatedAt: new Date().toISOString(),
+        }
+      }
+    })
+  }, [programSession, programDayIndex])
+
+  const handleResetTodayOverrides = useCallback(() => {
+    const key = getLocalDateKey()
+    setTodayOverridesByDate((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+    void supabaseService.deleteWorkoutDayOverride(key)
+  }, [])
+
+  const buildAddedExercise = useCallback((params: {
+    id: string
+    name: string
+    videoUrl?: string | null
+    isWeighted?: boolean
+  }): Exercise => {
+    const level = userExperienceLevel
+    const sets = level === 'beginner' ? 3 : level === 'advanced' ? 5 : 4
+    const reps = params.isWeighted ? (level === 'advanced' ? 6 : 8) : (level === 'advanced' ? 10 : 12)
+    const restTime = params.isWeighted ? 120 : 75
+    return {
+      id: params.id,
+      name: params.name,
+      sets,
+      reps,
+      restTime,
+      videoUrl: params.videoUrl ?? undefined,
+    }
+  }, [userExperienceLevel])
+
+  const handleAddExerciseToToday = useCallback((exercise: EnhancedExerciseData) => {
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedExerciseIds ?? [])
+      removed.delete(exercise.id)
+
+      const alreadyInBase = (programSession?.exercises ?? []).some((e) => e.id === exercise.id)
+      const alreadyAdded = (current.addedExercises ?? []).some((e) => e.id === exercise.id)
+
+      const nextAdded = alreadyInBase || alreadyAdded
+        ? (current.addedExercises ?? [])
+        : [...(current.addedExercises ?? []), buildAddedExercise({
+            id: exercise.id,
+            name: exercise.name,
+            videoUrl: exercise.videoUrl ?? null,
+            isWeighted: exercise.isWeighted,
+          })]
+
+      return {
+        ...current,
+        addedExercises: nextAdded,
+        removedExerciseIds: Array.from(removed),
+      }
+    })
+  }, [mutateTodayOverride, programSession, buildAddedExercise])
+
+  const handleAddPickerExerciseToToday = useCallback((picked: { id: string; name: string; videoUrl?: string | null }) => {
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedExerciseIds ?? [])
+      removed.delete(picked.id)
+
+      const alreadyInBase = (programSession?.exercises ?? []).some((e) => e.id === picked.id)
+      const alreadyAdded = (current.addedExercises ?? []).some((e) => e.id === picked.id)
+
+      const nextAdded = alreadyInBase || alreadyAdded
+        ? (current.addedExercises ?? [])
+        : [...(current.addedExercises ?? []), buildAddedExercise({
+            id: picked.id,
+            name: picked.name,
+            videoUrl: picked.videoUrl ?? null,
+          })]
+
+      return {
+        ...current,
+        addedExercises: nextAdded,
+        removedExerciseIds: Array.from(removed),
+      }
+    })
+  }, [mutateTodayOverride, programSession, buildAddedExercise])
+
+  const handleSetTodayExerciseOrder = useCallback((orderIds: string[]) => {
+    mutateTodayOverride((current) => {
+      const nextOrder: string[] = []
+      const seen = new Set<string>()
+      for (const id of orderIds ?? []) {
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        nextOrder.push(id)
+      }
+      return { ...current, exerciseOrderIds: nextOrder }
+    })
+  }, [mutateTodayOverride])
+
+  const handleReplacePickerExerciseInToday = useCallback((targetExerciseId: string, picked: { id: string; name: string; videoUrl?: string | null }) => {
+    if (!targetExerciseId || !picked?.id) return
+    if (picked.id === targetExerciseId) return
+
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedExerciseIds ?? [])
+      removed.add(targetExerciseId)
+      removed.delete(picked.id)
+
+      const alreadyInBase = (programSession?.exercises ?? []).some((e) => e.id === picked.id)
+      const alreadyAdded = (current.addedExercises ?? []).some((e) => e.id === picked.id)
+
+      let nextAdded = current.addedExercises ?? []
+      // If the target was added (not part of the base session), drop it from addedExercises.
+      nextAdded = nextAdded.filter((e) => e.id !== targetExerciseId)
+
+      if (!alreadyInBase && !alreadyAdded) {
+        nextAdded = [
+          ...nextAdded,
+          buildAddedExercise({
+            id: picked.id,
+            name: picked.name,
+            videoUrl: picked.videoUrl ?? null,
+          })
+        ]
+      }
+
+      // Replace ordering slot if user previously reordered (or derive from current effective order).
+      const seedOrder =
+        Array.isArray(current.exerciseOrderIds) && current.exerciseOrderIds.length > 0
+          ? current.exerciseOrderIds
+          : (effectiveProgramSession?.exercises ?? []).map((e) => e.id)
+
+      const replaced = seedOrder.map((id) => (id === targetExerciseId ? picked.id : id)).filter(Boolean)
+      const filtered = replaced.filter((id) => id !== targetExerciseId)
+      if (!filtered.includes(picked.id)) filtered.push(picked.id)
+      const nextOrder: string[] = []
+      const seen = new Set<string>()
+      for (const id of filtered) {
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        nextOrder.push(id)
+      }
+
+      const nextEdits = { ...(current.exerciseEdits ?? {}) }
+      delete nextEdits[targetExerciseId]
+
+      return {
+        ...current,
+        addedExercises: nextAdded,
+        removedExerciseIds: Array.from(removed),
+        exerciseOrderIds: nextOrder,
+        exerciseEdits: nextEdits,
+      }
+    })
+  }, [mutateTodayOverride, programSession, buildAddedExercise, effectiveProgramSession])
+
+  const handleUpdateTodayExercise = useCallback((exerciseId: string, patch: { sets?: number; reps?: number | null; duration?: number | null; restTime?: number; notes?: string | null }) => {
+    if (!exerciseId) return
+    mutateTodayOverride((current) => {
+      const currentEdits = (current.exerciseEdits as Record<string, Partial<Exercise>> | undefined) ?? {}
+      const prevPatch = currentEdits[exerciseId] ?? {}
+
+      const nextPatch: Record<string, unknown> = { ...prevPatch, ...patch }
+
+      // Null means "clear override" for that field.
+      if (patch.reps === null) delete nextPatch.reps
+      if (patch.duration === null) delete nextPatch.duration
+      if (patch.notes === null) delete nextPatch.notes
+
+      // Basic sanitization.
+      if (typeof nextPatch.sets === 'number') nextPatch.sets = Math.max(1, Math.floor(nextPatch.sets))
+      if (typeof nextPatch.restTime === 'number') nextPatch.restTime = Math.max(0, Math.floor(nextPatch.restTime))
+      if (typeof nextPatch.reps === 'number') nextPatch.reps = Math.max(0, Math.floor(nextPatch.reps))
+      if (typeof nextPatch.duration === 'number') nextPatch.duration = Math.max(0, Math.floor(nextPatch.duration))
+
+      const cleaned = { ...currentEdits }
+      const keys = Object.keys(nextPatch).filter((k) => nextPatch[k] !== undefined)
+      if (keys.length === 0) {
+        delete cleaned[exerciseId]
+      } else {
+        cleaned[exerciseId] = nextPatch as Partial<Exercise>
+      }
+
+      return { ...current, exerciseEdits: cleaned }
+    })
+  }, [mutateTodayOverride])
+
+  const handleResetTodayExerciseEdits = useCallback((exerciseId: string) => {
+    if (!exerciseId) return
+    mutateTodayOverride((current) => {
+      const cleaned = { ...(current.exerciseEdits ?? {}) }
+      delete (cleaned as Record<string, unknown>)[exerciseId]
+      return { ...current, exerciseEdits: cleaned }
+    })
+  }, [mutateTodayOverride])
+
+  const handleRemoveExerciseForToday = useCallback((exerciseId: string) => {
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedExerciseIds ?? [])
+      removed.add(exerciseId)
+      return { ...current, removedExerciseIds: Array.from(removed) }
+    })
+  }, [mutateTodayOverride])
+
+  const handleRestoreExerciseForToday = useCallback((exerciseId: string) => {
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedExerciseIds ?? [])
+      removed.delete(exerciseId)
+      return { ...current, removedExerciseIds: Array.from(removed) }
+    })
+  }, [mutateTodayOverride])
+
+  const handleAddDrillToToday = useCallback((drill: Drill) => {
+    mutateTodayOverride((current) => {
+      const added = new Set(current.addedDrillIds ?? [])
+      const removed = new Set(current.removedDrillIds ?? [])
+      added.add(drill.id)
+      removed.delete(drill.id)
+      return {
+        ...current,
+        addedDrillIds: Array.from(added),
+        removedDrillIds: Array.from(removed),
+      }
+    })
+  }, [mutateTodayOverride])
+
+  const handleRemoveDrillForToday = useCallback((drillId: string) => {
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedDrillIds ?? [])
+      removed.add(drillId)
+      return { ...current, removedDrillIds: Array.from(removed) }
+    })
+  }, [mutateTodayOverride])
+
+  const handleRestoreDrillForToday = useCallback((drillId: string) => {
+    mutateTodayOverride((current) => {
+      const removed = new Set(current.removedDrillIds ?? [])
+      removed.delete(drillId)
+      return { ...current, removedDrillIds: Array.from(removed) }
+    })
+  }, [mutateTodayOverride])
+
+  const handleToggleTodayDrillDone = useCallback((drillId: string, done: boolean) => {
+    if (!drillId) return
+    mutateTodayOverride((current) => {
+      const next = new Set(current.drillDoneIds ?? [])
+      if (done) next.add(drillId)
+      else next.delete(drillId)
+      return { ...current, drillDoneIds: Array.from(next) }
+    })
+  }, [mutateTodayOverride])
+
+  const handleLogTodayDrills = useCallback(async (params: { drillIds: string[]; durationMinutes: number; notes: string }) => {
+    const nowIso = new Date().toISOString()
+    mutateTodayOverride((current) => ({ ...current, drillsLoggedAt: nowIso }))
+
+    const tempId = `drills-${Date.now()}`
+    const log: ActivityLog = {
+      id: tempId,
+      date: nowIso,
+      type: 'drilling',
+      duration: Math.max(1, Math.floor(params.durationMinutes)),
+      intensity: 5,
+      notes: params.notes,
+    }
+
+    setActivityLogs((prev) => [...prev, log])
+    analytics.track('activity_logged', { type: log.type, duration: log.duration, source: 'drills' })
+
+    try {
+      const savedLog = await supabaseService.logActivity({
+        date: log.date,
+        type: log.type,
+        duration: log.duration,
+        intensity: log.intensity,
+        notes: log.notes,
+      })
+      setActivityLogs((prev) => prev.map((a) => (a.id === tempId ? savedLog : a)))
+    } catch (error) {
+      console.debug('Failed to save drill log to Supabase, cached locally:', error)
+    }
+  }, [mutateTodayOverride])
 
   // Handle ending session early
   const handleEndSession = useCallback(() => {
@@ -1889,7 +2474,7 @@ export default function App() {
     case 'home':
       screen = (
         <Home
-          session={currentSession}
+          session={displaySession}
           weekProgress={weekProgress}
           currentStreak={currentStreak}
           longestStreak={longestStreak}
@@ -1900,6 +2485,54 @@ export default function App() {
           onUndo={handleUndo}
           onStartAction={handleCenterAction}
           hasWorkoutToday={hasWorkoutToday}
+        />
+      )
+      break
+
+    case 'today-editor':
+      screen = (
+        <TodayEditor
+          sport={selectedSport}
+          baseSession={programSession}
+          session={effectiveProgramSession}
+          removedExercises={todayRemovedExercises}
+          activeDrillIds={todayActiveDrillIds}
+          removedDrillIds={todayRemovedDrillIds}
+          drillDoneIds={todayDrillDoneIdSet}
+          drillsLoggedAt={todayDrillsLoggedAt}
+          hasOverrides={hasTodayOverrides}
+          hasBaseChanged={hasTodayBaseChanged}
+          canEditProgram={!!programSession && programDayIndex >= 0}
+          onBack={() => setCurrentScreen('home')}
+          onNavigate={setCurrentScreen}
+          onStartAction={handleCenterAction}
+          hasWorkoutToday={hasWorkoutToday}
+          onStartWorkout={handleStartSession}
+          onResetToday={handleResetTodayOverrides}
+          onEditProgram={() => {
+            if (programDayIndex >= 0) {
+              setEditingSessionDayIndex(programDayIndex)
+              setCurrentScreen('program-session-editor')
+            } else {
+              setCurrentScreen('week-view')
+            }
+          }}
+          onAddExercise={handleAddPickerExerciseToToday}
+          onReplaceExercise={handleReplacePickerExerciseInToday}
+          onSetExerciseOrder={handleSetTodayExerciseOrder}
+          onUpdateExercise={handleUpdateTodayExercise}
+          onResetExerciseEdits={handleResetTodayExerciseEdits}
+          onRemoveExercise={handleRemoveExerciseForToday}
+          onRestoreExercise={handleRestoreExerciseForToday}
+          onRemoveDrill={handleRemoveDrillForToday}
+          onRestoreDrill={handleRestoreDrillForToday}
+          onToggleDrillDone={handleToggleTodayDrillDone}
+          onLogDrills={handleLogTodayDrills}
+          onOpenDrill={(drill) => {
+            setSelectedDrill(drill)
+            setRecentlyViewedDrills((prev) => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
+            setCurrentScreen('drill-detail')
+          }}
         />
       )
       break
@@ -2129,10 +2762,10 @@ export default function App() {
       screen = (
         <TrainingHub
           sport={selectedSport}
-          currentWorkoutFocus={currentSession?.focus}
+          currentWorkoutFocus={displaySession?.focus}
           onNavigate={setCurrentScreen}
           backScreen='home'
-          session={currentSession}
+          session={displaySession}
           onSelectDrill={(drill) => {
             setSelectedDrill(drill)
             setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
@@ -2179,6 +2812,8 @@ export default function App() {
               setCurrentScreen('training-hub')
             }
           }}
+          onAddToToday={handleAddDrillToToday}
+          isInToday={todayActiveDrillIdSet.has(selectedDrill.id)}
           onSelectRelatedDrill={(drill) => {
             setSelectedDrill(drill)
             setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
@@ -2219,6 +2854,8 @@ export default function App() {
             setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
             setCurrentScreen('drill-detail')
           }}
+          onAddToToday={handleAddDrillToToday}
+          todayDrillIds={todayActiveDrillIdSet}
           initialSubcategory={selectedSubcategory || undefined}
           onStartAction={handleCenterAction}
           hasWorkoutToday={hasWorkoutToday}
@@ -2422,7 +3059,7 @@ export default function App() {
     case 'exercise-list':
       screen = (
         <ExerciseList
-          session={currentSession}
+          session={displaySession}
           currentExerciseIndex={currentExerciseIndex}
           onNavigate={setCurrentScreen}
           onStartAction={handleCenterAction}
@@ -2461,6 +3098,8 @@ export default function App() {
             setSelectedExercise(exercise)
             setCurrentScreen('exercise-detail')
           }}
+          onAddToToday={handleAddExerciseToToday}
+          todayExerciseIds={todayWorkoutExerciseIds}
           onStartAction={handleCenterAction}
           hasWorkoutToday={hasWorkoutToday}
         />
@@ -2488,6 +3127,8 @@ export default function App() {
           onBack={() => setCurrentScreen('sport-category-exercises')}
           isFavorite={favoriteExercises.has(selectedExercise.id)}
           isCompleted={completedExercises.has(selectedExercise.id)}
+          isInToday={todayWorkoutExerciseIds.has(selectedExercise.id)}
+          onAddToToday={handleAddExerciseToToday}
           onToggleFavorite={(exerciseId) => {
             const shouldFavorite = !favoriteExercises.has(exerciseId)
             setFavoriteExercises(prev => {

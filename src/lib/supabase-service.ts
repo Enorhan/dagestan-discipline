@@ -845,6 +845,70 @@ export const supabaseService = {
   },
 
   // ============================================
+  // WORKOUT DAY OVERRIDES (AAA "TODAY" INSTANCES)
+  // ============================================
+
+  async getWorkoutDayOverride(workoutDate: string): Promise<{ data: any; updatedAt: string } | null> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return null
+
+    try {
+      const { data, error } = await db
+        .from('workout_day_overrides')
+        .select('data, updated_at')
+        .eq('user_id', currentUser.id)
+        .eq('workout_date', workoutDate)
+        .maybeSingle()
+
+      if (error || !data) return null
+      return {
+        data: (data as any).data,
+        updatedAt: (data as any).updated_at ?? new Date().toISOString(),
+      }
+    } catch (error) {
+      // Table may not exist yet (migration not applied) or network error.
+      console.debug('Failed to fetch workout day override:', error)
+      return null
+    }
+  },
+
+  async upsertWorkoutDayOverride(workoutDate: string, payload: any): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return
+
+    try {
+      await db
+        .from('workout_day_overrides')
+        .upsert(
+          {
+            user_id: currentUser.id,
+            workout_date: workoutDate,
+            data: payload,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,workout_date' }
+        )
+    } catch (error) {
+      console.debug('Failed to upsert workout day override:', error)
+    }
+  },
+
+  async deleteWorkoutDayOverride(workoutDate: string): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return
+
+    try {
+      await db
+        .from('workout_day_overrides')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('workout_date', workoutDate)
+    } catch (error) {
+      console.debug('Failed to delete workout day override:', error)
+    }
+  },
+
+  // ============================================
   // EXERCISE FAVORITES & COMPLETIONS
   // ============================================
 

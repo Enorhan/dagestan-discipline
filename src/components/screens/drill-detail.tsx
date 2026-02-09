@@ -5,12 +5,13 @@ import { Drill, DrillCategory } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { categoryInfo } from '@/lib/drills-data'
 import { drillsService } from '@/lib/drills-service'
+import { haptics } from '@/lib/haptics'
 import { BackButton } from '@/components/ui/back-button'
 import { VideoPlayer } from '@/components/ui/video-player'
 import { HorizontalScroll } from '@/components/ui/horizontal-scroll'
 import { Button } from '@/components/ui/button'
 import {
-  Check, X, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Clock, Refresh
+  Check, X, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Clock, Refresh, Plus
 } from '@/components/ui/icons'
 
 // Map category to icon component
@@ -95,9 +96,18 @@ interface DrillDetailProps {
   drillId?: string
   onBack: () => void
   onSelectRelatedDrill?: (drill: Drill) => void
+  onAddToToday?: (drill: Drill) => void
+  isInToday?: boolean
 }
 
-export function DrillDetail({ drill: drillProp, drillId, onBack, onSelectRelatedDrill }: DrillDetailProps) {
+export function DrillDetail({
+  drill: drillProp,
+  drillId,
+  onBack,
+  onSelectRelatedDrill,
+  onAddToToday,
+  isInToday = false,
+}: DrillDetailProps) {
   const [drill, setDrill] = useState<Drill | null>(drillProp ?? null)
   const [isLoading, setIsLoading] = useState(!drillProp && !!drillId)
   const [relatedDrillsCache, setRelatedDrillsCache] = useState<Record<string, Drill>>({})
@@ -351,6 +361,36 @@ export function DrillDetail({ drill: drillProp, drillId, onBack, onSelectRelated
             drillIds={drill.relatedDrills}
             onSelect={handleRelatedDrillClick}
           />
+        )}
+
+        {onAddToToday && (
+          <div className="px-4 sm:px-6 py-6 pb-10">
+            <Button
+              variant={isInToday ? 'secondary' : 'primary'}
+              size="lg"
+              fullWidth
+              disabled={isInToday}
+              className="h-14 rounded-2xl font-black uppercase tracking-wider"
+              onClick={() => {
+                if (!drill) return
+                haptics.medium()
+                onAddToToday(drill)
+              }}
+              withHaptic={false}
+            >
+              {isInToday ? (
+                <>
+                  <Check size={16} className="mr-2" />
+                  Added to Today
+                </>
+              ) : (
+                <>
+                  <Plus size={16} className="mr-2" />
+                  Add to Today
+                </>
+              )}
+            </Button>
+          </div>
         )}
       </ScreenShellContent>
     </ScreenShell>

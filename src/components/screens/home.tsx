@@ -441,6 +441,19 @@ export function Home({
                     <Play size={20} className="mr-2 fill-current" />
                     Start Workout
                   </Button>
+
+                  <Button
+                    onClick={() => {
+                      haptics.light()
+                      onNavigate('today-editor')
+                    }}
+                    variant="secondary"
+                    size="lg"
+                    fullWidth
+                    className="h-12 font-bold rounded-xl mt-3"
+                  >
+                    Edit Today
+                  </Button>
                 </div>
               </div>
             ) : (

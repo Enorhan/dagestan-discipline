@@ -5,6 +5,7 @@ export type Screen =
   | 'onboarding-intake'
   | 'onboarding-equipment'
   | 'home'
+  | 'today-editor'
   | 'week-view'
   | 'workout-session'
   | 'rest-timer'

@@ -21,7 +21,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Search, X, ChevronRight, ChevronDown, AlertCircle, RefreshCw,
-  Video, Filter, Trophy, Dumbbell, ArrowUpDown, Tag
+  Video, Filter, Trophy, Dumbbell, ArrowUpDown, Tag, Plus, Check
 } from '@/components/ui/icons'
 
 const categoryLabels: Record<ExerciseCategory, { title: string; description: string }> = {
@@ -71,6 +71,8 @@ interface SportCategoryExercisesProps {
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onExerciseSelect?: (exercise: EnhancedExerciseData) => void
+  onAddToToday?: (exercise: EnhancedExerciseData) => void
+  todayExerciseIds?: Set<string>
   onStartAction?: () => void
   hasWorkoutToday?: boolean
 }
@@ -168,6 +170,8 @@ export function SportCategoryExercises({
   onNavigate,
   onBack,
   onExerciseSelect,
+  onAddToToday,
+  todayExerciseIds,
   onStartAction,
   hasWorkoutToday = false
 }: SportCategoryExercisesProps) {
@@ -603,13 +607,16 @@ export function SportCategoryExercises({
                       {/* Exercise List */}
                       <div className="space-y-2">
                         {visibleExercises.map((exercise) => (
-                          <button
+                          <div
                             key={exercise.id}
-                            onClick={() => handleExerciseTap(exercise)}
-                            className="group/row w-full text-left rounded-xl border border-white/5 bg-white/[0.02] p-3 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200"
+                            className="group/row w-full rounded-xl border border-white/5 bg-white/[0.02] p-3 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1 min-w-0">
+                              <button
+                                onClick={() => handleExerciseTap(exercise)}
+                                className="flex-1 min-w-0 text-left"
+                                aria-label={`Open ${exercise.name}`}
+                              >
                                 <span className="text-sm font-bold text-foreground group-hover/row:text-primary transition-colors">
                                   {formatExerciseName(exercise.name)}
                                 </span>
@@ -630,9 +637,31 @@ export function SportCategoryExercises({
                                     </div>
                                   )}
                                 </div>
-                              </div>
+                              </button>
 
                               <div className="flex items-center gap-2">
+                                {onAddToToday && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-9 w-9 rounded-xl border ${
+                                      todayExerciseIds?.has(exercise.id)
+                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                        : 'bg-white/5 border-white/10 text-white/70 hover:text-white'
+                                    }`}
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      if (todayExerciseIds?.has(exercise.id)) return
+                                      haptics.medium()
+                                      onAddToToday(exercise)
+                                    }}
+                                    aria-label={todayExerciseIds?.has(exercise.id) ? 'Added to today' : 'Add to today'}
+                                  >
+                                    {todayExerciseIds?.has(exercise.id) ? <Check size={16} /> : <Plus size={16} />}
+                                  </Button>
+                                )}
                                 {exercise.videoUrl && (
                                   <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
                                     <Video size={16} fill="currentColor" className="opacity-80" />
@@ -646,7 +675,7 @@ export function SportCategoryExercises({
                                 <ChevronRight size={16} className="text-white/20 group-hover/row:translate-x-0.5 transition-transform" />
                               </div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
 

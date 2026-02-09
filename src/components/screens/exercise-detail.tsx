@@ -12,7 +12,7 @@ import { VideoPlayer } from '@/components/ui/video-player'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Trophy, Dumbbell, Tag, Clock, RefreshCw, ChevronRight, Info, Video,
-  Heart, Check, Share, Star
+  Heart, Check, Share, Star, Plus
 } from '@/components/ui/icons'
 
 interface ExerciseDetailProps {
@@ -21,8 +21,10 @@ interface ExerciseDetailProps {
   onBack: () => void
   isFavorite?: boolean
   isCompleted?: boolean
+  isInToday?: boolean
   onToggleFavorite?: (exerciseId: string) => void
   onMarkComplete?: (exerciseId: string) => void
+  onAddToToday?: (exercise: EnhancedExerciseData) => void
   onShare?: (exercise: EnhancedExerciseData) => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
@@ -52,8 +54,10 @@ export function ExerciseDetail({
   onBack,
   isFavorite = false,
   isCompleted = false,
+  isInToday = false,
   onToggleFavorite,
   onMarkComplete,
+  onAddToToday,
   onShare,
   onStartAction,
   hasWorkoutToday = false
@@ -363,20 +367,48 @@ export function ExerciseDetail({
           </div>
 
           {/* Action Footer */}
-          {!isCompleted && onMarkComplete && (
-            <div className="px-6 py-6 pb-12">
-              <Button
-                variant="primary"
-                size="xl"
-                fullWidth
-                className="h-16 rounded-2xl font-black text-lg uppercase tracking-wider glow-primary-subtle"
-                onClick={() => {
-                  haptics.success()
-                  onMarkComplete(exercise.id)
-                }}
-              >
-                Complete Drill
-              </Button>
+          {(onAddToToday || (!isCompleted && onMarkComplete)) && (
+            <div className="px-6 py-6 pb-12 space-y-3">
+              {onAddToToday && (
+                <Button
+                  variant={isInToday ? 'secondary' : 'primary'}
+                  size="xl"
+                  fullWidth
+                  className="h-16 rounded-2xl font-black text-lg uppercase tracking-wider"
+                  disabled={isInToday}
+                  onClick={() => {
+                    haptics.medium()
+                    onAddToToday(exercise)
+                  }}
+                >
+                  {isInToday ? (
+                    <>
+                      <Check size={18} className="mr-2" />
+                      Added to Today
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={18} className="mr-2" />
+                      Add to Today
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {!isCompleted && onMarkComplete && (
+                <Button
+                  variant="outline"
+                  size="xl"
+                  fullWidth
+                  className="h-16 rounded-2xl font-black text-lg uppercase tracking-wider border-white/10 bg-white/5 hover:bg-white/10"
+                  onClick={() => {
+                    haptics.success()
+                    onMarkComplete(exercise.id)
+                  }}
+                >
+                  Complete Drill
+                </Button>
+              )}
             </div>
           )}
         </div>

@@ -390,7 +390,7 @@ export function TrainingHub({
 
           {/* My Workout Card */}
           <Button
-            onClick={() => onNavigate('exercise-list')}
+            onClick={() => onNavigate('today-editor')}
             variant="secondary"
             size="sm"
             className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start mb-4 border border-white/10 bg-gradient-to-br from-cyan-500/20 via-black/80 to-black/95"
@@ -419,7 +419,7 @@ export function TrainingHub({
                 <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
               </div>
               <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                View Schedule
+                Edit Today
               </span>
             </div>
           </Button>

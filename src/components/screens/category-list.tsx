@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Search, X, ChevronRight, Clock, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Refresh
+  Search, X, ChevronRight, Clock, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Refresh, Plus, Check
 } from '@/components/ui/icons'
 
 // Map category to icon component
@@ -123,6 +123,8 @@ interface CategoryListProps {
   category: DrillCategory
   onBack: () => void
   onSelectDrill: (drill: Drill) => void
+  onAddToToday?: (drill: Drill) => void
+  todayDrillIds?: Set<string>
   initialSubcategory?: DrillSubcategory
   onNavigate: (screen: Screen) => void
   onStartAction?: () => void
@@ -133,6 +135,8 @@ export function CategoryList({
   category,
   onBack,
   onSelectDrill,
+  onAddToToday,
+  todayDrillIds,
   initialSubcategory,
   onNavigate,
   onStartAction,
@@ -319,17 +323,18 @@ export function CategoryList({
             ) : (
               <div className="space-y-3">
                 {filteredDrills.map((drill, index) => (
-                  <Button
+                  <div
                     key={drill.id}
-                    onClick={() => onSelectDrill(drill)}
-                    variant="secondary"
-                    size="sm"
-                    className={`w-full rounded-2xl p-5 text-left justify-start items-start normal-case tracking-normal h-auto border border-white/10 bg-gradient-to-br ${theme.cardGradient} card-interactive stagger-item`}
+                    className={`w-full rounded-2xl p-5 border border-white/10 bg-gradient-to-br ${theme.cardGradient} card-interactive stagger-item`}
                     style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
                   >
                     <div className="relative z-10 flex flex-col gap-3 w-full">
                       <div className="flex items-start justify-between gap-3 w-full">
-                        <div className="flex items-start gap-4 min-w-0">
+                        <button
+                          onClick={() => onSelectDrill(drill)}
+                          className="flex items-start gap-4 min-w-0 flex-1 text-left"
+                          aria-label={`Open ${drill.name}`}
+                        >
                           <div className={`w-12 h-12 rounded-xl ${theme.iconBg} flex items-center justify-center border border-white/10 flex-shrink-0`}>
                             {categoryIcons[category]}
                           </div>
@@ -358,14 +363,39 @@ export function CategoryList({
                               )}
                             </div>
                           </div>
+                        </button>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {onAddToToday && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={`h-10 w-10 rounded-xl border ${
+                                todayDrillIds?.has(drill.id)
+                                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                  : 'bg-white/5 border-white/10 text-white/70 hover:text-white'
+                              }`}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (todayDrillIds?.has(drill.id)) return
+                                haptics.medium()
+                                onAddToToday(drill)
+                              }}
+                              aria-label={todayDrillIds?.has(drill.id) ? 'Added to today' : 'Add to today'}
+                            >
+                              {todayDrillIds?.has(drill.id) ? <Check size={16} /> : <Plus size={16} />}
+                            </Button>
+                          )}
+                          <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
                         </div>
-                        <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
                       </div>
                       <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                         View Drill
                       </span>
                     </div>
-                  </Button>
+                  </div>
                 ))}
               </div>
             )}
