@@ -5,10 +5,9 @@ import { Equipment, Session, WeightUnit } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
-import { ExerciseNavigator } from '@/components/ui/exercise-navigator'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { X, Pause, Play, ChevronRight, ChevronLeft } from '@/components/ui/icons'
+import { X, Pause, Play, Check } from '@/components/ui/icons'
 
 const sessionVisualTheme = (focus: string | undefined) => {
   const f = (focus ?? '').toLowerCase()
@@ -79,17 +78,17 @@ interface WorkoutSessionProps {
   pausedTime: number
   pauseStartedAt: number | null
   onTogglePause: () => void
-  onConfirmSet: (weight?: number) => void
-  onPreviousSet: () => void
   onEndSession: () => void
   onWeightUnitChange?: (unit: WeightUnit) => void
-  lastSessionWeights?: Record<string, number[]> // exerciseId -> weights per set
+  // Progress tracking (per set)
+  setProgressByExercise: Record<string, boolean[]>
+  currentSessionWeights: Record<string, number[]> // base-unit (lbs) weights per set index; 0 means "not set"
+  lastSessionWeights?: Record<string, number[]> // base-unit (lbs) weights per set index
+  onSelectSet: (exerciseIndex: number, setNumber: number) => void
+  onToggleSetDone: (exerciseIndex: number, setNumber: number, shouldBeDone: boolean, weightBase?: number) => void
+  onFinishSession: () => void
   undoLabel?: string | null
   onUndo: () => void
-  // Exercise navigation
-  skippedExercises: Set<string>
-  onJumpToExercise: (index: number) => void
-  onSkipExercise: (exerciseId: string) => void
 }
 
 export function WorkoutSession({
@@ -103,33 +102,22 @@ export function WorkoutSession({
   pausedTime,
   pauseStartedAt,
   onTogglePause,
-  onConfirmSet,
-  onPreviousSet,
   onEndSession,
   onWeightUnitChange,
+  setProgressByExercise,
+  currentSessionWeights,
   lastSessionWeights,
+  onSelectSet,
+  onToggleSetDone,
+  onFinishSession,
   undoLabel,
   onUndo,
-  skippedExercises,
-  onJumpToExercise,
-  onSkipExercise
 }: WorkoutSessionProps) {
   const [showEndConfirm, setShowEndConfirm] = useState(false)
-  const [showNavigator, setShowNavigator] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [weight, setWeight] = useState<string>('')
-  const [showVideo, setShowVideo] = useState(false)
-  const [weightFlash, setWeightFlash] = useState<'increase' | 'decrease' | null>(null)
-  const [confirmPulse, setConfirmPulse] = useState(false)
-  const [showSetCheck, setShowSetCheck] = useState(false)
-  const [isBodyweight, setIsBodyweight] = useState(false)
-  const [weightUndo, setWeightUndo] = useState<{ previous: string } | null>(null)
 
-  const lastWeightRef = useRef<number | null>(null)
   const unitRef = useRef<WeightUnit>(weightUnit)
-  const weightFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const weightUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Handle null session
   if (!session) {
@@ -174,19 +162,6 @@ export function WorkoutSession({
     )
   }
 
-  const isLastSet = currentSet === currentExercise.sets
-  const isLastExercise = currentExerciseIndex === totalExercises - 1
-
-  // Get last session weight for this exercise and set
-  const getLastWeight = () => {
-    if (!lastSessionWeights || !currentExercise) return null
-    const weights = lastSessionWeights[currentExercise.id]
-    if (!weights || weights.length < currentSet) return null
-    return weights[currentSet - 1]
-  }
-
-  const lastWeight = getLastWeight()
-  const lastBestWeight = lastSessionWeights?.[currentExercise.id]?.reduce((max, value) => Math.max(max, value), 0) ?? null
   const LBS_PER_KG = 2.20462
 
   const formatWeightValue = (value: number) => {
@@ -202,44 +177,21 @@ export function WorkoutSession({
     weightUnit === 'lbs' ? value : value * LBS_PER_KG
   )
 
-  const canGoPrevious = currentExerciseIndex > 0 || currentSet > 1
-  const nextExercise = isLastSet ? session.exercises[currentExerciseIndex + 1] : currentExercise
-  const nextSetNumber = isLastSet ? 1 : currentSet + 1
-  const remainingSets = session.exercises.reduce((acc, exercise, index) => {
-    if (index < currentExerciseIndex) return acc
-    if (index === currentExerciseIndex) {
-      return acc + Math.max(0, exercise.sets - currentSet + 1)
-    }
-    return acc + exercise.sets
-  }, 0)
-  const remainingRestSeconds = session.exercises.reduce((acc, exercise, index) => {
-    if (index < currentExerciseIndex) return acc
-    const setsLeft = index === currentExerciseIndex
-      ? Math.max(0, exercise.sets - currentSet)
-      : exercise.sets
-    return acc + (setsLeft * exercise.restTime)
-  }, 0)
-  const remainingMinutes = Math.max(1, Math.round(remainingRestSeconds / 60))
-  const lastWeightDisplay = lastWeight !== null && lastWeight !== undefined
-    ? formatWeightValue(toDisplayWeight(lastWeight))
-    : null
-  const lastBestDisplay = lastBestWeight !== null && lastBestWeight !== undefined && lastBestWeight > 0
-    ? formatWeightValue(toDisplayWeight(lastBestWeight))
-    : null
-  const currentWeightValue = parseFloat(weight)
-  const weightDelta = lastWeightDisplay && !Number.isNaN(currentWeightValue)
-    ? Number((currentWeightValue - parseFloat(lastWeightDisplay)).toFixed(1))
-    : null
-  const lastBestDisplayValue = lastBestDisplay ? parseFloat(lastBestDisplay) : null
-  const isPrAttempt = lastBestDisplayValue !== null && !Number.isNaN(currentWeightValue)
-    ? currentWeightValue > lastBestDisplayValue
-    : false
-  const suggestionBase = lastWeight ?? lastBestWeight
-  const suggestionIncrement = weightUnit === 'kg' ? (2.5 * LBS_PER_KG) : 5
-  const suggestedWeight = suggestionBase ? suggestionBase + suggestionIncrement : null
-  const suggestedDisplay = suggestedWeight ? formatWeightValue(toDisplayWeight(suggestedWeight)) : null
-
   const visualTheme = sessionVisualTheme(session.focus)
+  const selectedSetIndex = Math.max(0, currentSet - 1)
+
+  const selectedDone =
+    !!setProgressByExercise[currentExercise.id]?.[selectedSetIndex]
+
+  const selectedCurrentBase = currentSessionWeights[currentExercise.id]?.[selectedSetIndex] ?? 0
+  const selectedLastBase = lastSessionWeights?.[currentExercise.id]?.[selectedSetIndex] ?? 0
+
+  const selectedLastDisplay = selectedLastBase > 0 ? formatWeightValue(toDisplayWeight(selectedLastBase)) : null
+
+  const getDisplayForBase = (valueLbs: number | null | undefined) => {
+    if (!valueLbs || valueLbs <= 0) return null
+    return formatWeightValue(toDisplayWeight(valueLbs))
+  }
 
   // Update elapsed time every second (paused time excluded)
   useEffect(() => {
@@ -260,21 +212,22 @@ export function WorkoutSession({
     return () => clearInterval(interval)
   }, [sessionStartTime, isPaused, pausedTime, pauseStartedAt])
 
-  // Auto-fill weight with last session data
+  // Prefill weight when selection changes.
   useEffect(() => {
     if (isBodyweightOnly) {
       setWeight('')
-      setIsBodyweight(true)
       return
     }
-    if (lastWeight !== null && lastWeight !== undefined) {
-      setWeight(formatWeightValue(toDisplayWeight(lastWeight)))
-      setIsBodyweight(false)
-    } else {
-      setWeight('')
-      setIsBodyweight(false)
+    if (selectedCurrentBase > 0) {
+      setWeight(formatWeightValue(toDisplayWeight(selectedCurrentBase)))
+      return
     }
-  }, [currentExerciseIndex, currentSet, lastWeight, isBodyweightOnly])
+    if (selectedLastBase > 0) {
+      setWeight(formatWeightValue(toDisplayWeight(selectedLastBase)))
+      return
+    }
+    setWeight('')
+  }, [currentExerciseIndex, currentSet, isBodyweightOnly, selectedCurrentBase, selectedLastBase, weightUnit])
 
   // Convert input when unit changes
   useEffect(() => {
@@ -289,70 +242,24 @@ export function WorkoutSession({
     unitRef.current = weightUnit
   }, [weightUnit, weight, LBS_PER_KG])
 
-  // Weight change feedback
-  useEffect(() => {
-    const currentValue = parseFloat(weight)
-    if (Number.isNaN(currentValue)) {
-      lastWeightRef.current = null
-      return
-    }
-
-    const previousValue = lastWeightRef.current
-    if (previousValue !== null && currentValue !== previousValue) {
-      setWeightFlash(currentValue > previousValue ? 'increase' : 'decrease')
-      if (weightFlashTimeoutRef.current) {
-        clearTimeout(weightFlashTimeoutRef.current)
-      }
-      weightFlashTimeoutRef.current = setTimeout(() => {
-        setWeightFlash(null)
-      }, 250)
-    }
-
-    lastWeightRef.current = currentValue
-  }, [weight])
-
-  useEffect(() => {
-    return () => {
-      if (weightFlashTimeoutRef.current) {
-        clearTimeout(weightFlashTimeoutRef.current)
-      }
-      if (confirmTimeoutRef.current) {
-        clearTimeout(confirmTimeoutRef.current)
-      }
-      if (weightUndoTimeoutRef.current) {
-        clearTimeout(weightUndoTimeoutRef.current)
-      }
-    }
-  }, [])
-
   const formatElapsedTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleConfirmSetWithHaptic = () => {
+  const handleToggleSelectedSet = () => {
     if (isPaused) return
+    const parsed = weight ? parseFloat(weight) : Number.NaN
+    const baseWeight = !Number.isNaN(parsed) ? Number(toBaseWeight(parsed).toFixed(2)) : undefined
+    const nextState = !selectedDone
     haptics.medium()
-    setConfirmPulse(true)
-    setShowSetCheck(true)
+    onToggleSetDone(currentExerciseIndex, currentSet, nextState, baseWeight)
 
-    const weightNum = !isBodyweight && weight ? parseFloat(weight) : undefined
-    const baseWeight = weightNum !== undefined && !Number.isNaN(weightNum)
-      ? Number(toBaseWeight(weightNum).toFixed(2))
-      : undefined
-
-    if (confirmTimeoutRef.current) {
-      clearTimeout(confirmTimeoutRef.current)
+    // Practical auto-advance within the same exercise.
+    if (nextState && currentSet < currentExercise.sets) {
+      onSelectSet(currentExerciseIndex, currentSet + 1)
     }
-
-    confirmTimeoutRef.current = setTimeout(() => {
-      onConfirmSet(baseWeight)
-      setWeight('')
-      setIsBodyweight(false)
-      setConfirmPulse(false)
-      setShowSetCheck(false)
-    }, 250)
   }
 
   const handleEndSessionWithHaptic = () => {
@@ -365,37 +272,14 @@ export function WorkoutSession({
     onTogglePause()
   }
 
-  const handlePreviousSetWithHaptic = () => {
-    if (!canGoPrevious || isPaused) return
-    haptics.warning()
-    onPreviousSet()
-  }
-
-  const handleSkipWithHaptic = () => {
-    if (isPaused || isLastExercise) return
-    haptics.warning()
-    onSkipExercise(currentExercise.id)
-  }
-
-  const queueWeightUndo = (previous: string) => {
-    setWeightUndo({ previous })
-    if (weightUndoTimeoutRef.current) {
-      clearTimeout(weightUndoTimeoutRef.current)
-    }
-    weightUndoTimeoutRef.current = setTimeout(() => {
-      setWeightUndo(null)
-    }, 4000)
-  }
-
-  const handleUndoWeight = () => {
-    if (!weightUndo) return
-    setWeight(weightUndo.previous)
-    setWeightUndo(null)
-    setIsBodyweight(false)
-  }
-
-  const progressPercent = ((currentExerciseIndex * 100) / totalExercises) +
-    ((currentSet / currentExercise.sets) * (100 / totalExercises))
+  const totalSets = session.exercises.reduce((acc, ex) => acc + ex.sets, 0)
+  const completedSets = session.exercises.reduce((acc, ex) => {
+    const flags = setProgressByExercise[ex.id] ?? []
+    const done = flags.slice(0, ex.sets).filter(Boolean).length
+    return acc + done
+  }, 0)
+  const progressPercent = totalSets > 0 ? (completedSets / totalSets) * 100 : 0
+  const isSessionComplete = totalSets > 0 && completedSets >= totalSets
 
   return (
     <ScreenShell className="relative">
@@ -415,27 +299,26 @@ export function WorkoutSession({
       </div>
 
       <div className="flex-1 flex flex-col max-w-lg mx-auto w-full min-h-0">
-      <ScreenShellContent className="pb-24">
-        {/* Hero Header (Training Hub style) */}
-        <div className="relative overflow-hidden">
-          <div className={`absolute inset-0 bg-gradient-to-b ${visualTheme.headerGradient} opacity-50`} />
-          <div className="absolute inset-0 bg-grid-white/[0.02]" />
+        <ScreenShellContent className="pb-24">
+          {/* Hero Header (Training Hub style) */}
+          <div className="relative overflow-hidden">
+            <div className={`absolute inset-0 bg-gradient-to-b ${visualTheme.headerGradient} opacity-50`} />
+            <div className="absolute inset-0 bg-grid-white/[0.02]" />
 
-          <div className="relative z-10 px-6 safe-area-top pb-8">
-            <div className="flex items-center justify-between gap-3">
-              <button
-                onClick={() => {
-                  haptics.light()
-                  setShowEndConfirm(true)
-                }}
-                className="min-h-[44px] px-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-white/70 hover:text-white transition-colors flex items-center gap-2"
-                aria-label="End session"
-              >
-                <X size={18} strokeWidth={3} />
-                <span className="text-sm font-bold tracking-tight uppercase">End</span>
-              </button>
+            <div className="relative z-10 px-6 safe-area-top pb-8">
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={() => {
+                    haptics.light()
+                    setShowEndConfirm(true)
+                  }}
+                  className="min-h-[44px] px-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-white/70 hover:text-white transition-colors flex items-center gap-2"
+                  aria-label="End session"
+                >
+                  <X size={18} strokeWidth={3} />
+                  <span className="text-sm font-bold tracking-tight uppercase">End</span>
+                </button>
 
-              <div className="flex items-center gap-2">
                 <div className="min-h-[44px] px-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 flex items-center gap-3">
                   <div className="text-right">
                     <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
@@ -455,453 +338,211 @@ export function WorkoutSession({
                   </button>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-7">
-              <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
-                {session.day}
-              </p>
-              <h1 className="text-4xl font-black tracking-tight text-foreground uppercase mt-2 leading-none">
-                {session.focus}
-              </h1>
-              <p className="text-sm text-white/60 mt-3 leading-relaxed">
-                Exercise {currentExerciseIndex + 1} of {totalExercises} · Set {currentSet} of {currentExercise.sets}
-              </p>
-            </div>
-
-            {/* Quick Controls */}
-            <div className="mt-5 flex flex-wrap gap-2">
-              {onWeightUnitChange && !isBodyweightOnly && (
-                <button
-                  onClick={() => {
-                    haptics.light()
-                    onWeightUnitChange(weightUnit === 'lbs' ? 'kg' : 'lbs')
-                  }}
-                  className={[
-                    'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
-                    visualTheme.chipBg,
-                    visualTheme.chipBorder,
-                    visualTheme.chipText,
-                    'text-[11px] font-bold uppercase tracking-[0.2em] hover:opacity-90 transition-opacity'
-                  ].join(' ')}
-                  aria-label={`Switch to ${weightUnit === 'lbs' ? 'kg' : 'lbs'}`}
-                >
-                  {weightUnit}
-                </button>
-              )}
-
-              <button
-                onClick={() => {
-                  haptics.light()
-                  setShowNavigator(true)
-                }}
-                className={[
-                  'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
-                  visualTheme.chipBg,
-                  visualTheme.chipBorder,
-                  'text-[11px] font-bold uppercase tracking-[0.2em] text-white/80 hover:text-white transition-colors flex items-center gap-2'
-                ].join(' ')}
-                aria-label="Open exercise navigator"
-              >
-                Exercises
-                <ChevronRight size={14} className="text-white/40" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Now / Next */}
-        <div className="px-6 pb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="rounded-2xl p-4 border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95">
-              <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.3em]">
-                Now
-              </p>
-              <p className="text-sm font-bold text-white mt-2">
-                {currentExercise.name}
-              </p>
-              <p className="text-xs text-white/60 mt-1">
-                Set {currentSet} of {currentExercise.sets}
-              </p>
-            </div>
-            <div className="rounded-2xl p-4 border border-white/10 bg-gradient-to-br from-white/5 via-black/80 to-black/95">
-              <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.3em]">
-                Next
-              </p>
-              <p className="text-sm font-bold text-white mt-2">
-                {isLastSet && isLastExercise ? 'Finish session' : (nextExercise?.name ?? 'Next exercise')}
-              </p>
-              {!(isLastSet && isLastExercise) && (
-                <p className="text-xs text-white/60 mt-1">
-                  Set {nextSetNumber}
+              <div className="mt-7">
+                <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
+                  {session.day}
                 </p>
-              )}
+                <h1 className="text-4xl font-black tracking-tight text-foreground uppercase mt-2 leading-none">
+                  {session.focus}
+                </h1>
+                <p className="text-sm text-white/60 mt-3 leading-relaxed">
+                  {completedSets}/{totalSets} sets completed
+                </p>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {onWeightUnitChange && !isBodyweightOnly && (
+                  <button
+                    onClick={() => {
+                      haptics.light()
+                      onWeightUnitChange(weightUnit === 'lbs' ? 'kg' : 'lbs')
+                    }}
+                    className={[
+                      'min-h-[44px] px-4 rounded-full border backdrop-blur-md',
+                      visualTheme.chipBg,
+                      visualTheme.chipBorder,
+                      visualTheme.chipText,
+                      'text-[11px] font-bold uppercase tracking-[0.2em] hover:opacity-90 transition-opacity'
+                    ].join(' ')}
+                    aria-label={`Switch to ${weightUnit === 'lbs' ? 'kg' : 'lbs'}`}
+                  >
+                    {weightUnit}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Main Exercise Display */}
-        <div className="px-6 flex flex-col justify-center min-h-0">
-        {/* Current Exercise - HERO */}
-        <div className="mb-6">
-          <h2 className="type-title text-foreground tracking-tight leading-none text-balance">
-            {currentExercise.name}
-          </h2>
+          {/* Exercise list */}
+          <div className="px-6 py-6 space-y-4">
+            {session.exercises.map((exercise, exerciseIndex) => {
+              const doneFlags = setProgressByExercise[exercise.id] ?? Array.from({ length: exercise.sets }, () => false)
+              const doneCount = doneFlags.slice(0, exercise.sets).filter(Boolean).length
+              return (
+                <div
+                  key={exercise.id}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95 overflow-hidden"
+                >
+                  <div className="px-5 py-4 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
+                        {exercise.sets} sets · {exercise.duration ? `${exercise.duration}s` : `${exercise.reps ?? 0} reps`} · {exercise.restTime}s rest
+                      </p>
+                      <h3 className="text-base font-black text-white mt-1 truncate">
+                        {exercise.name}
+                      </h3>
+                      {exercise.notes && (
+                        <p className="text-xs text-white/60 mt-2 leading-relaxed line-clamp-2">
+                          {exercise.notes}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-bold text-white/70 tabular-nums">
+                        {doneCount}/{exercise.sets}
+                      </p>
+                      <p className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mt-0.5">
+                        Done
+                      </p>
+                    </div>
+                  </div>
 
-          {/* Prescription - LARGE */}
-          <div className="mt-4 flex items-baseline gap-3">
-            <span className="text-4xl font-bold text-primary tabular-nums">
-              {currentExercise.duration || currentExercise.reps}
-            </span>
-            <span className="text-lg text-muted-foreground">
-              {currentExercise.duration ? 'seconds' : 'reps'}
-            </span>
+                  <div className="px-4 pb-4">
+                    <div className="space-y-2">
+                      {Array.from({ length: exercise.sets }).map((_, setIndex) => {
+                        const isSelected = exerciseIndex === currentExerciseIndex && setIndex === selectedSetIndex
+                        const isDone = !!doneFlags[setIndex]
+                        const currentBase = currentSessionWeights[exercise.id]?.[setIndex] ?? 0
+                        const lastBase = lastSessionWeights?.[exercise.id]?.[setIndex] ?? 0
+                        const currentDisplay = getDisplayForBase(currentBase)
+                        const lastDisplay = getDisplayForBase(lastBase)
+                        const subtitle = currentDisplay
+                          ? `${currentDisplay} ${weightUnit}`
+                          : lastDisplay
+                            ? `${lastDisplay} ${weightUnit} (last)`
+                            : (isBodyweightOnly ? 'Bodyweight' : '—')
+
+                        return (
+                          <button
+                            key={`${exercise.id}-set-${setIndex}`}
+                            onClick={() => {
+                              haptics.light()
+                              onSelectSet(exerciseIndex, setIndex + 1)
+                            }}
+                            className={[
+                              'w-full flex items-center justify-between gap-3 rounded-xl px-4 py-3 border transition-colors text-left',
+                              isSelected ? 'border-primary/40 bg-primary/10' : 'border-white/10 bg-white/5 hover:bg-white/10',
+                              isDone ? 'opacity-90' : '',
+                            ].join(' ')}
+                            aria-label={`Select ${exercise.name} set ${setIndex + 1}`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={[
+                                  'w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0',
+                                  isDone ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-white/5 border-white/15',
+                                ].join(' ')}
+                                aria-hidden="true"
+                              >
+                                {isDone ? <Check size={16} className="text-emerald-300" /> : null}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-white truncate">
+                                  Set {setIndex + 1}
+                                </p>
+                                <p className="text-xs text-white/60 truncate">
+                                  {subtitle}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase flex-shrink-0">
+                              {isDone ? 'Done' : 'Pending'}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
+        </ScreenShellContent>
 
-          {/* Notes if present - SMALL */}
-          {currentExercise.notes && (
-            <p className="mt-4 text-sm text-muted-foreground/70 border-l-2 border-primary/30 pl-3">
-              {currentExercise.notes}
-            </p>
-          )}
+        <ScreenShellFooter className="px-6">
+          {isSessionComplete ? (
+            <Button
+              onClick={() => {
+                haptics.success()
+                onFinishSession()
+              }}
+              variant="primary"
+              size="xl"
+              fullWidth
+              withHaptic={false}
+              className="h-20 rounded-2xl font-black text-xl uppercase tracking-wide glow-primary-subtle"
+              aria-label="Finish session"
+            >
+              Finish Session
+            </Button>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
+                    Selected
+                  </p>
+                  <p className="text-sm font-bold text-foreground truncate">
+                    {currentExercise.name} · Set {currentSet}/{currentExercise.sets}
+                  </p>
+                </div>
+                <span className={`text-[10px] font-bold tracking-[0.2em] uppercase ${selectedDone ? 'text-emerald-400' : 'text-white/50'}`}>
+                  {selectedDone ? 'Done' : 'Pending'}
+                </span>
+              </div>
 
-          {/* Video Demo Toggle & Player */}
-          {currentExercise.videoUrl && (
-            <div className="mt-4">
-              <Button
-                onClick={() => {
-                  haptics.light()
-                  setShowVideo(!showVideo)
-                }}
-                variant="ghost"
-                size="sm"
-                withHaptic={false}
-                className="text-sm font-semibold text-primary uppercase tracking-wide hover:opacity-80 transition-opacity flex items-center gap-2 px-3 rounded-lg normal-case tracking-normal"
-                aria-expanded={showVideo}
-                aria-label={showVideo ? 'Hide exercise demo' : 'Show exercise demo'}
-              >
-                {showVideo ? '▼ Hide Demo' : '▶ Show Demo'}
-              </Button>
-
-              {showVideo && (
-                <div className="mt-3 rounded-lg overflow-hidden bg-card/50">
-                  <iframe
-                    src={currentExercise.videoUrl}
-                    className="w-full aspect-video"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    title={`${currentExercise.name} demonstration`}
-                  />
+              {!isBodyweightOnly && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      enterKeyHint="done"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      placeholder={selectedLastDisplay ? `${selectedLastDisplay} (${weightUnit})` : `0 (${weightUnit})`}
+                      className="h-14 bg-card/50 text-center text-xl font-bold tabular-nums"
+                      aria-label="Weight input"
+                      disabled={isPaused}
+                    />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
+                      Last
+                    </p>
+                    <p className="text-sm font-bold text-foreground tabular-nums">
+                      {selectedLastDisplay ? `${selectedLastDisplay} ${weightUnit}` : '—'}
+                    </p>
+                  </div>
                 </div>
               )}
-            </div>
-          )}
-        </div>
 
-        {/* Weight Input with +/- buttons */}
-        <div className="mb-8">
-          {!isBodyweightOnly && (
-            <div className="mb-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95 px-4 py-3">
-                <p className="uppercase tracking-[0.2em] text-white/50 text-[10px] font-bold">Last set</p>
-                <p className="mt-2 text-sm font-bold text-white">
-                  {lastWeightDisplay ? `${lastWeightDisplay} ${weightUnit}` : '—'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 via-black/80 to-black/95 px-4 py-3">
-                <p className="uppercase tracking-[0.2em] text-white/50 text-[10px] font-bold">Best set</p>
-                <p className="mt-2 text-sm font-bold text-white">
-                  {lastBestDisplay ? `${lastBestDisplay} ${weightUnit}` : '—'}
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Weight
-            </span>
-            <Button
-              onClick={() => {
-                if (isBodyweightOnly) return
-                haptics.light()
-                setIsBodyweight(prev => !prev)
-                if (!isBodyweight) {
-                  setWeight('')
-                }
-              }}
-              variant="ghost"
-              size="sm"
-              withHaptic={false}
-              className={`px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide transition-colors normal-case tracking-normal ${
-                isBodyweight || isBodyweightOnly
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-card/50 text-muted-foreground hover:text-foreground'
-              } ${isBodyweightOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
-              aria-pressed={isBodyweight || isBodyweightOnly}
-              aria-label={isBodyweightOnly ? 'Bodyweight only session' : 'Toggle bodyweight input'}
-              disabled={isBodyweightOnly}
-            >
-              Bodyweight
-            </Button>
-          </div>
-          {isBodyweightOnly ? (
-            <div className="rounded-lg bg-card/40 p-4 text-center">
-              <p className="text-sm font-semibold text-foreground">
-                Bodyweight session
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Weight input disabled for this mode.
-              </p>
-            </div>
-          ) : null}
-          {!isBodyweightOnly && lastWeightDisplay && (
-            <p className="text-xs text-muted-foreground text-center mb-3">
-              Last: {lastWeightDisplay} {weightUnit}
-              {weightDelta !== null && !Number.isNaN(weightDelta) && (
-                <span className={weightDelta >= 0 ? 'text-primary' : 'text-destructive'}>
-                  {' '}
-                  ({weightDelta >= 0 ? '+' : ''}{weightDelta})
-                </span>
-              )}
-            </p>
-          )}
-          {!isBodyweightOnly && suggestedDisplay && (
-            <div className="mb-4 flex items-center justify-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                Suggested: {suggestedDisplay} {weightUnit}
-              </span>
               <Button
-                onClick={() => {
-                  haptics.light()
-                  setIsBodyweight(false)
-                  setWeight(suggestedDisplay)
-                }}
-                variant="ghost"
-                size="sm"
+                onClick={handleToggleSelectedSet}
+                disabled={isPaused}
+                variant="primary"
+                size="lg"
+                fullWidth
                 withHaptic={false}
-                className="px-4 rounded-full text-xs font-semibold uppercase tracking-wide text-foreground bg-card/50 hover:bg-card transition-colors normal-case tracking-normal"
-                aria-label="Use suggested weight"
+                className="h-16 rounded-2xl font-black text-lg uppercase tracking-wide"
+                aria-label={selectedDone ? 'Unmark set as done' : 'Mark set as done'}
               >
-                Use
-              </Button>
-              {isPrAttempt && (
-                <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                  PR attempt
-                </span>
-              )}
-            </div>
-          )}
-          {!isBodyweightOnly && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 sm:gap-3 items-center">
-            <Button
-              onClick={() => {
-                haptics.light()
-                setIsBodyweight(false)
-                queueWeightUndo(weight)
-                const current = parseFloat(weight) || 0
-                setWeight(Math.max(0, current - 10).toString())
-              }}
-              variant="ghost"
-              size="lg"
-              withHaptic={false}
-              className="order-1 sm:order-1 w-full h-14 bg-card/30 rounded-lg text-muted-foreground text-lg font-semibold hover:bg-card transition-colors active:scale-95 normal-case tracking-normal"
-              aria-label="Decrease weight by 10"
-            >
-              -10
-            </Button>
-            <Button
-              onClick={() => {
-                haptics.light()
-                setIsBodyweight(false)
-                queueWeightUndo(weight)
-                const current = parseFloat(weight) || 0
-                setWeight(Math.max(0, current - 5).toString())
-              }}
-              variant="ghost"
-              size="lg"
-              withHaptic={false}
-              className="order-2 sm:order-2 w-full h-14 bg-primary/15 rounded-lg text-foreground text-lg font-bold hover:bg-primary/25 transition-colors active:scale-95 normal-case tracking-normal"
-              aria-label="Decrease weight by 5"
-            >
-              -5
-            </Button>
-            <div
-              className={`order-3 sm:order-3 col-span-2 sm:col-span-1 relative rounded-lg transition-all duration-200 ${
-                weightFlash
-                  ? 'animate-[weight-bump_200ms_ease-out]'
-                  : ''
-              } ${weightFlash === 'increase' ? 'ring-2 ring-primary/40 shadow-[0_0_12px_rgba(var(--primary-rgb,34,197,94),0.3)]' : ''} ${weightFlash === 'decrease' ? 'ring-2 ring-destructive/40 shadow-[0_0_12px_rgba(var(--destructive-rgb,239,68,68),0.3)]' : ''}`}
-            >
-              <Input
-                type="number"
-                inputMode="decimal"
-                enterKeyHint="done"
-                value={isBodyweight ? '' : weight}
-                onChange={(e) => {
-                  setIsBodyweight(false)
-                  setWeight(e.target.value)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    e.currentTarget.blur()
-                    haptics.light()
-                  }
-                }}
-                onBlur={() => {
-                  const current = parseFloat(weight)
-                  if (!Number.isNaN(current) && current < 0) {
-                    setWeight('0')
-                  }
-                }}
-                placeholder={isBodyweight ? 'BW' : '0'}
-                disabled={isBodyweight}
-                className={`h-14 bg-card/50 text-center text-2xl font-bold tabular-nums pr-12 transition-colors duration-200 ${
-                  isBodyweight ? 'opacity-60 cursor-not-allowed' : ''
-                } ${weightFlash === 'increase' ? 'text-primary' : ''} ${weightFlash === 'decrease' ? 'text-destructive' : ''}`}
-                aria-label="Weight input"
-              />
-              <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-wide transition-colors duration-200 ${
-                weightFlash === 'increase' ? 'text-primary' : weightFlash === 'decrease' ? 'text-destructive' : 'text-muted-foreground'
-              }`}>
-                {weightUnit}
-              </span>
-            </div>
-            <Button
-              onClick={() => {
-                haptics.light()
-                setIsBodyweight(false)
-                queueWeightUndo(weight)
-                const current = parseFloat(weight) || 0
-                setWeight((current + 5).toString())
-              }}
-              variant="ghost"
-              size="lg"
-              withHaptic={false}
-              className="order-4 sm:order-4 w-full h-14 bg-primary/15 rounded-lg text-foreground text-lg font-bold hover:bg-primary/25 transition-colors active:scale-95 normal-case tracking-normal"
-              aria-label="Increase weight by 5"
-            >
-              +5
-            </Button>
-            <Button
-              onClick={() => {
-                haptics.light()
-                setIsBodyweight(false)
-                queueWeightUndo(weight)
-                const current = parseFloat(weight) || 0
-                setWeight((current + 10).toString())
-              }}
-              variant="ghost"
-              size="lg"
-              withHaptic={false}
-              className="order-5 sm:order-5 w-full h-14 bg-card/30 rounded-lg text-muted-foreground text-lg font-semibold hover:bg-card transition-colors active:scale-95 normal-case tracking-normal"
-              aria-label="Increase weight by 10"
-            >
-              +10
-            </Button>
-          </div>
-          )}
-          {weightUndo && (
-            <div className="mt-3 flex items-center justify-center">
-              <Button
-                onClick={handleUndoWeight}
-                variant="ghost"
-                size="sm"
-                className="px-4 rounded-full text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground hover:bg-card/40 transition-colors normal-case tracking-normal"
-                aria-label="Undo weight change"
-              >
-                Undo weight change
+                {selectedDone ? 'Unmark Set' : 'Mark Set Done'}
               </Button>
             </div>
           )}
-        </div>
-
-        {/* Set Counter - Simple text */}
-        <div
-          className="mb-8 text-center"
-          role="status"
-          aria-label={`Set ${currentSet} of ${currentExercise.sets}. ${remainingSets} sets remaining, approximately ${remainingMinutes} minutes left.`}
-        >
-          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-black/80 to-black/95 px-6 py-5">
-            <p className="text-3xl font-black text-white tabular-nums" aria-hidden="true">
-              {currentSet}<span className="text-white/40">/{currentExercise.sets}</span>
-            </p>
-            <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.3em] mt-1" aria-hidden="true">
-              Sets
-            </p>
-            <p className="text-xs text-white/60 mt-3" aria-hidden="true">
-              {remainingSets} sets left · ~{remainingMinutes} min remaining
-            </p>
-          </div>
-        </div>
-        </div>
-      </ScreenShellContent>
-
-      {/* Confirm Set CTA */}
-      <ScreenShellFooter className="px-6">
-        <div className="flex items-stretch gap-3">
-          <Button
-            onClick={handlePreviousSetWithHaptic}
-            disabled={!canGoPrevious || isPaused}
-            variant="ghost"
-            size="lg"
-            withHaptic={false}
-            leftIcon={<ChevronLeft size={18} />}
-            className={`w-[92px] rounded-2xl border border-white/10 bg-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors ${
-              (!canGoPrevious || isPaused) ? 'opacity-40 cursor-not-allowed' : ''
-            }`}
-            aria-label="Go to previous set"
-          >
-            Prev
-          </Button>
-
-          <Button
-            onClick={handleConfirmSetWithHaptic}
-            disabled={isPaused}
-            variant="primary"
-            size="xl"
-            fullWidth
-            withHaptic={false}
-            className={`h-20 flex-1 font-black text-xl tracking-wide uppercase transition-all hover:opacity-90 active:scale-[0.99] rounded-2xl relative glow-primary-subtle ${
-              confirmPulse ? 'animate-[button-pulse_250ms_ease-out]' : ''
-            } ${isPaused ? 'opacity-60 cursor-not-allowed' : ''}`}
-            aria-label={isLastSet && isLastExercise ? 'Finish session' : 'Confirm set'}
-          >
-            <span className={showSetCheck ? 'opacity-0' : 'opacity-100'}>
-              {isLastSet && isLastExercise ? 'Finish Session' : 'Confirm Set'}
-            </span>
-            {showSetCheck && (
-              <span className="absolute inset-0 flex items-center justify-center animate-[check-pop_200ms_ease-out]">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-            )}
-          </Button>
-
-          <Button
-            onClick={handleSkipWithHaptic}
-            disabled={isPaused || isLastExercise}
-            variant="ghost"
-            size="lg"
-            withHaptic={false}
-            rightIcon={<ChevronRight size={18} />}
-            className={`w-[92px] rounded-2xl border border-white/10 bg-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors ${
-              (isPaused || isLastExercise) ? 'opacity-40 cursor-not-allowed' : ''
-            }`}
-            aria-label="Skip to next exercise"
-          >
-            Skip
-          </Button>
-        </div>
-        <p className="mt-3 text-center text-xs text-muted-foreground uppercase tracking-wide">
-          {isLastSet && isLastExercise
-            ? 'Next: Reflection'
-            : isLastSet
-              ? `Next: Rest ${currentExercise.restTime}s · ${nextExercise?.name ?? 'Next exercise'}`
-              : `Next: Rest ${currentExercise.restTime}s · Set ${currentSet + 1}`}
-        </p>
-      </ScreenShellFooter>
+        </ScreenShellFooter>
       </div>
 
       {undoLabel && (
@@ -961,19 +602,6 @@ export function WorkoutSession({
         cancelText="Continue"
         variant="destructive"
       />
-
-      {/* Exercise Navigator */}
-      {showNavigator && (
-        <ExerciseNavigator
-          exercises={session.exercises}
-          currentExerciseIndex={currentExerciseIndex}
-          currentSet={currentSet}
-          skippedExercises={skippedExercises}
-          onJumpToExercise={onJumpToExercise}
-          onSkipExercise={onSkipExercise}
-          onClose={() => setShowNavigator(false)}
-        />
-      )}
     </ScreenShell>
   )
 }

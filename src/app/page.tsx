@@ -188,6 +188,7 @@ interface UndoSnapshot {
   restTimerEndsAt: number | null
   restTimerDuration: number
   currentScreen: Screen
+  setProgressByExercise: Record<string, boolean[]>
   currentSessionWeights: Record<string, number[]>
   totalVolume: number
   sessionPaused: boolean
@@ -258,6 +259,7 @@ export default function App() {
 
   // Performance tracking state
   const [currentSessionWeights, setCurrentSessionWeights] = useState<Record<string, number[]>>({})
+  const [setProgressByExercise, setSetProgressByExercise] = useState<Record<string, boolean[]>>({})
   const [totalVolume, setTotalVolume] = useState(0)
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null)
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -342,6 +344,27 @@ export default function App() {
   const completedSessions = weekProgress.filter(d => d.planned && d.completed).length
   const plannedSessions = weekProgress.filter(d => d.planned).length
 
+  const derivedTotalVolume = useMemo(() => {
+    if (!currentSession) return 0
+    let total = 0
+    for (const exercise of currentSession.exercises) {
+      const doneFlags = setProgressByExercise[exercise.id] ?? []
+      const weights = currentSessionWeights[exercise.id] ?? []
+      const reps = exercise.reps || 1
+      for (let i = 0; i < exercise.sets; i++) {
+        if (!doneFlags[i]) continue
+        const w = weights[i] ?? 0
+        if (w > 0) total += w * reps
+      }
+    }
+    return total
+  }, [currentSession, setProgressByExercise, currentSessionWeights])
+
+  useEffect(() => {
+    if (!sessionStartTime) return
+    setTotalVolume(derivedTotalVolume)
+  }, [derivedTotalVolume, sessionStartTime])
+
   // Load persisted state
   useEffect(() => {
     const hydrateState = async () => {
@@ -360,6 +383,9 @@ export default function App() {
           setCurrentUser(null)
           setFavoriteExercises(new Set())
           setCompletedExercises(new Set())
+          setSetProgressByExercise({})
+          setCurrentSessionWeights({})
+          setTotalVolume(0)
           setCurrentScreen('auth-login')
           hasHydratedRef.current = true
           return
@@ -390,6 +416,9 @@ export default function App() {
           setWeekProgress(DEFAULT_WEEK_PROGRESS)
           setSessionHistory([])
           setActivityLogs([])
+          setSetProgressByExercise({})
+          setCurrentSessionWeights({})
+          setTotalVolume(0)
           // Only set to loading if we're on auth screens, otherwise keep current screen
           setCurrentScreen(prev => {
             const authScreens = ['auth-login', 'auth-signup']
@@ -432,6 +461,7 @@ export default function App() {
         setSessionPaused(data.sessionPaused ?? false)
         setPauseStartedAt(data.pauseStartedAt ?? null)
 
+        setSetProgressByExercise(data.setProgressByExercise ?? {})
         setWeekProgress(data.weekProgress ?? DEFAULT_WEEK_PROGRESS)
         setCurrentStreak(data.currentStreak ?? 0)
         setLongestStreak(data.longestStreak ?? 0)
@@ -500,6 +530,7 @@ export default function App() {
       lastWorkoutDate,
       sessionHistory,
       missedSessionExcuse,
+      setProgressByExercise,
       currentSessionWeights,
       totalVolume,
       activityLogs,
@@ -542,6 +573,7 @@ export default function App() {
     lastWorkoutDate,
     sessionHistory,
     missedSessionExcuse,
+    setProgressByExercise,
     currentSessionWeights,
     totalVolume,
     activityLogs,
@@ -993,6 +1025,7 @@ export default function App() {
     setRestTimerEndsAt(snapshot.restTimerEndsAt)
     setRestTimerDuration(snapshot.restTimerDuration)
     setCurrentScreen(snapshot.currentScreen)
+    setSetProgressByExercise(snapshot.setProgressByExercise)
     setCurrentSessionWeights(snapshot.currentSessionWeights)
     setTotalVolume(snapshot.totalVolume)
     setSessionPaused(snapshot.sessionPaused)
@@ -1053,6 +1086,7 @@ export default function App() {
       restTimerEndsAt,
       restTimerDuration,
       currentScreen,
+      setProgressByExercise,
       currentSessionWeights,
       totalVolume,
       sessionPaused,
@@ -1189,6 +1223,91 @@ export default function App() {
     analytics.track('rest_skipped')
   }, [])
 
+  const handleSelectSet = useCallback((exerciseIndex: number, setNumber: number) => {
+    if (!currentSession) return
+    const exercise = currentSession.exercises[exerciseIndex]
+    if (!exercise) return
+    const boundedSet = Math.max(1, Math.min(exercise.sets, setNumber))
+    setCurrentExerciseIndex(exerciseIndex)
+    setCurrentSet(boundedSet)
+  }, [currentSession])
+
+  const handleToggleSetDone = useCallback((
+    exerciseIndex: number,
+    setNumber: number,
+    shouldBeDone: boolean,
+    weightBase?: number
+  ) => {
+    if (!currentSession) return
+    const exercise = currentSession.exercises[exerciseIndex]
+    if (!exercise) return
+    const setIndex = setNumber - 1
+    if (setIndex < 0 || setIndex >= exercise.sets) return
+
+    queueUndo({
+      currentExerciseIndex,
+      currentSet,
+      sessionStartTime,
+      restTimerEndsAt,
+      restTimerDuration,
+      currentScreen,
+      setProgressByExercise,
+      currentSessionWeights,
+      totalVolume,
+      sessionPaused,
+      pauseStartedAt,
+      pausedTime
+    }, shouldBeDone ? 'Set completed' : 'Set uncompleted')
+
+    setCurrentExerciseIndex(exerciseIndex)
+    setCurrentSet(setNumber)
+
+    setSetProgressByExercise((prev) => {
+      const next = { ...prev }
+      const existing = Array.isArray(next[exercise.id])
+        ? [...next[exercise.id]]
+        : Array.from({ length: exercise.sets }, () => false)
+      existing[setIndex] = shouldBeDone
+      next[exercise.id] = existing
+      return next
+    })
+
+    if (weightBase !== undefined && !Number.isNaN(weightBase)) {
+      setCurrentSessionWeights((prev) => {
+        const next = { ...prev }
+        const existing = Array.isArray(next[exercise.id])
+          ? [...next[exercise.id]]
+          : Array.from({ length: exercise.sets }, () => 0)
+        existing[setIndex] = weightBase
+        next[exercise.id] = existing
+        return next
+      })
+    }
+
+    if (shouldBeDone) {
+      analytics.track('set_confirmed', {
+        exerciseId: exercise.id,
+        set: setNumber,
+        weight: weightBase ?? null
+      })
+    }
+  }, [
+    currentExerciseIndex,
+    currentSet,
+    currentSession,
+    sessionStartTime,
+    restTimerEndsAt,
+    restTimerDuration,
+    currentScreen,
+    setProgressByExercise,
+    currentSessionWeights,
+    totalVolume,
+    sessionPaused,
+    pauseStartedAt,
+    pausedTime,
+    queueUndo
+  ])
+
   // Handle jumping to a specific exercise
   const handleJumpToExercise = useCallback((index: number) => {
     if (!currentSession) return
@@ -1299,6 +1418,13 @@ export default function App() {
 
   const beginSession = useCallback((session: Session | null, source: 'program' | 'custom' | 'extra', dayIndex?: number) => {
     if (!session) return
+    const initialSetProgress: Record<string, boolean[]> = {}
+    const initialWeights: Record<string, number[]> = {}
+    session.exercises.forEach((exercise) => {
+      initialSetProgress[exercise.id] = Array.from({ length: exercise.sets }, () => false)
+      // Base-unit (lbs) weights per set. 0 means "not set".
+      initialWeights[exercise.id] = Array.from({ length: exercise.sets }, () => 0)
+    })
     setCurrentExerciseIndex(0)
     setCurrentSet(1)
     setSessionStartTime(Date.now())
@@ -1309,6 +1435,9 @@ export default function App() {
     setRestTimerDuration(0)
     setUndoAction(null)
     setSkippedExercises(new Set())
+    setSetProgressByExercise(initialSetProgress)
+    setCurrentSessionWeights(initialWeights)
+    setTotalVolume(0)
 
     if (source === 'program') {
       setSessionOverride(null)
@@ -1364,6 +1493,7 @@ export default function App() {
       restTimerEndsAt,
       restTimerDuration,
       currentScreen,
+      setProgressByExercise,
       currentSessionWeights,
       totalVolume,
       sessionPaused,
@@ -1379,6 +1509,9 @@ export default function App() {
     setPauseStartedAt(null)
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
+    setSetProgressByExercise({})
+    setCurrentSessionWeights({})
+    setTotalVolume(0)
     setUndoAction(null)
     setSessionOverride(null)
     setSessionSource(null)
@@ -1391,6 +1524,7 @@ export default function App() {
     restTimerEndsAt,
     restTimerDuration,
     currentScreen,
+    setProgressByExercise,
     currentSessionWeights,
     totalVolume,
     sessionPaused,
@@ -1431,6 +1565,7 @@ export default function App() {
 
     // Reset session tracking
     setCurrentSessionWeights({})
+    setSetProgressByExercise({})
     setTotalVolume(0)
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
@@ -1540,6 +1675,7 @@ export default function App() {
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
     setCurrentSessionWeights({})
+    setSetProgressByExercise({})
     setTotalVolume(0)
     setUndoAction(null)
     setSessionOverride(null)
@@ -1903,6 +2039,12 @@ export default function App() {
             setCompletedExercises(new Set())
             setSessionHistory([])
             setActivityLogs([])
+            setSetProgressByExercise({})
+            setCurrentSessionWeights({})
+            setTotalVolume(0)
+            setCurrentExerciseIndex(0)
+            setCurrentSet(1)
+            setSessionStartTime(null)
             setGeneratedProgram(null)
             setSavedProgramSessions(null)
             setProgramId(null)
@@ -2227,16 +2369,16 @@ export default function App() {
           pausedTime={pausedTime}
           pauseStartedAt={pauseStartedAt}
           onTogglePause={handleTogglePause}
-          onConfirmSet={handleConfirmSet}
-          onPreviousSet={handlePreviousSet}
           onEndSession={handleEndSession}
           onWeightUnitChange={setWeightUnit}
+          setProgressByExercise={setProgressByExercise}
+          currentSessionWeights={currentSessionWeights}
           lastSessionWeights={lastSessionWeights}
+          onSelectSet={handleSelectSet}
+          onToggleSetDone={handleToggleSetDone}
+          onFinishSession={() => setCurrentScreen('post-workout-reflection')}
           undoLabel={undoAction?.label ?? null}
           onUndo={handleUndo}
-          skippedExercises={skippedExercises}
-          onJumpToExercise={handleJumpToExercise}
-          onSkipExercise={handleSkipExercise}
         />
       )
       break
