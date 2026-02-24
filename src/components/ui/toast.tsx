@@ -73,7 +73,7 @@ export function Toast({
           variant="ghost"
           size="icon"
           withHaptic={false}
-          className="min-w-[32px] min-h-[32px] h-8 w-8 text-lg opacity-70 hover:opacity-100 transition-opacity rounded-full active:bg-white/10"
+          className="min-w-[44px] min-h-[44px] h-11 w-11 text-lg opacity-70 hover:opacity-100 transition-opacity rounded-full active:bg-white/10"
           aria-label="Close notification"
         >
           ×

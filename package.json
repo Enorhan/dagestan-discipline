@@ -17,6 +17,7 @@
     "pipeline:daemon": "bash scripts/pipeline-daemon.sh"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.1",
     "@capacitor/haptics": "^8.0.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",

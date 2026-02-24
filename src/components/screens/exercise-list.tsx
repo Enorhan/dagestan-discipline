@@ -8,6 +8,7 @@ import { BottomNav } from '@/components/ui/bottom-nav'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Dumbbell } from '@/components/ui/icons'
+import { EliteInsightsPanel } from '@/components/ui/elite-insights-panel'
 
 interface ExerciseListProps {
   session: Session | null
@@ -120,6 +121,12 @@ export function ExerciseList({
           </div>
         </div>
       </div>
+
+      <EliteInsightsPanel
+        exercises={session.exercises}
+        focusHint={session.focus}
+        className="mx-6 mb-2"
+      />
 
       {/* Exercise List */}
       <div ref={scrollContainerRef} className="flex-1 px-6 py-4 overflow-y-auto min-h-0">

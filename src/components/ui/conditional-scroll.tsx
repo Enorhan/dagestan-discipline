@@ -1,8 +1,8 @@
 'use client'
 
-import { ReactNode, useRef, useEffect, useState, HTMLAttributes } from 'react'
+import { ReactNode, useRef, useEffect, useState, HTMLAttributes, RefObject } from 'react'
 
-interface ConditionalScrollProps extends HTMLAttributes<HTMLDivElement> {
+interface ConditionalScrollProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onScroll'> {
   children: ReactNode
   /** Additional className for the wrapper */
   className?: string
@@ -12,6 +12,12 @@ interface ConditionalScrollProps extends HTMLAttributes<HTMLDivElement> {
   resizeDebounce?: number
   /** Callback when scroll state changes */
   onScrollStateChange?: (isScrollable: boolean) => void
+  /** Optional ref to access the scroll container */
+  scrollRef?: RefObject<HTMLDivElement | null>
+  /** Initial scroll position to restore */
+  initialScrollTop?: number
+  /** Callback when scroll position changes (scrollTop value) */
+  onScrollPositionChange?: (scrollTop: number) => void
 }
 
 /**
@@ -31,12 +37,36 @@ export function ConditionalScroll({
   scrollClassName = '',
   resizeDebounce = 50,
   onScrollStateChange,
+  scrollRef,
+  initialScrollTop,
+  onScrollPositionChange,
   ...props
 }: ConditionalScrollProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const internalRef = useRef<HTMLDivElement>(null)
+  const containerRef = scrollRef || internalRef
   const contentRef = useRef<HTMLDivElement>(null)
   const [isScrollable, setIsScrollable] = useState(false)
   const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position when mounting or becoming scrollable
+  useEffect(() => {
+    if (initialScrollTop !== undefined && isScrollable && containerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        if (containerRef.current) {
+          containerRef.current.scrollTop = initialScrollTop
+          hasRestoredScroll.current = true
+        }
+      })
+    }
+  }, [initialScrollTop, isScrollable, containerRef])
+
+  // Handle scroll events
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollPositionChange) {
+      onScrollPositionChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }
 
   useEffect(() => {
     const container = containerRef.current
@@ -93,7 +123,8 @@ export function ConditionalScroll({
     // The container fills the flex space, content is positioned absolutely at top
     return (
       <div
-        ref={containerRef}
+        ref={containerRef as RefObject<HTMLDivElement>}
+        onScroll={handleScroll}
         className={[
           `flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain relative`,
           scrollClassName,
@@ -111,7 +142,7 @@ export function ConditionalScroll({
   // Non-scrollable mode: flex container for layout utilities
   return (
     <div
-      ref={containerRef}
+      ref={containerRef as RefObject<HTMLDivElement>}
       className={['flex-1 min-h-0 flex flex-col overflow-hidden', className].filter(Boolean).join(' ')}
       {...props}
     >

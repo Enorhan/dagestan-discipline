@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExerciseLibraryModal } from '@/components/ui/exercise-library-modal'
 import { Input } from '@/components/ui/input'
+import { EliteInsightsPanel } from '@/components/ui/elite-insights-panel'
 import { Check, ChevronRight, ChevronUp, ChevronDown, Plus, Refresh, Trash, GripVertical, Edit } from '@/components/ui/icons'
 
 type ExercisePickerItem = { id: string; name: string; videoUrl?: string | null }
@@ -154,7 +155,7 @@ export function TodayEditor({
       <ScreenShellContent>
         <div className="pb-24">
           {/* Hero */}
-          <div className="relative pt-4 pb-10 px-6 overflow-hidden">
+          <div className="relative safe-area-top pb-10 px-6 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-primary/30 via-background to-background opacity-60" />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
 
@@ -262,12 +263,18 @@ export function TodayEditor({
             </div>
           </div>
 
-          {/* Strength */}
-          <div className="px-6 -mt-4 relative z-20">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase">
-                Strength Workout
-              </h2>
+        {/* Strength */}
+        <div className="px-6 -mt-4 relative z-20">
+          <EliteInsightsPanel
+            exercises={session?.exercises ?? []}
+            focusHint={title}
+            className="mb-4"
+          />
+
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase">
+              Strength Workout
+            </h2>
               <Button
                 onClick={() => {
                   haptics.light()
@@ -306,8 +313,8 @@ export function TodayEditor({
                       className="card-elevated rounded-2xl p-4 border border-white/10 bg-gradient-to-br from-slate-500/15 via-black/70 to-black/90"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="pt-1 text-white/20">
-                          <GripVertical size={16} />
+                        <div className="pt-1 text-white/40 hover:text-white/60 transition-colors cursor-grab active:cursor-grabbing">
+                          <GripVertical size={18} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">

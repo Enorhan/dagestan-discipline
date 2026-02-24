@@ -1,7 +1,7 @@
 'use client'
 
-import React from 'react'
-import { Screen, Session, WeekDay, Equipment } from '@/lib/types'
+import React, { useRef, useEffect, useCallback } from 'react'
+import { Screen, Session, WeekDay, Equipment, TimerMode } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -28,6 +28,11 @@ interface HomeProps {
   onStartAction?: () => void
   hasWorkoutToday?: boolean
   userName?: string
+  onStartRoundTimer?: (mode: TimerMode) => void
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 // Focus-based theming for session cards
@@ -253,11 +258,13 @@ function WeekProgress({
 function QuickActions({
   onNavigate,
   onStartSession,
-  hasSession
+  hasSession,
+  onStartRoundTimer
 }: {
   onNavigate: (screen: Screen) => void
   onStartSession: () => void
   hasSession: boolean
+  onStartRoundTimer?: (mode: TimerMode) => void
 }) {
   const actions = [
     {
@@ -267,6 +274,10 @@ function QuickActions({
       bg: 'bg-orange-500/10',
       onClick: () => {
         haptics.light()
+        if (onStartRoundTimer) {
+          onStartRoundTimer('hiit')
+          return
+        }
         onNavigate('training-hub')
       }
     },
@@ -344,8 +355,36 @@ export function Home({
   onUndo,
   onStartAction,
   hasWorkoutToday,
-  userName
+  userName,
+  onStartRoundTimer,
+  initialScrollTop,
+  onScrollChange
 }: HomeProps) {
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    if (initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
+
   const equipmentLabel = equipment === 'bodyweight'
     ? 'Bodyweight'
     : equipment === 'gym'
@@ -362,7 +401,11 @@ export function Home({
 
   return (
     <ScreenShell>
-      <ScreenShellContent className="safe-area-top">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain safe-area-top"
+      >
         <div className="flex-1 flex flex-col max-w-lg mx-auto w-full pb-28">
 
           {/* ================================================================
@@ -498,10 +541,11 @@ export function Home({
             onNavigate={onNavigate}
             onStartSession={onStartSession}
             hasSession={!!session}
+            onStartRoundTimer={onStartRoundTimer}
           />
 
         </div>
-      </ScreenShellContent>
+      </div>
 
       {/* ================================================================
           UNDO TOAST

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Equipment, ExperienceLevel, PrimaryGoal, Screen, SportType, WeightUnit } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
@@ -41,6 +41,10 @@ interface SettingsProps {
   onRevertProgramChanges?: () => void
   onResetProgram?: () => void
   onStartTrial?: () => Promise<void>
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function Settings({
@@ -73,11 +77,38 @@ export function Settings({
   onSaveProgramChanges,
   onRevertProgramChanges,
   onResetProgram,
-  onStartTrial
+  onStartTrial,
+  initialScrollTop,
+  onScrollChange
 }: SettingsProps) {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    if (initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
   const [isStartingTrial, setIsStartingTrial] = useState(false)
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
   const LBS_PER_KG = 2.20462
@@ -117,7 +148,11 @@ export function Settings({
           </h1>
         </header>
 
-        <ScreenShellContent className="px-6 pb-32">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain px-6 pb-32"
+        >
           {/* Sport Selection */}
           <div className="mb-10">
             <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -541,7 +576,7 @@ export function Settings({
               Save Preferences
             </Button>
           </div>
-        </ScreenShellContent>
+        </div>
       </div>
 
       <ScreenShellFooter>

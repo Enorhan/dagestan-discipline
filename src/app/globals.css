@@ -118,6 +118,28 @@ html {
   padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
 }
 
+.safe-area-left {
+  padding-left: calc(env(safe-area-inset-left) + 16px);
+}
+
+.safe-area-right {
+  padding-right: calc(env(safe-area-inset-right) + 16px);
+}
+
+/* Combined landscape safe areas for horizontal padding */
+.safe-area-x {
+  padding-left: calc(env(safe-area-inset-left) + 16px);
+  padding-right: calc(env(safe-area-inset-right) + 16px);
+}
+
+/* Landscape-specific safe areas - only apply in landscape orientation */
+@media (orientation: landscape) {
+  .landscape-safe-x {
+    padding-left: calc(env(safe-area-inset-left) + 16px);
+    padding-right: calc(env(safe-area-inset-right) + 16px);
+  }
+}
+
 /* Scrollable container with fade indicators */
 .scroll-fade-x {
   position: relative;

@@ -37,10 +37,13 @@ while true; do
   # Keep sources updated (cheap) so new videos are discovered over time.
   npm run pipeline:sources >>"$LOG_FILE" 2>&1 || true
 
-  npm run pipeline:run -- $PIPELINE_DAEMON_ARGS >>"$LOG_FILE" 2>&1
-  echo "[pipeline-daemon] finished run at $(date)" | tee -a "$LOG_FILE"
+  if npm run pipeline:run -- $PIPELINE_DAEMON_ARGS >>"$LOG_FILE" 2>&1; then
+    echo "[pipeline-daemon] finished run at $(date)" | tee -a "$LOG_FILE"
+  else
+    EXIT_CODE=$?
+    echo "[pipeline-daemon] run failed with exit code=${EXIT_CODE} at $(date)" | tee -a "$LOG_FILE"
+  fi
 
   echo "[pipeline-daemon] sleeping ${INTERVAL_MINUTES} minutes..." | tee -a "$LOG_FILE"
   sleep "$((INTERVAL_MINUTES * 60))"
 done
-

@@ -76,6 +76,10 @@ interface SportCategoryExercisesProps {
   todayExerciseIds?: Set<string>
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 const MAX_VISIBLE_EXERCISES = 6
@@ -175,7 +179,9 @@ export function SportCategoryExercises({
   onAddToToday,
   todayExerciseIds,
   onStartAction,
-  hasWorkoutToday = false
+  hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange
 }: SportCategoryExercisesProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -190,6 +196,31 @@ export function SportCategoryExercises({
   const [showFilterOptions, setShowFilterOptions] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position after loading completes
+  useEffect(() => {
+    if (!isLoading && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoading, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   // Debounce search query
   useEffect(() => {
@@ -346,15 +377,19 @@ export function SportCategoryExercises({
 
   return (
     <ScreenShell>
-      <ScreenShellContent>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
         <div
-          className="pb-24"
+          className="pb-32"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
           {/* Hero Header */}
-          <div className={`relative pt-4 pb-8 px-6 overflow-hidden`}>
+          <div className={`relative safe-area-top pb-8 px-6 overflow-hidden`}>
             {/* Background Gradient */}
             <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
@@ -364,7 +399,7 @@ export function SportCategoryExercises({
                 <BackButton onClick={onBack} label={sportLabels[sport]} styleVariant="glass" />
                 {!isLoading && !error && (
                   <div className="text-[10px] font-bold tracking-widest text-white/40 uppercase">
-                    {totalExercises} Drills
+                    {totalExercises} Exercises
                   </div>
                 )}
               </div>
@@ -397,7 +432,7 @@ export function SportCategoryExercises({
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
                   <input
                     type="text"
-                    placeholder="Search drills..."
+                    placeholder="Search exercises..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-white/5 border-none rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30 focus:ring-1 focus:ring-white/20 transition-all"
@@ -691,7 +726,7 @@ export function SportCategoryExercises({
                           size="sm"
                           className={`w-full mt-3 h-10 text-[11px] font-bold uppercase tracking-widest ${theme.color} bg-white/5 hover:bg-white/10 rounded-xl transition-colors`}
                         >
-                          {isExpanded ? 'Show fewer' : `+ ${hiddenCount} more drills`}
+                          {isExpanded ? 'Show fewer' : `+ ${hiddenCount} more exercises`}
                         </Button>
                       )}
                     </div>
@@ -701,7 +736,7 @@ export function SportCategoryExercises({
             )}
           </div>
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav

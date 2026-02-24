@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import type { Drill, LearningPath, Screen } from '@/lib/types'
 import { drillsService } from '@/lib/drills-service'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
@@ -20,6 +20,10 @@ interface LearningPathScreenProps {
   onResetProgress: () => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function LearningPathScreen({
@@ -33,9 +37,36 @@ export function LearningPathScreen({
   onResetProgress,
   onStartAction,
   hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange
 }: LearningPathScreenProps) {
   const [drills, setDrills] = useState<Drill[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position after loading completes
+  useEffect(() => {
+    if (!isLoading && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoading, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   useEffect(() => {
     let isMounted = true
@@ -82,7 +113,11 @@ export function LearningPathScreen({
 
   return (
     <ScreenShell>
-      <ScreenShellContent>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
         <div className="px-6 safe-area-top pb-28">
           <BackButton onClick={onBack} label="Back" />
 
@@ -224,7 +259,7 @@ export function LearningPathScreen({
             </div>
           )}
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav

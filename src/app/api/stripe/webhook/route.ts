@@ -21,67 +21,197 @@ function getSupabaseAdminClient() {
   return createClient(url, serviceKey)
 }
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+function getStripeWebhookSecret() {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!secret) {
+    throw new Error('Missing STRIPE_WEBHOOK_SECRET')
+  }
+  return secret
+}
+
+type SupabaseAdminClient = ReturnType<typeof getSupabaseAdminClient>
+
+type WebhookEventStatus = 'processing' | 'processed' | 'failed'
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: string }).code
+  return code === '23505'
+}
+
+async function beginWebhookProcessing(
+  supabase: SupabaseAdminClient,
+  event: Stripe.Event
+): Promise<{ eventRowId: string; duplicate: boolean }> {
+  const now = new Date().toISOString()
+  const basePayload = {
+    stripe_event_id: event.id,
+    event_type: event.type,
+    status: 'processing' as WebhookEventStatus,
+    attempt_count: 1,
+    received_at: now,
+    last_error: null,
+    payload: event as unknown as Record<string, unknown>,
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('stripe_webhook_events')
+    .insert(basePayload)
+    .select('id,status,attempt_count')
+    .single()
+
+  if (!insertError && inserted?.id) {
+    return { eventRowId: inserted.id, duplicate: false }
+  }
+
+  if (!isUniqueViolation(insertError)) {
+    const message = insertError?.message ?? 'unknown error'
+    throw new Error(`Failed to create webhook event row: ${message}`)
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('stripe_webhook_events')
+    .select('id,status,attempt_count')
+    .eq('stripe_event_id', event.id)
+    .maybeSingle()
+
+  if (existingError || !existing?.id) {
+    const message = existingError?.message ?? 'missing existing event row'
+    throw new Error(`Failed to read existing webhook event row: ${message}`)
+  }
+
+  const status = String(existing.status ?? '') as WebhookEventStatus
+  if (status === 'processed') {
+    return { eventRowId: existing.id, duplicate: true }
+  }
+  if (status === 'processing') {
+    throw new Error('Webhook event is currently being processed')
+  }
+
+  const { error: claimError } = await supabase
+    .from('stripe_webhook_events')
+    .update({
+      status: 'processing',
+      attempt_count: (existing.attempt_count ?? 0) + 1,
+      last_error: null,
+      received_at: now,
+    })
+    .eq('id', existing.id)
+
+  if (claimError) {
+    throw new Error(`Failed to claim existing webhook event row: ${claimError.message}`)
+  }
+
+  return { eventRowId: existing.id, duplicate: false }
+}
+
+async function markWebhookProcessed(
+  supabase: SupabaseAdminClient,
+  eventRowId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('stripe_webhook_events')
+    .update({
+      status: 'processed',
+      processed_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq('id', eventRowId)
+
+  if (error) {
+    throw new Error(`Failed to mark webhook as processed: ${error.message}`)
+  }
+}
+
+async function markWebhookFailed(
+  supabase: SupabaseAdminClient,
+  eventRowId: string,
+  errorMessage: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('stripe_webhook_events')
+    .update({
+      status: 'failed',
+      last_error: errorMessage.slice(0, 4000),
+    })
+    .eq('id', eventRowId)
+
+  if (error) {
+    console.error('Failed to mark webhook as failed:', error.message)
+  }
+}
 
 export async function POST(request: NextRequest) {
-  const stripe = getStripeClient()
-  const supabase = getSupabaseAdminClient()
-  const body = await request.text()
-  const signature = request.headers.get('stripe-signature')
-
-  if (!signature) {
-    return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 })
-  }
-
-  let event: Stripe.Event
-
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('Webhook signature verification failed:', message)
-    return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 })
-  }
+    const stripe = getStripeClient()
+    const supabase = getSupabaseAdminClient()
+    const webhookSecret = getStripeWebhookSecret()
+    const body = await request.text()
+    const signature = request.headers.get('stripe-signature')
 
-  try {
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await handleCheckoutSessionCompleted(stripe, supabase, event.data.object as Stripe.Checkout.Session)
-        break
-
-      case 'invoice.paid':
-        await handleInvoicePaid(stripe, supabase, event.data.object as Stripe.Invoice)
-        break
-
-      case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(supabase, event.data.object as Stripe.Subscription)
-        break
-
-      case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(supabase, event.data.object as Stripe.Subscription)
-        break
-
-      default:
-        console.log(`Unhandled event type: ${event.type}`)
+    if (!signature) {
+      return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 })
     }
 
-    return NextResponse.json({ received: true })
+    let event: Stripe.Event
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Webhook signature verification failed:', message)
+      return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 })
+    }
+
+    const { eventRowId, duplicate } = await beginWebhookProcessing(supabase, event)
+    if (duplicate) {
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed':
+          await handleCheckoutSessionCompleted(stripe, supabase, event.data.object as Stripe.Checkout.Session)
+          break
+
+        case 'invoice.paid':
+          await handleInvoicePaid(stripe, supabase, event.data.object as Stripe.Invoice)
+          break
+
+        case 'customer.subscription.updated':
+          await handleSubscriptionUpdated(supabase, event.data.object as Stripe.Subscription)
+          break
+
+        case 'customer.subscription.deleted':
+          await handleSubscriptionDeleted(supabase, event.data.object as Stripe.Subscription)
+          break
+
+        default:
+          console.log(`Unhandled event type: ${event.type}`)
+      }
+
+      await markWebhookProcessed(supabase, eventRowId)
+      return NextResponse.json({ received: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      await markWebhookFailed(supabase, eventRowId, message)
+      throw error
+    }
   } catch (error) {
     console.error('Error processing webhook:', error)
-    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
 async function handleCheckoutSessionCompleted(
   stripe: Stripe,
-  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  supabase: SupabaseAdminClient,
   session: Stripe.Checkout.Session
 ) {
   const { userId, programId, mode } = session.metadata || {}
 
   if (!userId) {
-    console.error('No userId in checkout session metadata')
-    return
+    throw new Error('Checkout metadata is missing userId')
   }
 
   if (mode === 'subscription' && session.subscription) {
@@ -89,11 +219,15 @@ async function handleCheckoutSessionCompleted(
     const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
 
     // Get or create subscription plan
-    const { data: plan } = await supabase
+    const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .select('id')
       .eq('stripe_price_id', subscription.items.data[0]?.price.id)
-      .single()
+      .maybeSingle()
+
+    if (planError) {
+      throw new Error(`Failed to fetch subscription plan: ${planError.message}`)
+    }
 
     // Get billing period from the first subscription item
     const firstItem = subscription.items.data[0]
@@ -119,7 +253,7 @@ async function handleCheckoutSessionCompleted(
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
 
-    if (error) console.error('Error upserting subscription:', error)
+    if (error) throw new Error(`Failed to upsert subscription: ${error.message}`)
   } else if (mode === 'payment' && programId) {
     // Create purchase record for one-time program purchase
     const { error } = await supabase.from('purchases').insert({
@@ -131,21 +265,25 @@ async function handleCheckoutSessionCompleted(
       purchased_at: new Date().toISOString(),
     })
 
-    if (error) console.error('Error creating purchase:', error)
+    if (error) throw new Error(`Failed to create purchase: ${error.message}`)
 
     // Also add to user_programs to grant access
-    await supabase.from('user_programs').upsert({
+    const { error: grantError } = await supabase.from('user_programs').upsert({
       user_id: userId,
       program_id: programId,
       is_active: true,
       purchased_at: new Date().toISOString(),
     }, { onConflict: 'user_id,program_id' })
+
+    if (grantError) throw new Error(`Failed to grant purchased program access: ${grantError.message}`)
+  } else {
+    throw new Error(`Unsupported checkout mode in metadata: ${mode ?? 'unknown'}`)
   }
 }
 
 async function handleInvoicePaid(
   stripe: Stripe,
-  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  supabase: SupabaseAdminClient,
   invoice: Stripe.Invoice
 ) {
   // Access subscription from parent or lines
@@ -179,11 +317,11 @@ async function handleInvoicePaid(
     })
     .eq('stripe_subscription_id', subscription.id)
 
-  if (error) console.error('Error updating subscription period:', error)
+  if (error) throw new Error(`Failed to update subscription period: ${error.message}`)
 }
 
 async function handleSubscriptionUpdated(
-  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  supabase: SupabaseAdminClient,
   subscription: Stripe.Subscription
 ) {
   // Get billing period from the first subscription item
@@ -206,11 +344,11 @@ async function handleSubscriptionUpdated(
     })
     .eq('stripe_subscription_id', subscription.id)
 
-  if (error) console.error('Error updating subscription:', error)
+  if (error) throw new Error(`Failed to update subscription: ${error.message}`)
 }
 
 async function handleSubscriptionDeleted(
-  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  supabase: SupabaseAdminClient,
   subscription: Stripe.Subscription
 ) {
   const { error } = await supabase
@@ -221,5 +359,5 @@ async function handleSubscriptionDeleted(
     })
     .eq('stripe_subscription_id', subscription.id)
 
-  if (error) console.error('Error canceling subscription:', error)
+  if (error) throw new Error(`Failed to cancel subscription: ${error.message}`)
 }

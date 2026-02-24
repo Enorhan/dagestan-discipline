@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useState, useEffect } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
 import { Screen, SportType, DrillCategory, Drill, Routine, LearningPath, Athlete, ExerciseCounts } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -84,6 +84,10 @@ interface TrainingHubProps {
   session?: any // Today's workout session
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function TrainingHub({
@@ -102,7 +106,9 @@ export function TrainingHub({
   backScreen = 'home',
   session,
   onStartAction,
-  hasWorkoutToday = false
+  hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange
 }: TrainingHubProps) {
   // Loading and data states
   const [isLoading, setIsLoading] = useState(true)
@@ -121,6 +127,32 @@ export function TrainingHub({
     'recovery': 0
   })
   const [exerciseCounts, setExerciseCounts] = useState<ExerciseCounts | null>(null)
+
+  // Scroll container ref for position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position AFTER loading completes
+  useEffect(() => {
+    if (!isLoading && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      // Use multiple RAF to ensure DOM is fully painted
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoading, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   // Fetch data on mount
   useEffect(() => {
@@ -246,7 +278,11 @@ export function TrainingHub({
 
   return (
     <ScreenShell>
-      <ScreenShellContent>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
         <div
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -261,12 +297,12 @@ export function TrainingHub({
           )}
 
           {/* Hero Header - matching sport pages */}
-          <div className="relative pt-4 pb-8 px-6 overflow-hidden">
+          <div className="relative safe-area-top pb-8 px-6 overflow-hidden">
             {/* Background Gradient */}
             <div className="absolute inset-0 bg-gradient-to-b from-primary/30 via-background to-background opacity-50" />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
 
-            <div className="relative z-10 pt-2">
+            <div className="relative z-10">
               <h1 className="text-4xl font-black tracking-tight text-foreground uppercase">
                 Training Hub
               </h1>
@@ -684,7 +720,7 @@ export function TrainingHub({
           </>
         )}
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav

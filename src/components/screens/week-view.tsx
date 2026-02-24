@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Screen, WeekDay, Session, ActivityLog, ActivityType } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
@@ -55,6 +55,10 @@ interface WeekViewProps {
   hasWorkoutToday?: boolean
   onStartSessionForDay?: (dayIndex: number) => void
   onEditSession?: (dayIndex: number) => void
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function WeekView({
@@ -72,12 +76,39 @@ export function WeekView({
   onStartAction,
   hasWorkoutToday = false,
   onStartSessionForDay,
-  onEditSession
+  onEditSession,
+  initialScrollTop,
+  onScrollChange
 }: WeekViewProps) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' })
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
   const [activityToDelete, setActivityToDelete] = useState<ActivityLog | null>(null)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position on mount (no loading state in week-view)
+  useEffect(() => {
+    if (initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   // Use pull-to-refresh hook
   const {
@@ -206,8 +237,10 @@ export function WeekView({
         </div>
       )}
 
-      <ScreenShellContent
-        className="transition-transform"
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain transition-transform"
         style={{ transform: pullDistance > 0 || isRefreshing ? `translateY(${isRefreshing ? 60 : pullDistance}px)` : 'none' }}
       >
         <div className="max-w-lg mx-auto w-full pb-28">
@@ -548,7 +581,7 @@ export function WeekView({
             </div>
           </div>
         </div>
-        </ScreenShellContent>
+      </div>
 
       {/* Floating Action Button - Log Training */}
       {onLogTraining && (

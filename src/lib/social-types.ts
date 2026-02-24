@@ -126,6 +126,7 @@ export interface AuthState {
   user: UserProfile | null
   isLoading: boolean
   error: string | null
+  emailVerified: boolean
 }
 
 // Social state for the app

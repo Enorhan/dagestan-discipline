@@ -93,17 +93,25 @@ function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProp
       aria-label={label}
     >
       {/* Icon with active indicator */}
-      <span className={[
-        'relative transition-colors duration-normal',
-        active ? 'text-primary' : 'text-muted-foreground/60',
-      ].join(' ')}>
-        {icon}
-        {/* Active dot indicator */}
+      <span className="flex flex-col items-center gap-1">
+        <span className={[
+          'relative transition-colors duration-normal',
+          active ? 'text-primary' : 'text-muted-foreground/60',
+        ].join(' ')}>
+          {icon}
+        </span>
+        {/* Label - visible for non-center items */}
+        <span className={[
+          'text-[10px] font-medium transition-colors duration-normal',
+          active ? 'text-primary' : 'text-muted-foreground/60',
+        ].join(' ')}>
+          {label}
+        </span>
+        {/* Active bar indicator */}
         {active && (
-          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-6 h-1 rounded-full bg-primary" />
         )}
       </span>
-      <span className="sr-only">{label}</span>
     </button>
   )
 }

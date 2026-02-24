@@ -4,6 +4,9 @@ export type Screen =
   | 'onboarding-level'
   | 'onboarding-intake'
   | 'onboarding-equipment'
+  | 'onboarding-generating'
+  | 'onboarding-program-explainer'
+  | 'onboarding-app-tour'
   | 'home'
   | 'today-editor'
   | 'week-view'
@@ -32,6 +35,7 @@ export type Screen =
   // Social screens
   | 'auth-login'
   | 'auth-signup'
+  | 'email-verification-pending'
   | 'workout-builder'
   | 'user-profile'
   | 'workout-detail'

@@ -6,6 +6,7 @@ import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { BackButton } from '@/components/ui/back-button'
 import { ExerciseCardWithGuidance } from '@/components/ui/exercise-card-with-guidance'
+import { EmptyState } from '@/components/ui/empty-state'
 import { athletesService } from '@/lib/athletes-service'
 import { Trophy, Refresh, Target } from '@/components/ui/icons'
 import { Button } from '@/components/ui/button'
@@ -138,17 +139,26 @@ export function AthleteDetail({
                 <h2 className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mb-4">
                   Training Program ({exercises.length} exercises)
                 </h2>
-                <div className="space-y-4">
-                  {exercises.map(exercise => (
-                    <ExerciseCardWithGuidance
-                      key={exercise.id}
-                      exercise={exercise}
-                      userLevel={selectedLevel}
-                      showAthleteData={true}
-                      showRecommendations={true}
-                    />
-                  ))}
-                </div>
+                {exercises.length === 0 ? (
+                  <EmptyState
+                    variant="compact"
+                    icon={<Target size={24} className="text-muted-foreground/50" />}
+                    title="No exercises yet"
+                    message="No athlete-linked exercises are available for this profile right now."
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {exercises.map(exercise => (
+                      <ExerciseCardWithGuidance
+                        key={exercise.id}
+                        exercise={exercise}
+                        userLevel={selectedLevel}
+                        showAthleteData={true}
+                        showRecommendations={true}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

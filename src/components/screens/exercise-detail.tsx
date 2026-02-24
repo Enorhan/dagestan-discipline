@@ -95,13 +95,17 @@ export function ExerciseDetail({
   ]
 
   const theme = sportThemes[exercise.sport] || sportThemes.bjj
+  const showAddAction = Boolean(onAddToToday)
+  const showCompleteAction = !isCompleted && Boolean(onMarkComplete)
+  const hasFooterActions = showAddAction || showCompleteAction
+  const hasAthleteMetrics = Boolean(exercise.sets || exercise.reps || exercise.weight || exercise.duration)
 
   return (
     <ScreenShell>
       <ScreenShellContent>
         <div className="pb-24">
           {/* Hero Header */}
-          <div className={`relative pt-4 pb-12 px-6 overflow-hidden`}>
+          <div className={`relative safe-area-top pb-12 px-6 overflow-hidden`}>
             {/* Background Gradient */}
             <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
@@ -185,7 +189,7 @@ export function ExerciseDetail({
               <div className={`absolute -inset-1 bg-gradient-to-r ${theme.gradient} opacity-20 blur-xl group-hover:opacity-30 transition-opacity duration-500`} />
               
               <div className="relative card-elevated rounded-3xl p-6 bg-card/40 backdrop-blur-xl border border-white/10 shadow-2xl">
-                <div className="flex items-center gap-4 mb-6">
+                <div className={`flex items-center gap-4 ${hasAthleteMetrics ? 'mb-6' : 'mb-3'}`}>
                   <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center border border-white/10 shadow-lg`}>
                     <Trophy size={28} className="text-white/90" />
                   </div>
@@ -199,32 +203,40 @@ export function ExerciseDetail({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {exercise.sets && (
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Sets</span>
-                      <p className="text-xl font-black text-white">{exercise.sets}</p>
-                    </div>
-                  )}
-                  {exercise.reps && (
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Reps</span>
-                      <p className="text-xl font-black text-white">{exercise.reps}</p>
-                    </div>
-                  )}
-                  {exercise.weight && (
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Weight</span>
-                      <p className="text-xl font-black text-white">{exercise.weight}</p>
-                    </div>
-                  )}
-                  {exercise.duration && (
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Time</span>
-                      <p className="text-xl font-black text-white">{exercise.duration}</p>
-                    </div>
-                  )}
-                </div>
+                {hasAthleteMetrics ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {exercise.sets && (
+                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Sets</span>
+                        <p className="text-xl font-black text-white">{exercise.sets}</p>
+                      </div>
+                    )}
+                    {exercise.reps && (
+                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Reps</span>
+                        <p className="text-xl font-black text-white">{exercise.reps}</p>
+                      </div>
+                    )}
+                    {exercise.weight && (
+                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Weight</span>
+                        <p className="text-xl font-black text-white">{exercise.weight}</p>
+                      </div>
+                    )}
+                    {exercise.duration && (
+                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Time</span>
+                        <p className="text-xl font-black text-white">{exercise.duration}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs text-white/65 leading-relaxed">
+                      Elite athletes include this movement to build transferable fight performance. Use the protocol below to scale it to your level.
+                    </p>
+                  </div>
+                )}
 
                 {exercise.notes && (
                   <div className="mt-6 flex gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
@@ -368,15 +380,19 @@ export function ExerciseDetail({
             )}
           </div>
 
-          {/* Action Footer */}
-          {(onAddToToday || (!isCompleted && onMarkComplete)) && (
-            <div className="px-6 py-6 pb-12 space-y-3">
-              {onAddToToday && (
+        </div>
+      </ScreenShellContent>
+
+      <ScreenShellFooter className={hasFooterActions ? 'pt-0' : ''}>
+        <div className="max-w-lg mx-auto w-full">
+          {hasFooterActions && (
+            <div className="px-6 pt-3 pb-2 space-y-3 border-b border-white/5">
+              {showAddAction && onAddToToday && (
                 <Button
                   variant={isInToday ? 'secondary' : 'primary'}
-                  size="xl"
+                  size="lg"
                   fullWidth
-                  className="h-16 rounded-2xl font-black text-lg uppercase tracking-wider"
+                  className="h-14 rounded-2xl font-black text-base uppercase tracking-[0.14em]"
                   disabled={isInToday}
                   onClick={() => {
                     haptics.medium()
@@ -397,12 +413,12 @@ export function ExerciseDetail({
                 </Button>
               )}
 
-              {!isCompleted && onMarkComplete && (
+              {showCompleteAction && onMarkComplete && (
                 <Button
                   variant="outline"
-                  size="xl"
+                  size="lg"
                   fullWidth
-                  className="h-16 rounded-2xl font-black text-lg uppercase tracking-wider border-white/10 bg-white/5 hover:bg-white/10"
+                  className="h-14 rounded-2xl font-black text-base uppercase tracking-[0.14em] border-white/10 bg-white/5 hover:bg-white/10"
                   onClick={() => {
                     haptics.success()
                     onMarkComplete(exercise.id)
@@ -413,16 +429,14 @@ export function ExerciseDetail({
               )}
             </div>
           )}
-        </div>
-      </ScreenShellContent>
 
-      <ScreenShellFooter>
-        <BottomNav
-          active="learn"
-          onNavigate={onNavigate}
-          onStartAction={onStartAction}
-          hasWorkoutToday={hasWorkoutToday}
-        />
+          <BottomNav
+            active="learn"
+            onNavigate={onNavigate}
+            onStartAction={onStartAction}
+            hasWorkoutToday={hasWorkoutToday}
+          />
+        </div>
       </ScreenShellFooter>
     </ScreenShell>
   )

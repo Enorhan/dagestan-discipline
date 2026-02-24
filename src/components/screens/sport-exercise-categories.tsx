@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { ExerciseCategory, ExerciseCounts, Screen, SportType } from '@/lib/types'
 import { athletesService } from '@/lib/athletes-service'
 import { haptics } from '@/lib/haptics'
@@ -131,6 +131,10 @@ interface SportExerciseCategoriesProps {
   onSelectCategory: (sport: SportType, category: ExerciseCategory) => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 const sportThemes: Record<SportType, { gradient: string; color: string; bg: string }> = {
@@ -158,10 +162,37 @@ export function SportExerciseCategories({
   onBack,
   onSelectCategory,
   onStartAction,
-  hasWorkoutToday = false
+  hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange
 }: SportExerciseCategoriesProps) {
   const [exerciseCounts, setExerciseCounts] = useState<ExerciseCounts | null>(null)
   const [isLoadingCounts, setIsLoadingCounts] = useState(true)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position after loading completes
+  useEffect(() => {
+    if (!isLoadingCounts && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoadingCounts, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   // Fetch exercise counts on mount
   useEffect(() => {
@@ -195,6 +226,13 @@ export function SportExerciseCategories({
     'neck'
   ]
 
+  const visibleCategories = isLoadingCounts || !exerciseCounts
+    ? categories
+    : categories.filter((category) => {
+      const key = `${sport}-${category}`
+      return (exerciseCounts.bySportAndCategory[key] || 0) > 0
+    })
+
   // Get exercise count for a specific sport/category
   const getCategoryCount = (category: ExerciseCategory): number | null => {
     if (!exerciseCounts) return null
@@ -206,10 +244,14 @@ export function SportExerciseCategories({
 
   return (
     <ScreenShell>
-      <ScreenShellContent>
-        <div className="pb-24">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
+        <div className="pb-32">
           {/* Hero Header */}
-          <div className={`relative pt-4 pb-8 px-6 overflow-hidden`}>
+          <div className={`relative safe-area-top pb-8 px-6 overflow-hidden`}>
             {/* Background Gradient */}
             <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
@@ -247,7 +289,7 @@ export function SportExerciseCategories({
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {categories.map((category, index) => {
+              {visibleCategories.map((category, index) => {
                 const info = categoryInfo[category]
                 const count = getCategoryCount(category)
                 return (
@@ -285,9 +327,14 @@ export function SportExerciseCategories({
                 )
               })}
             </div>
+            {!isLoadingCounts && visibleCategories.length === 0 && (
+              <div className="rounded-2xl border border-white/10 bg-card/40 px-5 py-6 text-sm text-muted-foreground">
+                No exercise categories with athlete-linked content are available yet.
+              </div>
+            )}
           </div>
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav

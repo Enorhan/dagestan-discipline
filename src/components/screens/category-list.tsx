@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Drill, DrillCategory, DrillSubcategory, Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -130,6 +130,10 @@ interface CategoryListProps {
   onNavigate: (screen: Screen) => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function CategoryList({
@@ -143,11 +147,38 @@ export function CategoryList({
   onNavigate,
   onStartAction,
   hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange,
 }: CategoryListProps) {
   const [selectedSubcategory, setSelectedSubcategory] = useState<DrillSubcategory | 'all'>(initialSubcategory || 'all')
   const [searchQuery, setSearchQuery] = useState('')
   const [allDrillsInCategory, setAllDrillsInCategory] = useState<Drill[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position after loading completes
+  useEffect(() => {
+    if (!isLoading && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoading, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   const categoryDisplay = categoryInfo[category]
   const theme = categoryThemes[category]
@@ -199,12 +230,19 @@ export function CategoryList({
     setSelectedSubcategory('all')
   }
 
+  const hasActiveFilters = searchQuery.trim().length > 0 || selectedSubcategory !== 'all'
+  const hasAnyDrillsInCategory = allDrillsInCategory.length > 0
+
   return (
     <ScreenShell>
-      <ScreenShellContent>
-        <div className="pb-24">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
+        <div className="pb-32">
           {/* Hero Header */}
-          <div className="relative pt-4 pb-10 px-6 overflow-hidden">
+          <div className="relative safe-area-top pb-10 px-6 overflow-hidden">
             <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
 
@@ -314,14 +352,23 @@ export function CategoryList({
                 <p className="text-sm text-muted-foreground mt-2">Loading drills...</p>
               </div>
             ) : filteredDrills.length === 0 ? (
-              <EmptyState
-                icon={<Search size={40} className="text-muted-foreground/50" />}
-                title="No drills found"
-                message={searchQuery ? `No results for "${searchQuery}"` : "Try adjusting your filters"}
-                actionText="Clear filters"
-                onAction={clearFilters}
-                variant="compact"
-              />
+              hasAnyDrillsInCategory ? (
+                <EmptyState
+                  icon={<Search size={40} className="text-muted-foreground/50" />}
+                  title="No matches"
+                  message={searchQuery ? `No results for "${searchQuery}"` : "Try adjusting your filters."}
+                  actionText={hasActiveFilters ? "Clear filters" : undefined}
+                  onAction={hasActiveFilters ? clearFilters : undefined}
+                />
+              ) : (
+                <EmptyState
+                  icon={categoryIcons[category]}
+                  title="No drills available yet"
+                  message={`No ${categoryDisplay?.name.toLowerCase() ?? 'category'} drills are currently available.`}
+                  actionText="Back"
+                  onAction={onBack}
+                />
+              )
             ) : (
               <div className="space-y-3">
                 {filteredDrills.map((drill, index) => (
@@ -403,7 +450,7 @@ export function CategoryList({
             )}
           </div>
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav
