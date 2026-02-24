@@ -5,24 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dagestan Discipline - Payment Complete</title>
     <style>
-        * {margin:0;padding:0;box-sizing:border-box}
+        *{margin:0;padding:0;box-sizing:border-box}
         body{background:#0a0a0a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
-        .container{text-align:center;padding:2rem}
+        .container{text-align:center;padding:2rem;max-width:400px}
         .icon{font-size:4rem;margin-bottom:1rem}
         h1{font-size:1.5rem;margin-bottom:.5rem}
-        p{color:#999;margin-bottom:1.5rem}
-        .btn{display:inline-block;background:#8b0000;color:#fff;padding:1rem 2rem;border-radius:8px;text-decoration:none;font-weight:600}
-        .btn:hover{background:#a00000}
+        p{color:#999;margin-bottom:1.5rem;line-height:1.5}
+        .btn{display:inline-block;background:#8b0000;color:#fff;padding:1rem 2rem;border-radius:8px;text-decoration:none;font-weight:600;font-size:1.1rem}
+        .btn:active{background:#a00000;transform:scale(0.98)}
         .success .icon{color:#22c55e}
         .canceled .icon{color:#ef4444}
-        .subtext{font-size:.85rem;color:#666;margin-top:1rem}
+        .subtext{font-size:.85rem;color:#666;margin-top:1.5rem}
+        .instructions{background:rgba(255,255,255,0.05);border-radius:8px;padding:1rem;margin-top:1.5rem;font-size:.9rem;color:#aaa}
     </style>
 </head>
 <body>
     <div class="container" id="content">
         <div class="icon">🔁</div>
         <h1>Processing...</h1>
-        <p>Redirecting you back to the app...</p>
+        <p>Loading your payment status...</p>
     </div>
 
     <script>
@@ -35,28 +36,25 @@
             container.innerHTML = `
                 <div class="icon">✅</div>
                 <h1>Payment Successful!</h1>
-                <p>Your premium subscription is now active.</p>
-                <a href="dagestanidiscipline://app/settings?subscription=success" class="btn">Open App</a>
-                <p class="subtext">If the app doesn't open, go back manually.</p>
+                <p>Your premium subscription is now active. You have full access to all training programs and features.</p>
+                <div class="instructions">
+                    <strong style="color:#fff">To return to the app:</strong><br>
+                    Swipe up from the bottom and tap on the Dagestan Discipline app to continue training.
+                </div>
+                <p class="subtext">Thank you for supporting Dagestan Discipline! 🥋</p>
             `;
         } else {
             container.className = 'container canceled';
             container.innerHTML = `
                 <div class="icon">❌</div>
                 <h1>Payment Canceled</h1>
-                <p>No charges were made to your account.</p>
-                <a href="dagestanidiscipline://app/settings?subscription=canceled" class="btn">Open App</a>
-                <p class="subtext">If the app doesn't open, go back manually.</p>
+                <p>No charges were made to your account. You can try again anytime from the Settings page.</p>
+                <div class="instructions">
+                    <strong style="color:#fff">To return to the app:</strong><br>
+                    Swipe up from the bottom and tap on the Dagestan Discipline app.
+                </div>
             `;
         }
-
-        // Auto-try to open the app after a short delay
-        setTimeout(() => {
-            const deepLink = status === 'success' 
-                ? 'dagestanidiscipline://app/settings?subscription=success'
-                : 'dagestanidiscipline://app/settings?subscription=canceled';
-            window.location.href = deepLink;
-        }, 1000);
     </script>
 </body>
 </html>
