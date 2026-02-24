@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dagestan Discipline - Payment Complete</title>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box}
+        body{background:#0a0a0a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
+        .container{text-align:center;padding:2rem}
+        .icon{font-size:4rem;margin-bottom:1rem}
+        h1{font-size:1.5rem;margin-bottom:.5rem}
+        p{color:#999;margin-bottom:1.5rem}
+        .btn{display:inline-block;background:#8b0000;color:#fff;padding:1rem 2rem;border-radius:8px;text-decoration:none;font-weight:600}
+        .btn:hover{background:#a00000}
+        .success .icon{color:#22c55e}
+        .canceled .icon{color:#ef4444}
+        .subtext{font-size:.85rem;color:#666;margin-top:1rem}
+    </style>
+</head>
+<body>
+    <div class="container" id="content">
+        <div class="icon">🔁</div>
+        <h1>Processing...</h1>
+        <p>Redirecting you back to the app...</p>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const status = params.get('status') || 'success';
+        const container = document.getElementById('content');
+
+        if (status === 'success') {
+            container.className = 'container success';
+            container.innerHTML = `
+                <div class="icon">✅</div>
+                <h1>Payment Successful!</h1>
+                <p>Your premium subscription is now active.</p>
+                <a href="dagestanidiscipline://app/settings?subscription=success" class="btn">Open App</a>
+                <p class="subtext">If the app doesn't open, go back manually.</p>
+            `;
+        } else {
+            container.className = 'container canceled';
+            container.innerHTML = `
+                <div class="icon">❌</div>
+                <h1>Payment Canceled</h1>
+                <p>No charges were made to your account.</p>
+                <a href="dagestanidiscipline://app/settings?subscription=canceled" class="btn">Open App</a>
+                <p class="subtext">If the app doesn't open, go back manually.</p>
+            `;
+        }
+
+        // Auto-try to open the app after a short delay
+        setTimeout(() => {
+            const deepLink = status === 'success' 
+                ? 'dagestanidiscipline://app/settings?subscription=success'
+                : 'dagestanidiscipline://app/settings?subscription=canceled';
+            window.location.href = deepLink;
+        }, 1000);
+    </script>
+</body>
+</html>
