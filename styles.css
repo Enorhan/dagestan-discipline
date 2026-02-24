@@ -1,0 +1,928 @@
+/* ============================================
+   DAGESTAN DISCIPLINE - LANDING PAGE STYLES
+   Epic, bold, warrior aesthetic
+   ============================================ */
+
+:root {
+    --color-bg: #0a0a0a;
+    --color-bg-secondary: #111111;
+    --color-bg-card: #1a1a1a;
+    --color-accent: #f59e0b;
+    --color-accent-dark: #d97706;
+    --color-red: #dc2626;
+    --color-text: #ffffff;
+    --color-text-muted: #a1a1aa;
+    --color-border: #2a2a2a;
+    --font-display: 'Oswald', sans-serif;
+    --font-body: 'Inter', sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--font-body);
+    background: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+.accent-text {
+    color: var(--color-accent);
+}
+
+/* ============================================
+   NAVIGATION
+   ============================================ */
+.nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+}
+
+.nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+.logo-icon {
+    font-size: 1.6rem;
+}
+
+.nav-logo .accent {
+    color: var(--color-accent);
+}
+
+.nav-cta {
+    background: var(--color-accent);
+    color: var(--color-bg);
+    padding: 12px 28px;
+    border-radius: 50px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.nav-cta:hover {
+    background: var(--color-accent-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(245, 158, 11, 0.3);
+}
+
+/* ============================================
+   HERO SECTION
+   ============================================ */
+.hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    position: relative;
+    padding: 120px 40px 80px;
+    background: 
+        radial-gradient(ellipse at 20% 50%, rgba(245, 158, 11, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(220, 38, 38, 0.08) 0%, transparent 50%),
+        var(--color-bg);
+    overflow: hidden;
+}
+
+.hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="0.5"/></pattern></defs><rect fill="url(%23grid)" width="100" height="100"/></svg>');
+    pointer-events: none;
+}
+
+.hero-content {
+    flex: 1;
+    max-width: 600px;
+    z-index: 2;
+}
+
+.hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 8px 20px;
+    border-radius: 50px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--color-accent);
+    margin-bottom: 32px;
+    animation: fadeInUp 0.8s ease forwards;
+}
+
+.hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 8vw, 5.5rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -1px;
+    margin-bottom: 24px;
+    animation: fadeInUp 0.8s ease 0.1s forwards;
+    opacity: 0;
+}
+
+.title-line {
+    display: block;
+}
+
+.hero-subtitle {
+    font-size: 1.2rem;
+    color: var(--color-text-muted);
+    margin-bottom: 40px;
+    max-width: 500px;
+    animation: fadeInUp 0.8s ease 0.2s forwards;
+    opacity: 0;
+}
+
+.hero-cta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 48px;
+    animation: fadeInUp 0.8s ease 0.3s forwards;
+    opacity: 0;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 32px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 1rem;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: none;
+}
+
+.btn-primary {
+    background: var(--color-accent);
+    color: var(--color-bg);
+}
+
+.btn-primary:hover {
+    background: var(--color-accent-dark);
+    transform: translateY(-3px);
+    box-shadow: 0 15px 40px rgba(245, 158, 11, 0.4);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--color-text);
+    border: 2px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+.btn-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.hero-stats {
+    display: flex;
+    gap: 48px;
+    animation: fadeInUp 0.8s ease 0.4s forwards;
+    opacity: 0;
+}
+
+.stat {
+    text-align: left;
+}
+
+.stat-number {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--color-accent);
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Hero Phone */
+.hero-phone {
+    position: absolute;
+    right: 5%;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    animation: floatPhone 6s ease-in-out infinite;
+}
+
+.phone-mockup {
+    width: 320px;
+    height: 650px;
+    background: #1a1a1a;
+    border-radius: 45px;
+    padding: 12px;
+    box-shadow:
+        0 50px 100px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(255,255,255,0.1),
+        inset 0 0 0 1px rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+}
+
+.phone-mockup::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 28px;
+    background: #0a0a0a;
+    border-radius: 20px;
+    z-index: 10;
+}
+
+.phone-screen {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 35px;
+}
+
+.phone-glow {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.3), transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: -1;
+    filter: blur(60px);
+}
+
+.scroll-indicator {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    animation: bounce 2s ease-in-out infinite;
+}
+
+.scroll-arrow {
+    width: 24px;
+    height: 24px;
+    border-right: 2px solid var(--color-accent);
+    border-bottom: 2px solid var(--color-accent);
+    transform: rotate(45deg);
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes floatPhone {
+    0%, 100% { transform: translateY(-50%) rotate(-2deg); }
+    50% { transform: translateY(-52%) rotate(2deg); }
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(10px); }
+}
+
+/* ============================================
+   SPORTS SECTION
+   ============================================ */
+.sports {
+    padding: 120px 0;
+    background: var(--color-bg-secondary);
+    position: relative;
+}
+
+.section-title {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+}
+
+.section-subtitle {
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 1.1rem;
+    margin-bottom: 64px;
+}
+
+.sports-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 32px;
+}
+
+.sport-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 24px;
+    padding: 48px 36px;
+    text-align: center;
+    transition: all 0.4s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.sport-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--color-accent);
+    transform: scaleX(0);
+    transition: transform 0.4s ease;
+}
+
+.sport-card:hover {
+    transform: translateY(-8px);
+    border-color: var(--color-accent);
+    box-shadow: 0 20px 60px rgba(245, 158, 11, 0.15);
+}
+
+.sport-card:hover::before {
+    transform: scaleX(1);
+}
+
+.sport-icon {
+    font-size: 4rem;
+    margin-bottom: 24px;
+    display: block;
+}
+
+.sport-card h3 {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+}
+
+.sport-card p {
+    color: var(--color-text-muted);
+    margin-bottom: 24px;
+    line-height: 1.7;
+}
+
+.sport-features {
+    list-style: none;
+    text-align: left;
+}
+
+.sport-features li {
+    padding: 10px 0;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sport-features li::before {
+    content: '→';
+    color: var(--color-accent);
+    font-weight: bold;
+}
+
+/* ============================================
+   FEATURES SECTION
+   ============================================ */
+.features {
+    padding: 120px 0;
+    background: var(--color-bg);
+}
+
+.features-showcase {
+    display: flex;
+    flex-direction: column;
+    gap: 100px;
+}
+
+.feature-row {
+    display: flex;
+    align-items: center;
+    gap: 80px;
+}
+
+.feature-row.reverse {
+    flex-direction: row-reverse;
+}
+
+.feature-content {
+    flex: 1;
+}
+
+.feature-number {
+    font-family: var(--font-display);
+    font-size: 5rem;
+    font-weight: 700;
+    color: rgba(245, 158, 11, 0.2);
+    line-height: 1;
+    margin-bottom: 16px;
+}
+
+.feature-content h3 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+}
+
+.feature-content p {
+    color: var(--color-text-muted);
+    font-size: 1.1rem;
+    line-height: 1.8;
+}
+
+.feature-phone {
+    flex: 1;
+    max-width: 300px;
+}
+
+.feature-phone img {
+    width: 100%;
+    border-radius: 30px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.4);
+}
+
+/* ============================================
+   QUOTE SECTION
+   ============================================ */
+.quote-section {
+    padding: 120px 0;
+    background: linear-gradient(135deg, var(--color-bg-secondary), var(--color-bg));
+    position: relative;
+    overflow: hidden;
+}
+
+.quote-section::before {
+    content: '"';
+    position: absolute;
+    top: 20%;
+    left: 5%;
+    font-size: 30rem;
+    font-family: Georgia, serif;
+    color: rgba(245, 158, 11, 0.05);
+    line-height: 1;
+}
+
+.main-quote {
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.main-quote p {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 1px;
+}
+
+/* ============================================
+   GALLERY SECTION
+   ============================================ */
+.gallery {
+    padding: 120px 0;
+    background: var(--color-bg);
+    overflow: hidden;
+}
+
+.screenshots-carousel {
+    display: flex;
+    gap: 24px;
+    padding: 20px 0;
+    animation: scrollCarousel 30s linear infinite;
+}
+
+.screenshot-item {
+    flex-shrink: 0;
+    width: 220px;
+}
+
+.screenshot-item img {
+    width: 100%;
+    border-radius: 24px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    transition: transform 0.3s ease;
+}
+
+.screenshot-item:hover img {
+    transform: scale(1.05);
+}
+
+@keyframes scrollCarousel {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+/* ============================================
+   DOWNLOAD SECTION
+   ============================================ */
+.download {
+    padding: 120px 0;
+    background:
+        radial-gradient(ellipse at 30% 50%, rgba(245, 158, 11, 0.15) 0%, transparent 50%),
+        var(--color-bg-secondary);
+}
+
+.download .container {
+    display: flex;
+    align-items: center;
+    gap: 80px;
+}
+
+.download-content {
+    flex: 1;
+}
+
+.download-title {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+}
+
+.download-subtitle {
+    font-size: 1.2rem;
+    color: var(--color-text-muted);
+    margin-bottom: 40px;
+}
+
+.download-buttons {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.store-button {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--color-text);
+    color: var(--color-bg);
+    padding: 14px 28px;
+    border-radius: 14px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.store-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 40px rgba(255,255,255,0.2);
+}
+
+.store-button svg {
+    width: 32px;
+    height: 32px;
+}
+
+.store-text {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.store-small {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.store-name {
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.download-note {
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+}
+
+.download-visual {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+}
+
+.phone-stack {
+    position: relative;
+    width: 280px;
+    height: 500px;
+}
+
+.stacked-phone {
+    position: absolute;
+    width: 220px;
+    border-radius: 30px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+    transition: all 0.4s ease;
+}
+
+.stacked-phone img {
+    width: 100%;
+    display: block;
+}
+
+.stacked-phone.back {
+    top: 40px;
+    left: 0;
+    transform: rotate(-8deg);
+    opacity: 0.6;
+}
+
+.stacked-phone.middle {
+    top: 20px;
+    left: 30px;
+    transform: rotate(-4deg);
+    opacity: 0.8;
+}
+
+.stacked-phone.front {
+    top: 0;
+    left: 60px;
+    transform: rotate(0deg);
+}
+
+.phone-stack:hover .stacked-phone.back {
+    transform: rotate(-12deg) translateX(-20px);
+}
+
+.phone-stack:hover .stacked-phone.middle {
+    transform: rotate(-6deg) translateX(-10px);
+}
+
+.phone-stack:hover .stacked-phone.front {
+    transform: rotate(4deg) translateX(10px);
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+.footer {
+    padding: 80px 0 40px;
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-border);
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    gap: 60px;
+    margin-bottom: 60px;
+}
+
+.footer-brand {
+    max-width: 300px;
+}
+
+.footer-brand .logo-text {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+}
+
+.footer-tagline {
+    margin-top: 16px;
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+}
+
+.footer-links {
+    display: flex;
+    gap: 60px;
+}
+
+.footer-column h4 {
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    color: var(--color-accent);
+}
+
+.footer-column a {
+    display: block;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    padding: 8px 0;
+    transition: color 0.3s ease;
+}
+
+.footer-column a:hover {
+    color: var(--color-text);
+}
+
+.footer-bottom {
+    text-align: center;
+    padding-top: 40px;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+@media (max-width: 1024px) {
+    .hero {
+        flex-direction: column;
+        text-align: center;
+        padding-top: 140px;
+    }
+
+    .hero-content {
+        max-width: 100%;
+    }
+
+    .hero-cta {
+        justify-content: center;
+    }
+
+    .hero-stats {
+        justify-content: center;
+    }
+
+    .hero-phone {
+        position: relative;
+        right: auto;
+        top: auto;
+        transform: none;
+        margin-top: 60px;
+    }
+
+    .phone-mockup {
+        width: 260px;
+        height: 530px;
+    }
+
+    .feature-row,
+    .feature-row.reverse {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .feature-number {
+        font-size: 4rem;
+    }
+
+    .download .container {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .footer-content {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .footer-links {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .nav {
+        padding: 16px 20px;
+    }
+
+    .nav-logo {
+        font-size: 1.1rem;
+    }
+
+    .nav-cta {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+
+    .hero {
+        padding: 120px 20px 60px;
+    }
+
+    .hero-title {
+        font-size: 2.8rem;
+    }
+
+    .hero-stats {
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .sports-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .features-showcase {
+        gap: 60px;
+    }
+
+    .feature-row {
+        gap: 40px;
+    }
+
+    .screenshot-item {
+        width: 180px;
+    }
+
+    .phone-stack {
+        width: 220px;
+        height: 400px;
+    }
+
+    .stacked-phone {
+        width: 180px;
+    }
+
+    .footer-links {
+        flex-direction: column;
+        gap: 30px;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-badge {
+        font-size: 0.7rem;
+        padding: 6px 14px;
+    }
+
+    .hero-title {
+        font-size: 2.2rem;
+    }
+
+    .btn {
+        padding: 14px 24px;
+        font-size: 0.9rem;
+    }
+
+    .section-title {
+        font-size: 2rem;
+    }
+
+    .sport-card {
+        padding: 36px 24px;
+    }
+
+    .store-button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
