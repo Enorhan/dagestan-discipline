@@ -996,6 +996,51 @@ export default function App() {
       }
     )
 
+    // AAA Pattern: Realtime profile updates for instant subscription status changes
+    // When webhook updates is_premium, subscription_status, etc., app reflects immediately
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+      (payload: any) => {
+        const row = payload?.new ?? null
+        if (!row) return
+
+        console.log('[realtime] Profile updated:', {
+          isPremium: row.is_premium,
+          subscriptionStatus: row.subscription_status,
+          subscriptionPeriodEnd: row.subscription_period_end,
+        })
+
+        // Update currentUser with the new profile data from database
+        setCurrentUser((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            // Subscription fields (updated by Stripe webhook)
+            isPremium: row.is_premium ?? prev.isPremium,
+            stripeCustomerId: row.stripe_customer_id ?? prev.stripeCustomerId,
+            subscriptionStatus: row.subscription_status ?? prev.subscriptionStatus,
+            subscriptionPeriodEnd: row.subscription_period_end ?? prev.subscriptionPeriodEnd,
+            // Profile fields (in case user updates from another device)
+            displayName: row.display_name ?? prev.displayName,
+            bio: row.bio ?? prev.bio,
+            avatarUrl: row.avatar_url ?? prev.avatarUrl,
+            sport: row.sport ?? prev.sport,
+            trainingDays: row.training_days ?? prev.trainingDays,
+            equipment: row.equipment ?? prev.equipment,
+            weightUnit: row.weight_unit ?? prev.weightUnit,
+            experienceLevel: row.experience_level ?? prev.experienceLevel,
+            bodyweightKg: row.bodyweight_kg ?? prev.bodyweightKg,
+            primaryGoal: row.primary_goal ?? prev.primaryGoal,
+            combatSessionsPerWeek: row.combat_sessions_per_week ?? prev.combatSessionsPerWeek,
+            sessionMinutes: row.session_minutes ?? prev.sessionMinutes,
+            injuryNotes: row.injury_notes ?? prev.injuryNotes,
+            onboardingCompleted: row.onboarding_completed ?? prev.onboardingCompleted,
+          }
+        })
+      }
+    )
+
     channel.subscribe((status) => {
       console.debug('[realtime] user channel:', status)
     })
@@ -1108,12 +1153,16 @@ export default function App() {
       try {
         const needsOnboarding = currentUser.onboardingCompleted !== true
         if (needsOnboarding) {
-          setGeneratedProgram(null)
-          setProgramId(null)
-          setSavedProgramSessions(null)
-          setHasProgramChanges(false)
-          setProgramMeta(null)
-          setWeekProgress(DEFAULT_WEEK_PROGRESS)
+          // Don't clear program data if we're in the middle of onboarding
+          // (the user may have already generated a program in the equipment step)
+          // Only clear if there's no generated program yet
+          if (!generatedProgram || generatedProgram.length === 0) {
+            setProgramId(null)
+            setSavedProgramSessions(null)
+            setHasProgramChanges(false)
+            setProgramMeta(null)
+            setWeekProgress(DEFAULT_WEEK_PROGRESS)
+          }
           return
         }
 
@@ -3176,6 +3225,15 @@ export default function App() {
             }
             await stripeService.subscribeToPremium()
           }}
+          onManageSubscription={async () => {
+            if (!currentUser) {
+              throw new Error('Please sign in to manage your subscription.')
+            }
+            await stripeService.openCustomerPortal()
+          }}
+          isPremium={currentUser?.isPremium ?? false}
+          subscriptionStatus={currentUser?.subscriptionStatus}
+          subscriptionPeriodEnd={currentUser?.subscriptionPeriodEnd}
           initialScrollTop={screenScrollPositionsRef.current['settings']}
           onScrollChange={(scrollTop) => {
             screenScrollPositionsRef.current['settings'] = scrollTop
@@ -3403,6 +3461,13 @@ export default function App() {
             setSelectedCategory('injury-prevention')
             setSelectedSubcategory(bodyPart)
             setCurrentScreen('category-list')
+          }}
+          onNavigate={setCurrentScreen}
+          onStartAction={handleCenterAction}
+          hasWorkoutToday={hasWorkoutToday}
+          initialScrollTop={screenScrollPositionsRef.current['body-part-selector']}
+          onScrollChange={(scrollTop) => {
+            screenScrollPositionsRef.current['body-part-selector'] = scrollTop
           }}
         />
       )
@@ -3812,7 +3877,8 @@ export default function App() {
             setSessionSource(null)
             setLoadingComplete(false)
             setLoadingContext('default')
-            resetNavigationTo('onboarding-sport')
+            // Skip onboarding-sport since sport was already selected during signup
+            resetNavigationTo('onboarding-schedule')
           }}
           onNavigate={setCurrentScreen}
           onEmailVerificationRequired={(email) => {
@@ -3843,7 +3909,8 @@ export default function App() {
               setProgramMeta(null)
               setWeekProgress(DEFAULT_WEEK_PROGRESS)
               setPendingVerificationEmail(null)
-              resetNavigationTo('onboarding-sport')
+              // Skip onboarding-sport since sport was already selected during signup
+              resetNavigationTo('onboarding-schedule')
             }
           }}
           onBack={() => {

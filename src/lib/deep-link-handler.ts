@@ -81,29 +81,48 @@ async function handleAuthCallback(url: string): Promise<boolean> {
 export type DeepLinkAuthCallback = (type: 'email_verified' | 'password_reset' | 'authenticated') => void
 
 /**
+ * Callback type for subscription events
+ */
+export type DeepLinkSubscriptionCallback = (status: 'success' | 'canceled') => void
+
+/**
  * Initialize deep link listener for Capacitor
  * Call this once when the app starts
  */
-export function initDeepLinkHandler(onAuthSuccess?: DeepLinkAuthCallback): () => void {
+export function initDeepLinkHandler(
+  onAuthSuccess?: DeepLinkAuthCallback,
+  onSubscription?: DeepLinkSubscriptionCallback
+): () => void {
   // Only run on native platforms
   if (!Capacitor.isNativePlatform()) {
     return () => {}
   }
-  
+
   const handleUrl = async (event: URLOpenListenerEvent) => {
     const url = event.url
-    
+
     // Check if this is our app's URL scheme
     if (!url.startsWith(URL_SCHEME)) {
       return
     }
-    
+
     console.log('Deep link received:', url)
-    
+
+    // Handle subscription callbacks
+    if (url.includes('subscription=')) {
+      const params = new URLSearchParams(url.split('?')[1] || '')
+      const subscriptionStatus = params.get('subscription')
+
+      if (subscriptionStatus && onSubscription) {
+        onSubscription(subscriptionStatus as 'success' | 'canceled')
+      }
+      return
+    }
+
     // Handle auth callbacks
     if (url.includes('auth/callback') || url.includes('access_token')) {
       const success = await handleAuthCallback(url)
-      
+
       if (success && onAuthSuccess) {
         // Determine the type of auth event
         const tokens = extractAuthTokens(url)
@@ -117,10 +136,10 @@ export function initDeepLinkHandler(onAuthSuccess?: DeepLinkAuthCallback): () =>
       }
     }
   }
-  
+
   // Listen for app URL open events
   App.addListener('appUrlOpen', handleUrl)
-  
+
   // Return cleanup function
   return () => {
     App.removeAllListeners()

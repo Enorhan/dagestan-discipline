@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
 import { PrimaryGoal, WeightUnit } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
+import { OnboardingProgress } from '@/components/ui/onboarding-progress'
+import { GoalIcon } from '@/components/ui/sport-icons'
 
 interface OnboardingIntakeProps {
   bodyweightKg: number | null
@@ -41,6 +44,8 @@ export function OnboardingIntake({
   onContinue,
   onBack,
 }: OnboardingIntakeProps) {
+  const [animatingGoal, setAnimatingGoal] = useState<PrimaryGoal | null>(null)
+
   const displayWeight = bodyweightKg
     ? (weightUnit === 'kg' ? bodyweightKg : bodyweightKg * LBS_PER_KG)
     : null
@@ -59,10 +64,22 @@ export function OnboardingIntake({
   const sessionOptions = [30, 45, 60, 75, 90]
   const combatOptions = [0, 1, 2, 3, 4, 5, 6, 7]
 
+  const handleGoalSelect = (goal: PrimaryGoal) => {
+    haptics.light()
+    setAnimatingGoal(goal)
+    onPrimaryGoalChange(goal)
+    setTimeout(() => setAnimatingGoal(null), 300)
+  }
+
   return (
     <ScreenShell className="px-6 pb-safe-bottom pt-safe-top">
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
-        <div className="mb-10">
+        {/* Progress Indicator */}
+        <div className="mb-6 onboarding-fade-up">
+          <OnboardingProgress currentStep={3} totalSteps={6} />
+        </div>
+
+        <div className="mb-10 onboarding-fade-up" style={{ animationDelay: '0.05s' }}>
           <h1 className="text-xs font-semibold tracking-[0.3em] text-muted-foreground uppercase">
             Dagestan
           </h1>
@@ -71,7 +88,7 @@ export function OnboardingIntake({
           </h2>
         </div>
 
-        <div className="mb-8">
+        <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.1s' }}>
           <p className="text-lg font-medium text-foreground mb-2">
             Personalize your program
           </p>
@@ -81,28 +98,30 @@ export function OnboardingIntake({
         </div>
 
         {/* Bodyweight */}
-        <div className="mb-8">
+        <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.15s' }}>
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Bodyweight
           </p>
           <div className="flex gap-2 mb-3">
             {(['lbs', 'kg'] as WeightUnit[]).map((unit) => (
-              <Button
+              <button
                 key={unit}
-                onClick={() => onWeightUnitChange(unit)}
-                variant="ghost"
-                size="sm"
+                onClick={() => {
+                  haptics.light()
+                  onWeightUnitChange(unit)
+                }}
                 className={`
-                  h-12 flex-1 rounded-lg uppercase normal-case tracking-normal
+                  h-12 flex-1 rounded-xl uppercase font-semibold text-sm
+                  transition-all duration-200
                   ${weightUnit === unit
-                    ? 'bg-primary text-primary-foreground border border-primary'
+                    ? 'bg-primary text-primary-foreground border-2 border-primary shadow-[0_0_12px_rgba(139,0,0,0.3)]'
                     : 'bg-card/50 text-foreground border border-border/60 hover:bg-card'
                   }
                 `}
                 aria-pressed={weightUnit === unit}
               >
-                {unit}
-              </Button>
+                {unit.toUpperCase()}
+              </button>
             ))}
           </div>
           <Input
@@ -120,7 +139,7 @@ export function OnboardingIntake({
               const kg = weightUnit === 'kg' ? parsed : parsed / LBS_PER_KG
               onBodyweightKgChange(Math.max(0, kg))
             }}
-            className="h-12"
+            className="h-12 rounded-xl"
           />
           <p className="text-xs text-muted-foreground mt-2">
             Used for better volume and recovery recommendations.
@@ -128,58 +147,73 @@ export function OnboardingIntake({
         </div>
 
         {/* Goal */}
-        <div className="mb-8">
+        <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.2s' }}>
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Primary goal
           </p>
-          <div className="flex flex-col gap-2">
-            {goalOptions.map((g) => (
-              <Button
-                key={g.value}
-                onClick={() => onPrimaryGoalChange(g.value)}
-                variant="ghost"
-                size="sm"
-                stacked
-                className={`
-                  w-full p-4 text-left rounded-lg transition-all duration-150 normal-case tracking-normal h-auto items-start justify-start
-                  ${primaryGoal === g.value
-                    ? 'bg-primary/10 border border-primary'
-                    : 'bg-card/50 border border-border/60 hover:bg-card'
-                  }
-                `}
-                aria-pressed={primaryGoal === g.value}
-              >
-                <span className="text-base font-semibold text-foreground">{g.label}</span>
-                <span className="block text-sm text-muted-foreground mt-1">{g.description}</span>
-              </Button>
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            {goalOptions.map((g) => {
+              const isSelected = primaryGoal === g.value
+              const isAnimating = animatingGoal === g.value
+
+              return (
+                <button
+                  key={g.value}
+                  onClick={() => handleGoalSelect(g.value)}
+                  className={`
+                    p-4 text-left rounded-xl transition-all duration-200
+                    flex flex-col items-start gap-2
+                    ${isSelected
+                      ? 'bg-primary/10 border-2 border-primary shadow-[0_0_16px_rgba(139,0,0,0.2)]'
+                      : 'bg-card/50 border border-border/60 hover:bg-card hover:border-border'
+                    }
+                    ${isAnimating ? 'selection-pop' : ''}
+                  `}
+                  aria-pressed={isSelected}
+                >
+                  <div className={`
+                    w-10 h-10 rounded-lg flex items-center justify-center
+                    transition-all duration-200
+                    ${isSelected ? 'bg-primary/20 text-primary' : 'bg-muted/50 text-muted-foreground'}
+                    ${isAnimating ? 'icon-bounce' : ''}
+                  `}>
+                    <GoalIcon goal={g.value} size={24} />
+                  </div>
+                  <div>
+                    <span className="block text-sm font-semibold text-foreground">{g.label}</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">{g.description}</span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
 
         {/* Combat load */}
-        <div className="mb-8">
+        <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.25s' }}>
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Combat sessions / week
           </p>
           <div className="grid grid-cols-8 gap-1.5 sm:gap-2">
             {combatOptions.map((n) => (
-              <Button
+              <button
                 key={n}
-                onClick={() => onCombatSessionsChange(n)}
-                variant="ghost"
-                size="sm"
+                onClick={() => {
+                  haptics.light()
+                  onCombatSessionsChange(n)
+                }}
                 className={`
-                  h-12 flex items-center justify-center text-sm font-bold rounded-lg
-                  transition-all duration-150 normal-case tracking-normal
+                  h-12 flex items-center justify-center text-sm font-bold rounded-xl
+                  transition-all duration-200
                   ${combatSessionsPerWeek === n
-                    ? 'bg-primary text-primary-foreground border border-primary'
+                    ? 'bg-primary text-primary-foreground border-2 border-primary shadow-[0_0_12px_rgba(139,0,0,0.3)]'
                     : 'bg-card/50 text-foreground border border-border/60 hover:bg-card'
                   }
                 `}
                 aria-pressed={combatSessionsPerWeek === n}
               >
                 {n}
-              </Button>
+              </button>
             ))}
           </div>
           <p className="text-xs text-muted-foreground mt-2">
@@ -188,35 +222,37 @@ export function OnboardingIntake({
         </div>
 
         {/* Time cap */}
-        <div className="mb-8">
+        <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.3s' }}>
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Session time cap
           </p>
           <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
             {sessionOptions.map((m) => (
-              <Button
+              <button
                 key={m}
-                onClick={() => onSessionMinutesChange(m)}
-                variant="ghost"
-                size="sm"
+                onClick={() => {
+                  haptics.light()
+                  onSessionMinutesChange(m)
+                }}
                 className={`
-                  h-12 flex items-center justify-center text-sm font-bold rounded-lg
-                  transition-all duration-150 normal-case tracking-normal
+                  h-14 flex flex-col items-center justify-center rounded-xl
+                  transition-all duration-200
                   ${sessionMinutes === m
-                    ? 'bg-primary text-primary-foreground border border-primary'
+                    ? 'bg-primary text-primary-foreground border-2 border-primary shadow-[0_0_12px_rgba(139,0,0,0.3)]'
                     : 'bg-card/50 text-foreground border border-border/60 hover:bg-card'
                   }
                 `}
                 aria-pressed={sessionMinutes === m}
               >
-                {m}
-              </Button>
+                <span className="text-base font-bold">{m}</span>
+                <span className="text-[10px] uppercase tracking-wider opacity-70">min</span>
+              </button>
             ))}
           </div>
         </div>
 
         {/* Injury notes */}
-        <div className="mb-10">
+        <div className="mb-10 onboarding-fade-up" style={{ animationDelay: '0.35s' }}>
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Injuries (optional)
           </p>
@@ -224,19 +260,19 @@ export function OnboardingIntake({
             value={injuryNotes}
             onChange={(e) => onInjuryNotesChange(e.target.value)}
             placeholder="e.g. knee pain, lower back sensitivity"
-            className="min-h-[92px]"
+            className="min-h-[92px] rounded-xl"
           />
           <p className="text-xs text-muted-foreground mt-2">
             Used as a constraint when choosing movements (v1 keeps it informational).
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 onboarding-fade-up" style={{ animationDelay: '0.4s' }}>
           <Button
             onClick={onBack}
             variant="ghost"
             size="lg"
-            className="h-14 px-6 bg-card/50 text-foreground font-semibold text-base tracking-wide uppercase transition-colors hover:bg-card rounded-lg"
+            className="h-14 px-6 bg-card/50 text-foreground font-semibold text-base tracking-wide uppercase transition-colors hover:bg-card rounded-xl"
           >
             Back
           </Button>
@@ -249,7 +285,7 @@ export function OnboardingIntake({
             size="lg"
             fullWidth
             withHaptic={false}
-            className="flex-1 bg-foreground text-background"
+            className="flex-1 bg-foreground text-background hover:bg-foreground/90 rounded-xl"
           >
             Continue
           </Button>

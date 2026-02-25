@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { Equipment, PrimaryGoal, Session, SportType, WeekDay } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { Button } from '@/components/ui/button'
+import { OnboardingProgress } from '@/components/ui/onboarding-progress'
+import { haptics } from '@/lib/haptics'
 
 interface OnboardingProgramExplainerProps {
   sport: SportType
@@ -128,7 +130,12 @@ export function OnboardingProgramExplainer({
   return (
     <ScreenShell className="px-6 pb-safe-bottom pt-safe-top">
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
-        <div className="mb-8">
+        {/* Progress Indicator */}
+        <div className="mb-6 onboarding-fade-up">
+          <OnboardingProgress currentStep={5} totalSteps={6} />
+        </div>
+
+        <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.05s' }}>
           <p className="text-xs font-semibold tracking-[0.3em] text-muted-foreground uppercase">
             Program briefing
           </p>
@@ -137,8 +144,12 @@ export function OnboardingProgramExplainer({
           </h1>
         </div>
 
-        <div className="rounded-2xl border border-border/70 bg-card/50 p-5 mb-6 min-h-[300px]">
-          <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mb-3">
+        <div
+          key={`card-${step}`}
+          className="rounded-2xl border border-border/70 bg-card/50 p-5 mb-6 min-h-[300px] onboarding-fade-up"
+          style={{ animationDelay: '0.1s' }}
+        >
+          <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase mb-3">
             {active.eyebrow}
           </p>
           <h2 className="text-2xl font-black text-foreground tracking-tight mb-3">
@@ -147,9 +158,9 @@ export function OnboardingProgramExplainer({
           <p className="text-sm text-muted-foreground leading-relaxed mb-5">
             {active.body}
           </p>
-          <div className="space-y-3">
+          <div className="space-y-3 onboarding-stagger">
             {active.points.map((point) => (
-              <div key={point} className="rounded-xl border border-border/60 bg-background/40 px-3 py-2.5">
+              <div key={point} className="rounded-xl border border-border/60 bg-background/40 px-4 py-3">
                 <p className="text-sm text-foreground leading-relaxed">
                   {point}
                 </p>
@@ -158,20 +169,28 @@ export function OnboardingProgramExplainer({
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="flex items-center justify-center gap-2 mb-8 onboarding-fade-up" style={{ animationDelay: '0.15s' }}>
           {cards.map((_, index) => (
-            <span
+            <button
               key={`onboarding-program-step-${index}`}
-              className={`h-1.5 rounded-full transition-all ${
-                index === step ? 'w-6 bg-primary' : 'w-1.5 bg-muted'
+              onClick={() => {
+                haptics.light()
+                setStep(index)
+              }}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                index === step
+                  ? 'w-8 bg-primary shadow-[0_0_8px_rgba(139,0,0,0.4)]'
+                  : 'w-2 bg-muted hover:bg-muted-foreground/50'
               }`}
+              aria-label={`Go to step ${index + 1}`}
             />
           ))}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 onboarding-fade-up" style={{ animationDelay: '0.2s' }}>
           <Button
             onClick={() => {
+              haptics.light()
               if (step > 0) {
                 setStep((prev) => prev - 1)
                 return
@@ -180,12 +199,13 @@ export function OnboardingProgramExplainer({
             }}
             variant="ghost"
             size="lg"
-            className="h-14 px-6 bg-card/50 text-foreground font-semibold text-base tracking-wide uppercase transition-colors hover:bg-card rounded-lg"
+            className="h-14 px-6 bg-card/50 text-foreground font-semibold text-base tracking-wide uppercase transition-colors hover:bg-card rounded-xl"
           >
             Back
           </Button>
           <Button
             onClick={() => {
+              haptics.medium()
               if (isLast) {
                 onContinue()
                 return
@@ -196,7 +216,7 @@ export function OnboardingProgramExplainer({
             size="lg"
             fullWidth
             withHaptic={false}
-            className="flex-1 bg-foreground text-background"
+            className="flex-1 bg-foreground text-background hover:bg-foreground/90 rounded-xl"
           >
             {isLast ? 'Continue' : 'Next'}
           </Button>

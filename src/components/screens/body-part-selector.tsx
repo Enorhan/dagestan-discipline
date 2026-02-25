@@ -1,33 +1,105 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { DrillSubcategory } from '@/lib/types'
-import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { DrillSubcategory, Screen } from '@/lib/types'
+import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
+import { BottomNav } from '@/components/ui/bottom-nav'
 import { bodyPartInfo, getDrillsBySubcategory } from '@/lib/drills-data'
 import { drillsService } from '@/lib/drills-service'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
-import { Shield, Neck, Shoulder, Back, Hip, Knee, Hand } from '@/components/ui/icons'
+import { haptics } from '@/lib/haptics'
+import { Shield, Neck, Shoulder, Back, Hip, Knee, Hand, ChevronRight, AlertTriangle, Info } from '@/components/ui/icons'
 
-// Map body parts to icons
-const bodyPartIcons: Record<string, React.ReactNode> = {
-  'neck': <Neck size={28} className="text-primary" />,
-  'shoulders': <Shoulder size={28} className="text-primary" />,
-  'back': <Back size={28} className="text-primary" />,
-  'hips': <Hip size={28} className="text-primary" />,
-  'knees': <Knee size={28} className="text-primary" />,
-  'fingers': <Hand size={28} className="text-primary" />
+// Breadcrumb component
+function Breadcrumb({
+  items,
+  variant = 'default'
+}: {
+  items: Array<{ label: string; onClick?: () => void }>
+  variant?: 'default' | 'glass'
+}) {
+  return (
+    <nav className="flex items-center gap-1.5 text-xs mb-2" aria-label="Breadcrumb">
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1
+        return (
+          <div key={index} className="flex items-center gap-1.5">
+            {index > 0 && (
+              <ChevronRight size={12} className={`${variant === 'glass' ? 'text-white/30' : 'text-muted-foreground/50'} flex-shrink-0`} />
+            )}
+            {item.onClick && !isLast ? (
+              <button
+                onClick={() => {
+                  haptics.light()
+                  item.onClick!()
+                }}
+                className={`${variant === 'glass' ? 'text-white/60 hover:text-white' : 'text-muted-foreground hover:text-foreground'} transition-colors truncate max-w-[100px]`}
+              >
+                {item.label}
+              </button>
+            ) : (
+              <span className={`truncate max-w-[120px] ${isLast ? (variant === 'glass' ? 'text-white font-bold' : 'text-foreground font-medium') : (variant === 'glass' ? 'text-white/60' : 'text-muted-foreground')}`}>
+                {item.label}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </nav>
+  )
+}
+
+// Body part card component with icon
+function BodyPartIcon({ bodyPart, size = 28, className = '' }: { bodyPart: string; size?: number; className?: string }) {
+  const iconMap: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+    'neck': Neck,
+    'shoulders': Shoulder,
+    'back': Back,
+    'hips': Hip,
+    'knees': Knee,
+    'fingers': Hand
+  }
+  const Icon = iconMap[bodyPart] || Shield
+  return <Icon size={size} className={className} />
 }
 
 interface BodyPartSelectorProps {
   dataVersion?: number
   onBack: () => void
   onSelectBodyPart: (bodyPart: DrillSubcategory) => void
+  onNavigate: (screen: Screen) => void
+  onStartAction?: () => void
+  hasWorkoutToday?: boolean
+  initialScrollTop?: number
+  onScrollChange?: (scrollTop: number) => void
 }
 
 const bodyParts: DrillSubcategory[] = ['neck', 'shoulders', 'back', 'hips', 'knees', 'fingers']
 
-export function BodyPartSelector({ dataVersion = 0, onBack, onSelectBodyPart }: BodyPartSelectorProps) {
+// Emerald/teal theme for injury prevention
+const theme = {
+  gradient: 'from-emerald-950 via-emerald-900 to-background',
+  color: 'text-emerald-500',
+  lightColor: 'text-emerald-300',
+  bg: 'bg-emerald-500',
+  bgSubtle: 'bg-emerald-500/10',
+  bgMuted: 'bg-emerald-500/20',
+  border: 'border-emerald-500/20',
+  borderAccent: 'border-emerald-500/30',
+  iconBg: 'bg-emerald-500/20'
+}
+
+export function BodyPartSelector({
+  dataVersion = 0,
+  onBack,
+  onSelectBodyPart,
+  onNavigate,
+  onStartAction,
+  hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange
+}: BodyPartSelectorProps) {
   const [countsByBodyPart, setCountsByBodyPart] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {}
     bodyParts.forEach((p) => {
@@ -36,6 +108,31 @@ export function BodyPartSelector({ dataVersion = 0, onBack, onSelectBodyPart }: 
     return initial
   })
   const [isLoadingCounts, setIsLoadingCounts] = useState(false)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position
+  useEffect(() => {
+    if (initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   useEffect(() => {
     let mounted = true
@@ -67,106 +164,167 @@ export function BodyPartSelector({ dataVersion = 0, onBack, onSelectBodyPart }: 
     }
   }, [dataVersion])
 
+  const totalExercises = Object.values(countsByBodyPart).reduce((sum, count) => sum + count, 0)
+
   return (
     <ScreenShell>
-      <ScreenShellContent className="pb-32">
-        {/* Header */}
-        <div className="px-6 safe-area-top pb-4">
-          <BackButton onClick={onBack} label="Back" />
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
+        <div className="pb-32">
+          {/* Hero Header with Emerald Gradient */}
+          <div className="relative safe-area-top pb-8 px-6 overflow-hidden">
+            {/* Background Gradient */}
+            <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-60`} />
+            <div className="absolute inset-0 bg-grid-white/[0.02]" />
 
-          <div className="flex items-center gap-3 mb-2 mt-4">
-            <Shield size={24} className="text-primary" />
-            <h1 className="text-2xl font-black tracking-tight">Injury Prevention</h1>
-          </div>
-          <p className="text-muted-foreground text-sm">
-            Select a body part to see prehab exercises
-          </p>
-          {isLoadingCounts && (
-            <p className="text-xs text-muted-foreground mt-2">Updating…</p>
-          )}
-        </div>
-
-        {/* Body Part Grid */}
-        <div className="px-4 sm:px-6 py-4">
-          <div className="grid grid-cols-2 gap-3">
-            {bodyParts.map(bodyPart => {
-              const info = bodyPartInfo[bodyPart]
-              const drillCount = countsByBodyPart[bodyPart] ?? getDrillsBySubcategory(bodyPart).length
-
-              return (
-                <Button
-                  key={bodyPart}
-                  onClick={() => onSelectBodyPart(bodyPart)}
-                  variant="ghost"
-                  size="sm"
-                  stacked
-                  className="bg-card border border-border rounded-lg p-5 text-left hover:bg-card/80 transition-colors min-h-[120px] normal-case tracking-normal h-auto items-start justify-start"
-                >
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                    {bodyPartIcons[bodyPart] || <Shield size={28} className="text-primary" />}
-                  </div>
-                  <h3 className="font-semibold">{info?.name || bodyPart}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {drillCount} {drillCount === 1 ? 'exercise' : 'exercises'}
-                  </p>
-                </Button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Info Section */}
-        <div className="px-4 sm:px-6 py-4">
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Shield size={18} className="text-primary" />
-              <h3 className="font-semibold text-foreground">Why Injury Prevention?</h3>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Grapplers face unique injury risks. Regular prehab work on these key areas
-              can significantly reduce your risk of common injuries like neck strains,
-              shoulder impingement, and knee problems.
-            </p>
-          </div>
-        </div>
-
-        {/* Common Injuries Info */}
-        <div className="px-4 sm:px-6 py-4 pb-8">
-          <h2 className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase mb-3">
-            Common Grappling Injuries
-          </h2>
-          <div className="space-y-2">
-            <div className="bg-card border border-border rounded-lg p-3 min-h-[56px]">
-              <div className="flex items-center gap-2">
-                <Neck size={18} className="text-muted-foreground" />
-                <span className="font-medium text-sm">Neck</span>
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-4">
+                <BackButton onClick={onBack} label="Training Hub" styleVariant="glass" />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Strains from throws, stacks, and neck cranks</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3 min-h-[56px]">
-              <div className="flex items-center gap-2">
-                <Shoulder size={18} className="text-muted-foreground" />
-                <span className="font-medium text-sm">Shoulders</span>
+
+              <div className="mt-4">
+                <Breadcrumb
+                  items={[
+                    { label: 'Training Hub', onClick: () => onNavigate('training-hub') },
+                    { label: 'Injury Prevention' }
+                  ]}
+                  variant="glass"
+                />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Rotator cuff injuries from kimuras and americanas</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3 min-h-[56px]">
-              <div className="flex items-center gap-2">
-                <Knee size={18} className="text-muted-foreground" />
-                <span className="font-medium text-sm">Knees</span>
+
+              {/* Category Badge */}
+              <div className="flex items-center gap-2 mb-3 mt-4">
+                <div className={`w-10 h-10 rounded-xl ${theme.iconBg} flex items-center justify-center`}>
+                  <Shield size={20} className={theme.lightColor} />
+                </div>
+                <span className={`text-xs font-bold tracking-[0.15em] ${theme.lightColor} uppercase`}>
+                  Prehab & Recovery
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">ACL/MCL injuries from leg locks and takedowns</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3 min-h-[56px]">
-              <div className="flex items-center gap-2">
-                <Hand size={18} className="text-muted-foreground" />
-                <span className="font-medium text-sm">Fingers</span>
+
+              <h1 className="text-3xl font-black text-foreground tracking-tight">
+                Injury Prevention
+              </h1>
+              <p className="text-sm text-emerald-100/70 mt-2 leading-relaxed">
+                Protect your body with targeted prehab exercises for combat sports
+              </p>
+
+              {/* Stats */}
+              <div className="mt-4 flex items-center gap-3">
+                <div className={`px-3 py-1.5 rounded-lg ${theme.bgMuted} ${theme.borderAccent} border`}>
+                  <span className={`text-sm font-bold ${theme.lightColor}`}>{totalExercises}</span>
+                  <span className="text-xs text-emerald-200/70 ml-1">exercises</span>
+                </div>
+                <div className={`px-3 py-1.5 rounded-lg ${theme.bgMuted} ${theme.borderAccent} border`}>
+                  <span className={`text-sm font-bold ${theme.lightColor}`}>{bodyParts.length}</span>
+                  <span className="text-xs text-emerald-200/70 ml-1">body areas</span>
+                </div>
+                {isLoadingCounts && (
+                  <span className="text-xs text-emerald-200/50 animate-pulse">Updating…</span>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Chronic injuries from gi grips</p>
             </div>
           </div>
+
+          {/* Content Area */}
+          <div className="px-6 -mt-4 relative z-20">
+            {/* Body Part Grid */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {bodyParts.map((bodyPart, index) => {
+                const info = bodyPartInfo[bodyPart]
+                const drillCount = countsByBodyPart[bodyPart] ?? getDrillsBySubcategory(bodyPart).length
+
+                return (
+                  <Button
+                    key={bodyPart}
+                    onClick={() => {
+                      haptics.light()
+                      onSelectBodyPart(bodyPart)
+                    }}
+                    variant="ghost"
+                    size="sm"
+                    stacked
+                    className={`card-glass rounded-2xl p-5 text-left transition-all min-h-[140px] normal-case tracking-normal h-auto items-start justify-start border ${theme.border} hover:border-emerald-400/40 stagger-item`}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <div className={`w-14 h-14 rounded-xl ${theme.bgMuted} flex items-center justify-center mb-3`}>
+                      <BodyPartIcon bodyPart={bodyPart} size={28} className={theme.lightColor} />
+                    </div>
+                    <h3 className="font-bold text-foreground text-base">{info?.name || bodyPart}</h3>
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                      <span className={`font-semibold ${theme.color}`}>{drillCount}</span>
+                      {drillCount === 1 ? 'exercise' : 'exercises'}
+                    </p>
+                    <ChevronRight size={16} className={`absolute bottom-4 right-4 ${theme.color} opacity-50`} />
+                  </Button>
+                )
+              })}
+            </div>
+
+            {/* Why Injury Prevention Card */}
+            <div className={`card-glass rounded-2xl p-5 mb-6 border ${theme.borderAccent} stagger-item`} style={{ animationDelay: '300ms' }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 rounded-xl ${theme.bgMuted} flex items-center justify-center`}>
+                  <Info size={18} className={theme.lightColor} />
+                </div>
+                <h3 className="font-bold text-foreground">Why Injury Prevention?</h3>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Grapplers face unique injury risks. Regular prehab work on these key areas
+                can significantly reduce your risk of common injuries like neck strains,
+                shoulder impingement, and knee problems.
+              </p>
+            </div>
+
+            {/* Common Injuries Section */}
+            <div className="stagger-item" style={{ animationDelay: '350ms' }}>
+              <h2 className={`text-xs font-bold tracking-[0.2em] ${theme.color} uppercase mb-4 flex items-center gap-2`}>
+                <AlertTriangle size={14} />
+                Common Grappling Injuries
+              </h2>
+              <div className="space-y-3">
+                {[
+                  { part: 'neck', icon: Neck, name: 'Neck', desc: 'Strains from throws, stacks, and neck cranks' },
+                  { part: 'shoulders', icon: Shoulder, name: 'Shoulders', desc: 'Rotator cuff injuries from kimuras and americanas' },
+                  { part: 'knees', icon: Knee, name: 'Knees', desc: 'ACL/MCL injuries from leg locks and takedowns' },
+                  { part: 'fingers', icon: Hand, name: 'Fingers', desc: 'Chronic injuries from gi grips' }
+                ].map((injury, index) => (
+                  <button
+                    key={injury.part}
+                    onClick={() => {
+                      haptics.light()
+                      onSelectBodyPart(injury.part as DrillSubcategory)
+                    }}
+                    className={`w-full card-glass rounded-xl p-4 border ${theme.border} hover:border-emerald-400/40 transition-all text-left stagger-item flex items-center gap-4`}
+                    style={{ animationDelay: `${400 + index * 50}ms` }}
+                  >
+                    <div className={`w-10 h-10 rounded-lg ${theme.bgSubtle} flex items-center justify-center flex-shrink-0`}>
+                      <injury.icon size={20} className={theme.lightColor} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold text-sm text-foreground">{injury.name}</span>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{injury.desc}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-muted-foreground flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-      </ScreenShellContent>
+      </div>
+
+      <ScreenShellFooter>
+        <BottomNav
+          active="learn"
+          onNavigate={onNavigate}
+          onStartAction={onStartAction}
+          hasWorkoutToday={hasWorkoutToday}
+        />
+      </ScreenShellFooter>
     </ScreenShell>
   )
 }

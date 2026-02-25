@@ -41,6 +41,10 @@ interface SettingsProps {
   onRevertProgramChanges?: () => void
   onResetProgram?: () => void
   onStartTrial?: () => Promise<void>
+  onManageSubscription?: () => Promise<void>
+  isPremium?: boolean
+  subscriptionStatus?: string | null
+  subscriptionPeriodEnd?: string | null
   /** Scroll position to restore when returning to this screen */
   initialScrollTop?: number
   /** Callback to save scroll position when navigating away */
@@ -78,6 +82,10 @@ export function Settings({
   onRevertProgramChanges,
   onResetProgram,
   onStartTrial,
+  onManageSubscription,
+  isPremium = false,
+  subscriptionStatus,
+  subscriptionPeriodEnd,
   initialScrollTop,
   onScrollChange
 }: SettingsProps) {
@@ -110,7 +118,28 @@ export function Settings({
     }
   }, [onScrollChange])
   const [isStartingTrial, setIsStartingTrial] = useState(false)
+  const [isManagingSubscription, setIsManagingSubscription] = useState(false)
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
+
+  // Reset managing state when app becomes visible again (user returns from portal)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // User returned to app - reset loading states
+        setIsManagingSubscription(false)
+        setIsStartingTrial(false)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Also reset on mount
+    setIsManagingSubscription(false)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
   const LBS_PER_KG = 2.20462
   const sportOptions: { value: SportType; label: string }[] = [
     { value: 'wrestling', label: 'Wrestling' },
@@ -439,48 +468,116 @@ export function Settings({
               Subscription
             </p>
             <Card className="p-4 bg-card/50 border-border/60">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-base font-semibold text-foreground">Monthly Plan</p>
-                  <p className="text-sm text-muted-foreground">25 SEK / month</p>
-                </div>
-                <div className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
-                  2-week trial
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                All features are currently unlocked. Start a free trial anytime.
-              </p>
-              {subscriptionError && (
-                <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+              {isPremium ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        {subscriptionStatus === 'canceling' ? 'Premium (Canceling)' : 'Premium Active'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">25 SEK / month</p>
+                    </div>
+                    <div className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      subscriptionStatus === 'canceling'
+                        ? 'text-amber-400 bg-amber-400/10'
+                        : 'text-green-400 bg-green-400/10'
+                    }`}>
+                      {subscriptionStatus === 'canceling' ? 'Canceling' : 'Active'}
+                    </div>
+                  </div>
+                  {subscriptionStatus === 'canceling' && subscriptionPeriodEnd ? (
+                    <p className="text-xs text-amber-400 mt-3">
+                      Your subscription has been cancelled. Premium access ends on{' '}
+                      <span className="font-semibold">
+                        {new Date(subscriptionPeriodEnd).toLocaleDateString('en-US', {
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-3">
+                      You have full access to all premium features.
+                    </p>
+                  )}
+                  {subscriptionError && (
+                    <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={isManagingSubscription}
+                    className="mt-4 w-full"
+                    onClick={async () => {
+                      haptics.light()
+                      setSubscriptionError(null)
+
+                      if (!onManageSubscription) {
+                        setSubscriptionError('Unable to manage subscription.')
+                        return
+                      }
+
+                      setIsManagingSubscription(true)
+                      try {
+                        await onManageSubscription()
+                      } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Unable to open subscription management.'
+                        setSubscriptionError(message)
+                      } finally {
+                        setIsManagingSubscription(false)
+                      }
+                    }}
+                  >
+                    Manage Subscription
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Monthly Plan</p>
+                      <p className="text-sm text-muted-foreground">25 SEK / month</p>
+                    </div>
+                    <div className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
+                      2-week trial
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Start your free trial to unlock all features.
+                  </p>
+                  {subscriptionError && (
+                    <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={isStartingTrial}
+                    className="mt-4 w-full"
+                    onClick={async () => {
+                      haptics.light()
+                      setSubscriptionError(null)
+
+                      if (!onStartTrial) {
+                        setSubscriptionError('Sign in required to start trial.')
+                        return
+                      }
+
+                      setIsStartingTrial(true)
+                      try {
+                        await onStartTrial()
+                      } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Unable to start checkout right now.'
+                        setSubscriptionError(message)
+                      } finally {
+                        setIsStartingTrial(false)
+                      }
+                    }}
+                  >
+                    Start Free Trial
+                  </Button>
+                </>
               )}
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={isStartingTrial}
-                className="mt-4 w-full"
-                onClick={async () => {
-                  haptics.light()
-                  setSubscriptionError(null)
-
-                  if (!onStartTrial) {
-                    setSubscriptionError('Sign in required to start trial.')
-                    return
-                  }
-
-                  setIsStartingTrial(true)
-                  try {
-                    await onStartTrial()
-                  } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Unable to start checkout right now.'
-                    setSubscriptionError(message)
-                  } finally {
-                    setIsStartingTrial(false)
-                  }
-                }}
-              >
-                Start Free Trial
-              </Button>
             </Card>
           </div>
 

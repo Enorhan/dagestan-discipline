@@ -732,3 +732,175 @@ html {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-primary);
 }
+
+/* ============================================
+   ONBOARDING AAA ANIMATIONS
+   Premium animations for onboarding flow
+   ============================================ */
+
+/* Content entrance animation - fade up */
+@keyframes onboarding-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-fade-up {
+  animation: onboarding-fade-up 0.5s ease-out forwards;
+}
+
+/* Staggered children animation */
+.onboarding-stagger > * {
+  opacity: 0;
+  animation: onboarding-fade-up 0.4s ease-out forwards;
+}
+
+.onboarding-stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.onboarding-stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.onboarding-stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.onboarding-stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.onboarding-stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.onboarding-stagger > *:nth-child(6) { animation-delay: 0.3s; }
+.onboarding-stagger > *:nth-child(7) { animation-delay: 0.35s; }
+.onboarding-stagger > *:nth-child(8) { animation-delay: 0.4s; }
+
+/* Selection card glow effect */
+@keyframes selection-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 0, 0, 0);
+  }
+  50% {
+    box-shadow: 0 0 20px 2px rgba(139, 0, 0, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 12px 1px rgba(139, 0, 0, 0.2);
+  }
+}
+
+.selection-glow {
+  animation: selection-glow 0.4s ease-out forwards;
+}
+
+/* Scale pop on selection */
+@keyframes selection-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.selection-pop {
+  animation: selection-pop 0.2s ease-out;
+}
+
+/* Icon bounce on selection */
+@keyframes icon-bounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.icon-bounce {
+  animation: icon-bounce 0.3s ease-out;
+}
+
+/* Progress bar fill animation */
+@keyframes progress-fill {
+  from {
+    width: 0;
+  }
+}
+
+.progress-fill {
+  animation: progress-fill 0.5s ease-out forwards;
+}
+
+/* Generating screen pulse */
+@keyframes generating-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.generating-pulse {
+  animation: generating-pulse 2s ease-in-out infinite;
+}
+
+/* Spinner with trail effect */
+@keyframes spinner-trail {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-trail {
+  animation: spinner-trail 1s linear infinite;
+}
+
+/* Confetti particle */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* Success checkmark draw */
+@keyframes checkmark-draw {
+  0% {
+    stroke-dashoffset: 50;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.checkmark-draw {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: checkmark-draw 0.5s ease-out 0.2s forwards;
+}
+
+/* Circle expand */
+@keyframes circle-expand {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.circle-expand {
+  animation: circle-expand 0.4s ease-out forwards;
+}

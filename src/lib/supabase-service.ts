@@ -79,6 +79,12 @@ function dbProfileToUserProfile(
     combatSessionsPerWeek: profile.combat_sessions_per_week ?? 0,
     sessionMinutes: profile.session_minutes ?? 45,
     injuryNotes: profile.injury_notes ?? null,
+    // Subscription (Stripe)
+    isPremium: (profile as any).is_premium ?? false,
+    stripeCustomerId: (profile as any).stripe_customer_id ?? null,
+    subscriptionStatus: (profile as any).subscription_status ?? null,
+    subscriptionPeriodEnd: (profile as any).subscription_period_end ?? null,
+    // Stats
     workoutCount: stats?.workout_count ?? 0,
     followerCount: stats?.follower_count ?? 0,
     followingCount: stats?.following_count ?? 0,
@@ -163,9 +169,17 @@ export const supabaseService = {
     sport: SportType
   ): Promise<UserProfile> {
     // Sign up with Supabase Auth
+    // Pass user metadata - the database trigger will create the profile automatically
     const { data: authData, error: authError } = await db.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          username: username.toLowerCase(),
+          display_name: displayName,
+          sport: sport,
+        },
+      },
     })
 
     if (authError) {
@@ -174,29 +188,20 @@ export const supabaseService = {
     }
     if (!authData.user) throw new Error('Failed to create user')
 
-    // Create profile manually (trigger was removed)
-    const { error: profileError } = await db.from('profiles').insert({
-      id: authData.user.id,
-      username: username.toLowerCase(),
-      display_name: displayName,
-      sport,
-      weight_unit: 'kg',
-      training_days: 3,
-    })
+    // Profile is created automatically by database trigger (handle_new_user)
+    // The trigger reads username, display_name, sport from raw_user_meta_data
 
-    if (profileError) {
-      console.error('Profile insert error:', profileError)
-      throw new Error(`Failed to create profile: ${profileError.message}`)
-    }
-
-    // Create initial user stats
-    const { error: statsError } = await db.from('user_stats').insert({
-      user_id: authData.user.id,
-    })
-
-    if (statsError) {
-      console.error('User stats insert error:', statsError)
-      // Non-critical, continue
+    // Create initial user stats (this may fail due to RLS, but that's okay -
+    // we can create stats on first use if needed)
+    try {
+      const { error: statsError } = await db.from('user_stats').insert({
+        user_id: authData.user.id,
+      })
+      if (statsError) {
+        console.error('User stats insert error (non-critical):', statsError)
+      }
+    } catch (e) {
+      console.error('User stats insert exception (non-critical):', e)
     }
 
     return {
