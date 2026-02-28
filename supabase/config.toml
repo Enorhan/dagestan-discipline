@@ -1,0 +1,10 @@
+# Supabase project configuration
+project_id = "ftwtxslonvjgvbaexkwn"
+
+# These functions validate caller auth internally and/or are called by Stripe.
+# Locking verify_jwt in source prevents drift across future deploys.
+[functions.stripe-checkout]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
