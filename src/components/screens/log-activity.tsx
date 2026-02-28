@@ -5,8 +5,9 @@ import { ActivityType, ActivityLog } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/input'
-import { Gi, Wrestling, Stretch, Trophy, Boxing, Drill, Flame } from '@/components/ui/icons'
+import { Input, Textarea } from '@/components/ui/input'
+import { BackButton } from '@/components/ui/back-button'
+import { Gi, Wrestling, Stretch, Trophy, Boxing, Drill, Flame, Clock } from '@/components/ui/icons'
 
 interface LogActivityProps {
   onLogActivity: (log: Omit<ActivityLog, 'id'>) => void
@@ -43,16 +44,65 @@ function getWeekDays(): { date: Date; label: string; shortLabel: string; isToday
   return days
 }
 
-const ACTIVITY_TYPES: { type: ActivityType; label: string; icon: ReactNode }[] = [
-  { type: 'bjj-session', label: 'BJJ Session', icon: <Gi size={22} className="text-primary" /> },
-  { type: 'wrestling-practice', label: 'Wrestling Practice', icon: <Wrestling size={22} className="text-primary" /> },
-  { type: 'judo-class', label: 'Judo Class', icon: <Gi size={22} className="text-primary" /> },
-  { type: 'open-mat', label: 'Open Mat', icon: <Stretch size={22} className="text-primary" /> },
-  { type: 'competition', label: 'Competition', icon: <Trophy size={22} className="text-primary" /> },
-  { type: 'sparring', label: 'Sparring', icon: <Boxing size={22} className="text-primary" /> },
-  { type: 'drilling', label: 'Drilling', icon: <Drill size={22} className="text-primary" /> },
-  { type: 'conditioning', label: 'Conditioning', icon: <Flame size={22} className="text-primary" /> },
+const ACTIVITY_TYPES: { type: ActivityType; label: string; description: string; icon: ReactNode }[] = [
+  {
+    type: 'bjj-session',
+    label: 'BJJ Session',
+    description: 'Gi or no-gi class and rounds',
+    icon: <Gi size={22} className="text-primary" />,
+  },
+  {
+    type: 'wrestling-practice',
+    label: 'Wrestling Practice',
+    description: 'Technical work and live goes',
+    icon: <Wrestling size={22} className="text-primary" />,
+  },
+  {
+    type: 'judo-class',
+    label: 'Judo Class',
+    description: 'Throws, entries, and randori',
+    icon: <Gi size={22} className="text-primary" />,
+  },
+  {
+    type: 'open-mat',
+    label: 'Open Mat',
+    description: 'Unstructured sparring session',
+    icon: <Stretch size={22} className="text-primary" />,
+  },
+  {
+    type: 'competition',
+    label: 'Competition',
+    description: 'Tournament or match day',
+    icon: <Trophy size={22} className="text-primary" />,
+  },
+  {
+    type: 'sparring',
+    label: 'Sparring',
+    description: 'Focused live rounds',
+    icon: <Boxing size={22} className="text-primary" />,
+  },
+  {
+    type: 'drilling',
+    label: 'Drilling',
+    description: 'High-rep technical practice',
+    icon: <Drill size={22} className="text-primary" />,
+  },
+  {
+    type: 'conditioning',
+    label: 'Conditioning',
+    description: 'Roadwork, intervals, circuits',
+    icon: <Flame size={22} className="text-primary" />,
+  },
 ]
+
+const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120]
+
+const getIntensityLabel = (value: number) => {
+  if (value <= 3) return 'Easy'
+  if (value <= 6) return 'Moderate'
+  if (value <= 8) return 'Hard'
+  return 'Max Effort'
+}
 
 export function LogActivity({
   onLogActivity,
@@ -80,16 +130,20 @@ export function LogActivity({
   const [notes, setNotes] = useState<string>(editingActivity?.notes ?? '')
 
   const isEditing = !!editingActivity
+  const selectedDay = weekDays[selectedDayIndex]
+  const selectedTypeMeta = ACTIVITY_TYPES.find((item) => item.type === selectedType) ?? null
+  const parsedDuration = Number.parseInt(duration, 10)
+  const validDuration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0
 
   const handleSubmit = () => {
-    if (!selectedType) return
+    if (!selectedType || !validDuration) return
 
     haptics.success()
 
     const activityData = {
-      date: weekDays[selectedDayIndex].date.toISOString(),
+      date: selectedDay.date.toISOString(),
       type: selectedType,
-      duration: parseInt(duration) || 60,
+      duration: validDuration,
       intensity,
       notes: notes.trim() || undefined
     }
@@ -101,39 +155,45 @@ export function LogActivity({
     }
   }
 
-  const isValid = selectedType !== null && parseInt(duration) > 0
+  const isValid = selectedType !== null && validDuration > 0
 
   return (
     <ScreenShell>
-      <div className="flex-1 flex flex-col max-w-lg mx-auto w-full min-h-0 pb-28">
-        <ScreenShellContent>
-          {/* Header */}
-          <header className="px-6 safe-area-top pb-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-                {isEditing ? 'Edit Activity' : 'Log Activity'}
-              </p>
-              <h1 className="type-title text-foreground mt-1">
+      <ScreenShellContent maxWidth>
+        <div className="pb-32">
+          {/* Hero */}
+          <div className="relative safe-area-top pb-8 px-6 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-b from-primary/30 via-background to-background opacity-60" />
+            <div className="absolute inset-0 bg-grid-white/[0.02]" />
+
+            <div className="relative z-10">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <p className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase">
+                  {isEditing ? 'Edit Activity' : 'Log Activity'}
+                </p>
+                <BackButton
+                  onClick={onClose}
+                  label="Cancel"
+                  styleVariant="glass"
+                />
+              </div>
+
+              <h1 className="text-4xl font-black tracking-tight text-foreground">
                 External Training
               </h1>
+              <p className="text-muted-foreground text-sm mt-2 max-w-[320px] leading-relaxed">
+                Capture mat sessions outside your lift so weekly load, streaks, and recovery stay accurate.
+              </p>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-sm font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground px-3"
-              onClick={onClose}
-              aria-label="Close"
-            >
-              Cancel
-            </Button>
-          </header>
+          </div>
 
           {/* Day Selection */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Which Day?
-            </p>
-            <div className="flex items-center gap-1 overflow-x-auto pb-2 scroll-fade-x">
+          <div className="px-6 py-3">
+            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-3">
+              Which Day
+            </h2>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scroll-fade-x">
               {weekDays.map((day, index) => (
                 <Button
                   key={index}
@@ -142,37 +202,44 @@ export function LogActivity({
                   onClick={() => setSelectedDayIndex(index)}
                   stacked
                   className={`
-                    flex-shrink-0 px-3 py-2 rounded-lg text-center transition-all min-w-[52px] normal-case tracking-normal border
+                    min-w-[72px] rounded-xl border px-3 py-2 text-center h-auto items-center justify-center gap-0.5
                     ${selectedDayIndex === index
-                      ? 'bg-primary text-primary-foreground border-primary'
+                      ? 'bg-primary/20 border-primary/70 text-foreground'
                       : day.isToday
-                        ? 'bg-primary/10 text-foreground border-primary/40'
-                        : 'bg-card/50 text-muted-foreground border-border/50 hover:bg-card/70'
+                        ? 'bg-primary/10 border-primary/40 text-foreground/90'
+                        : 'bg-white/[0.02] border-white/10 text-muted-foreground hover:text-foreground'
                     }
                   `}
                   aria-pressed={selectedDayIndex === index}
                 >
-                  <p className="text-xs font-semibold">{day.shortLabel}</p>
-                  <p className="text-[10px] mt-0.5 opacity-70">
+                  <p className="text-base font-black leading-none">
+                    {day.shortLabel}
+                  </p>
+                  <p className="text-xs mt-1 opacity-75">
                     {day.date.getDate()}
                   </p>
                 </Button>
               ))}
             </div>
-            {weekDays[selectedDayIndex] && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Logging for: <span className="text-foreground font-medium">{weekDays[selectedDayIndex].label}</span>
+
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                Logging for{' '}
+                <span className="text-foreground font-semibold">
+                  {selectedDay.label}
+                </span>
+                {' '}({selectedDay.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
               </p>
-            )}
+            </div>
           </div>
 
-          {/* Activity Type Selection */}
+          {/* Activity Type */}
           <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-3">
               Activity Type
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {ACTIVITY_TYPES.map(({ type, label, icon }) => (
+            </h2>
+            <div className="grid grid-cols-2 gap-3">
+              {ACTIVITY_TYPES.map(({ type, label, description, icon }) => (
                 <Button
                   key={type}
                   variant="ghost"
@@ -180,97 +247,147 @@ export function LogActivity({
                   onClick={() => setSelectedType(type)}
                   stacked
                   className={`
-                    w-full p-4 rounded-lg text-left transition-all normal-case tracking-normal h-auto items-start justify-start border min-h-[110px] gap-2
+                    w-full rounded-2xl p-4 text-left h-auto items-start justify-start min-h-[132px] border gap-3
                     ${selectedType === type
-                      ? 'bg-primary/20 border-primary'
-                      : 'bg-card/50 border-border/60 hover:bg-card/70'
+                      ? 'border-primary/70 bg-gradient-to-br from-primary/25 via-black/80 to-black/95'
+                      : 'border-white/10 bg-gradient-to-br from-white/[0.03] via-black/80 to-black/95'
                     }
                   `}
                   aria-pressed={selectedType === type}
                 >
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${selectedType === type ? 'bg-primary/20' : 'bg-primary/10'}`}>
                     {icon}
                   </div>
-                  <p className="text-sm font-semibold text-foreground mt-2">
-                    {label}
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-foreground leading-tight">
+                      {label}
+                    </p>
+                    <p className="text-xs text-white/55 leading-relaxed">
+                      {description}
+                    </p>
+                  </div>
                 </Button>
               ))}
             </div>
           </div>
 
-          {/* Duration */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Duration (minutes)
-            </p>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-3">
-              {[30, 45, 60, 90, 120].map((mins) => (
-                <Button
-                  key={mins}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setDuration(mins.toString())}
-                  className={`
-                    min-h-[44px] py-3 rounded-lg text-sm font-semibold transition-all normal-case tracking-normal
-                    ${duration === mins.toString()
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-card/50 text-muted-foreground hover:bg-card/70'
-                    }
-                  `}
-                >
-                  {mins}
-                </Button>
-              ))}
-            </div>
-          </div>
+          {/* Session Details */}
+          <div className="px-6 py-4 space-y-3">
+            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase">
+              Session Details
+            </h2>
 
-          {/* Intensity */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Intensity: {intensity}/10
-            </p>
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
-                <Button
-                  key={level}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIntensity(level)}
-                  className={`
-                    min-h-[44px] py-2 rounded text-xs font-bold transition-all normal-case tracking-normal
-                    ${intensity >= level
-                      ? level <= 3 ? 'bg-primary/30 text-foreground'
-                        : level <= 6 ? 'bg-primary/60 text-foreground'
-                        : level <= 8 ? 'bg-primary/80 text-primary-foreground'
-                        : 'bg-primary text-primary-foreground'
-                      : 'bg-card/30 text-muted-foreground'
-                    }
-                  `}
-                  aria-label={`Intensity ${level}`}
-                >
-                  {level}
-                </Button>
-              ))}
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 via-black/80 to-black/95 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center">
+                  <Clock size={16} className="text-cyan-300" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-cyan-200">Duration</p>
+                  <p className="text-[11px] text-white/60 uppercase tracking-[0.18em]">Minutes</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {DURATION_OPTIONS.map((mins) => (
+                  <Button
+                    key={mins}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDuration(mins.toString())}
+                    className={`
+                      h-10 rounded-lg text-xs font-bold
+                      ${duration === mins.toString()
+                        ? 'bg-cyan-500/25 border border-cyan-300/40 text-cyan-100'
+                        : 'bg-white/[0.03] border border-white/10 text-white/65 hover:text-white'
+                      }
+                    `}
+                  >
+                    {mins}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  min={1}
+                  step={5}
+                  className="h-11 bg-white/[0.03] border-white/10 text-center font-bold"
+                  placeholder="60"
+                />
+                <span className="text-xs uppercase tracking-[0.2em] text-white/50">min</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-amber-500/10 via-black/80 to-black/95 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                  <Flame size={16} className="text-amber-300" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-amber-200">Intensity {intensity}/10</p>
+                  <p className="text-[11px] text-white/60 uppercase tracking-[0.18em]">{getIntensityLabel(intensity)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
+                  <Button
+                    key={level}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIntensity(level)}
+                    className={`
+                      h-10 rounded-lg text-xs font-black
+                      ${intensity >= level
+                        ? 'bg-amber-500/25 border border-amber-300/40 text-amber-100'
+                        : 'bg-white/[0.03] border border-white/10 text-white/45'
+                      }
+                    `}
+                    aria-label={`Intensity ${level}`}
+                  >
+                    {level}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Notes */}
           <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Notes (optional)
-            </p>
+            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-3">
+              Notes
+            </h2>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="How did it go? Any techniques you worked on?"
-              className="bg-card/50 text-sm min-h-[96px]"
+              placeholder="How did it go? Any techniques, rounds, or weaknesses to address?"
+              className="min-h-[120px] rounded-2xl bg-white/[0.02] border-white/10 text-sm"
+              maxLength={500}
+              showCount
             />
           </div>
-        </ScreenShellContent>
+        </div>
+      </ScreenShellContent>
 
-        {/* Submit Button */}
-        <ScreenShellFooter className="px-6">
+      {/* Submit Button */}
+      <ScreenShellFooter>
+        <div className="max-w-lg mx-auto w-full px-6">
+          <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+              Ready to log
+            </p>
+            <p className="text-sm font-semibold text-foreground mt-1">
+              {selectedTypeMeta?.label ?? 'Select an activity type'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {selectedDay.label} · {validDuration > 0 ? `${validDuration} min` : 'Set duration'} · Intensity {intensity}/10
+            </p>
+          </div>
+
           <Button
             onClick={handleSubmit}
             disabled={!isValid}
@@ -278,13 +395,12 @@ export function LogActivity({
             size="xl"
             fullWidth
             withHaptic={false}
-            className={!isValid ? 'bg-card/50 text-muted-foreground' : ''}
+            className={isValid ? 'font-black uppercase tracking-[0.14em] card-interactive' : 'bg-card/50 text-muted-foreground'}
           >
             {isEditing ? 'Update Activity' : 'Log Activity'}
           </Button>
-        </ScreenShellFooter>
-      </div>
-
+        </div>
+      </ScreenShellFooter>
     </ScreenShell>
   )
 }

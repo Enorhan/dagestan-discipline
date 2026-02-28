@@ -7,6 +7,7 @@ import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { EliteInsightsPanel } from '@/components/ui/elite-insights-panel'
 import { X, Pause, Play, Check } from '@/components/ui/icons'
 
 const sessionVisualTheme = (focus: string | undefined) => {
@@ -262,6 +263,22 @@ export function WorkoutSession({
     }
   }
 
+  const adjustWeight = (delta: number) => {
+    if (isPaused || isBodyweightOnly) return
+
+    const currentDisplayWeight = (() => {
+      const parsed = parseFloat(weight)
+      if (!Number.isNaN(parsed)) return parsed
+      if (selectedCurrentBase > 0) return toDisplayWeight(selectedCurrentBase)
+      if (selectedLastBase > 0) return toDisplayWeight(selectedLastBase)
+      return 0
+    })()
+
+    const nextWeight = Math.max(0, currentDisplayWeight + delta)
+    haptics.light()
+    setWeight(formatWeightValue(nextWeight))
+  }
+
   const handleEndSessionWithHaptic = () => {
     haptics.warning()
     onEndSession()
@@ -376,6 +393,11 @@ export function WorkoutSession({
 
           {/* Exercise list */}
           <div className="px-6 py-6 space-y-4">
+            <EliteInsightsPanel
+              exercises={session.exercises}
+              focusHint={session.focus}
+            />
+
             {session.exercises.map((exercise, exerciseIndex) => {
               const doneFlags = setProgressByExercise[exercise.id] ?? Array.from({ length: exercise.sets }, () => false)
               const doneCount = doneFlags.slice(0, exercise.sets).filter(Boolean).length
@@ -417,6 +439,7 @@ export function WorkoutSession({
                         const lastBase = lastSessionWeights?.[exercise.id]?.[setIndex] ?? 0
                         const currentDisplay = getDisplayForBase(currentBase)
                         const lastDisplay = getDisplayForBase(lastBase)
+                        const setNumber = setIndex + 1
                         const subtitle = currentDisplay
                           ? `${currentDisplay} ${weightUnit}`
                           : lastDisplay
@@ -427,15 +450,28 @@ export function WorkoutSession({
                           <button
                             key={`${exercise.id}-set-${setIndex}`}
                             onClick={() => {
+                              if (isPaused) return
                               haptics.light()
-                              onSelectSet(exerciseIndex, setIndex + 1)
+                              if (isBodyweightOnly) {
+                                const nextState = !isDone
+                                onToggleSetDone(exerciseIndex, setNumber, nextState)
+                                if (nextState && setNumber < exercise.sets) {
+                                  onSelectSet(exerciseIndex, setNumber + 1)
+                                }
+                                return
+                              }
+                              onSelectSet(exerciseIndex, setNumber)
                             }}
+                            disabled={isPaused}
                             className={[
                               'w-full flex items-center justify-between gap-3 rounded-xl px-4 py-3 border transition-colors text-left',
                               isSelected ? 'border-primary/40 bg-primary/10' : 'border-white/10 bg-white/5 hover:bg-white/10',
                               isDone ? 'opacity-90' : '',
                             ].join(' ')}
-                            aria-label={`Select ${exercise.name} set ${setIndex + 1}`}
+                            aria-label={isBodyweightOnly
+                              ? `${isDone ? 'Unmark' : 'Mark'} ${exercise.name} set ${setNumber} as done`
+                              : `Select ${exercise.name} set ${setNumber}`
+                            }
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <span
@@ -488,7 +524,7 @@ export function WorkoutSession({
             </Button>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
                     Selected
@@ -496,15 +532,37 @@ export function WorkoutSession({
                   <p className="text-sm font-bold text-foreground truncate">
                     {currentExercise.name} · Set {currentSet}/{currentExercise.sets}
                   </p>
+                  <p className={`text-[10px] font-bold tracking-[0.2em] uppercase mt-1 ${selectedDone ? 'text-emerald-400' : 'text-white/50'}`}>
+                    {selectedDone ? 'Done' : 'Pending'}
+                  </p>
                 </div>
-                <span className={`text-[10px] font-bold tracking-[0.2em] uppercase ${selectedDone ? 'text-emerald-400' : 'text-white/50'}`}>
-                  {selectedDone ? 'Done' : 'Pending'}
-                </span>
               </div>
 
               {!isBodyweightOnly && (
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-2">
+                    <Button
+                      onClick={() => adjustWeight(-10)}
+                      disabled={isPaused}
+                      variant="ghost"
+                      size="sm"
+                      withHaptic={false}
+                      className="h-12 px-3 rounded-xl border border-white/10 text-[11px] font-bold text-muted-foreground"
+                      aria-label={`Decrease weight by 10 ${weightUnit}`}
+                    >
+                      -10
+                    </Button>
+                    <Button
+                      onClick={() => adjustWeight(-5)}
+                      disabled={isPaused}
+                      variant="secondary"
+                      size="sm"
+                      withHaptic={false}
+                      className="h-12 px-3 rounded-xl text-[11px] font-black"
+                      aria-label={`Decrease weight by 5 ${weightUnit}`}
+                    >
+                      -5
+                    </Button>
                     <Input
                       type="number"
                       inputMode="decimal"
@@ -516,8 +574,30 @@ export function WorkoutSession({
                       aria-label="Weight input"
                       disabled={isPaused}
                     />
+                    <Button
+                      onClick={() => adjustWeight(5)}
+                      disabled={isPaused}
+                      variant="secondary"
+                      size="sm"
+                      withHaptic={false}
+                      className="h-12 px-3 rounded-xl text-[11px] font-black"
+                      aria-label={`Increase weight by 5 ${weightUnit}`}
+                    >
+                      +5
+                    </Button>
+                    <Button
+                      onClick={() => adjustWeight(10)}
+                      disabled={isPaused}
+                      variant="ghost"
+                      size="sm"
+                      withHaptic={false}
+                      className="h-12 px-3 rounded-xl border border-white/10 text-[11px] font-bold text-muted-foreground"
+                      aria-label={`Increase weight by 10 ${weightUnit}`}
+                    >
+                      +10
+                    </Button>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right pr-1">
                     <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
                       Last
                     </p>
@@ -528,18 +608,24 @@ export function WorkoutSession({
                 </div>
               )}
 
-              <Button
-                onClick={handleToggleSelectedSet}
-                disabled={isPaused}
-                variant="primary"
-                size="lg"
-                fullWidth
-                withHaptic={false}
-                className="h-16 rounded-2xl font-black text-lg uppercase tracking-wide"
-                aria-label={selectedDone ? 'Unmark set as done' : 'Mark set as done'}
-              >
-                {selectedDone ? 'Unmark Set' : 'Mark Set Done'}
-              </Button>
+              {isBodyweightOnly ? (
+                <p className="text-xs text-muted-foreground text-center py-1">
+                  Tap a set above to mark done or undo.
+                </p>
+              ) : (
+                <Button
+                  onClick={handleToggleSelectedSet}
+                  disabled={isPaused}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  withHaptic={false}
+                  className="h-16 rounded-2xl font-black text-lg uppercase tracking-wide"
+                  aria-label={selectedDone ? 'Unmark set as done' : 'Mark set as done'}
+                >
+                  {selectedDone ? 'Unmark Set' : 'Mark Set Done'}
+                </Button>
+              )}
             </div>
           )}
         </ScreenShellFooter>

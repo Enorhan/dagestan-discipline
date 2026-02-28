@@ -79,6 +79,12 @@ function dbProfileToUserProfile(
     combatSessionsPerWeek: profile.combat_sessions_per_week ?? 0,
     sessionMinutes: profile.session_minutes ?? 45,
     injuryNotes: profile.injury_notes ?? null,
+    // Subscription (Stripe)
+    isPremium: (profile as any).is_premium ?? false,
+    stripeCustomerId: (profile as any).stripe_customer_id ?? null,
+    subscriptionStatus: (profile as any).subscription_status ?? null,
+    subscriptionPeriodEnd: (profile as any).subscription_period_end ?? null,
+    // Stats
     workoutCount: stats?.workout_count ?? 0,
     followerCount: stats?.follower_count ?? 0,
     followingCount: stats?.following_count ?? 0,
@@ -163,9 +169,17 @@ export const supabaseService = {
     sport: SportType
   ): Promise<UserProfile> {
     // Sign up with Supabase Auth
+    // Pass user metadata - the database trigger will create the profile automatically
     const { data: authData, error: authError } = await db.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          username: username.toLowerCase(),
+          display_name: displayName,
+          sport: sport,
+        },
+      },
     })
 
     if (authError) {
@@ -174,29 +188,20 @@ export const supabaseService = {
     }
     if (!authData.user) throw new Error('Failed to create user')
 
-    // Create profile manually (trigger was removed)
-    const { error: profileError } = await db.from('profiles').insert({
-      id: authData.user.id,
-      username: username.toLowerCase(),
-      display_name: displayName,
-      sport,
-      weight_unit: 'kg',
-      training_days: 3,
-    })
+    // Profile is created automatically by database trigger (handle_new_user)
+    // The trigger reads username, display_name, sport from raw_user_meta_data
 
-    if (profileError) {
-      console.error('Profile insert error:', profileError)
-      throw new Error(`Failed to create profile: ${profileError.message}`)
-    }
-
-    // Create initial user stats
-    const { error: statsError } = await db.from('user_stats').insert({
-      user_id: authData.user.id,
-    })
-
-    if (statsError) {
-      console.error('User stats insert error:', statsError)
-      // Non-critical, continue
+    // Create initial user stats (this may fail due to RLS, but that's okay -
+    // we can create stats on first use if needed)
+    try {
+      const { error: statsError } = await db.from('user_stats').insert({
+        user_id: authData.user.id,
+      })
+      if (statsError) {
+        console.error('User stats insert error (non-critical):', statsError)
+      }
+    } catch (e) {
+      console.error('User stats insert exception (non-critical):', e)
     }
 
     return {
@@ -232,6 +237,35 @@ export const supabaseService = {
     if (error) throw new Error(error.message)
   },
 
+  async resetPassword(email: string): Promise<void> {
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`,
+    })
+    if (error) throw new Error(error.message)
+  },
+
+  async resendVerificationEmail(email: string): Promise<void> {
+    const { error } = await db.auth.resend({
+      type: 'signup',
+      email,
+    })
+    if (error) throw new Error(error.message)
+  },
+
+  async checkUsernameAvailable(username: string): Promise<boolean> {
+    const { data, error } = await db
+      .from('profiles')
+      .select('id')
+      .eq('username', username.toLowerCase())
+      .maybeSingle()
+
+    if (error) {
+      console.error('Username check error:', error)
+      return false
+    }
+    return data === null
+  },
+
   async getCurrentUser(): Promise<User | null> {
     const { data: { user } } = await db.auth.getUser()
     return user
@@ -241,15 +275,17 @@ export const supabaseService = {
     try {
       const { data: { user } } = await db.auth.getUser()
       if (!user) {
-        return { isAuthenticated: false, user: null, isLoading: false, error: null }
+        return { isAuthenticated: false, user: null, isLoading: false, error: null, emailVerified: false }
       }
 
       const profile = await this.getProfile(user.id)
+      const emailVerified = !!user.email_confirmed_at
       return {
         isAuthenticated: true,
         user: profile,
         isLoading: false,
         error: null,
+        emailVerified,
       }
     } catch (error) {
       return {
@@ -257,6 +293,7 @@ export const supabaseService = {
         user: null,
         isLoading: false,
         error: error instanceof Error ? error.message : 'Unknown error',
+        emailVerified: false,
       }
     }
   },
@@ -357,25 +394,29 @@ export const supabaseService = {
 
     if (workoutError || !workout) throw new Error(workoutError?.message ?? 'Failed to create workout')
 
-    // Create exercises
-    const exerciseInserts = state.exercises.map((e, i) => ({
-      workout_id: workout.id,
-      name: e.name,
-      sets: e.sets,
-      reps: e.reps ?? null,
-      duration: e.duration ?? null,
-      rest_time: e.restTime,
-      notes: e.notes ?? null,
-      video_url: e.videoUrl ?? null,
-      order_index: i,
-    }))
+    // Replace exercises atomically in the database (delete + insert in one transaction).
+    const { error: replaceExercisesError } = await db.rpc('replace_custom_workout_exercises', {
+      p_workout_id: workout.id,
+      p_exercises: state.exercises,
+    })
 
-    const { data: exercises, error: exercisesError } = await db
+    if (replaceExercisesError) {
+      // Best-effort cleanup: remove the parent workout if exercise replacement fails.
+      await db
+        .from('custom_workouts')
+        .delete()
+        .eq('id', workout.id)
+        .eq('creator_id', currentUser.id)
+      throw new Error(`Failed to save workout exercises: ${replaceExercisesError.message}`)
+    }
+
+    const { data: exercises, error: exercisesLoadError } = await db
       .from('custom_workout_exercises')
-      .insert(exerciseInserts)
-      .select()
+      .select('*')
+      .eq('workout_id', workout.id)
+      .order('order_index')
 
-    if (exercisesError) throw new Error(exercisesError.message)
+    if (exercisesLoadError) throw new Error(exercisesLoadError.message)
 
     // Update user workout count
     const { data: currentStats } = await db
@@ -423,28 +464,14 @@ export const supabaseService = {
 
     if (error) throw new Error(error.message)
 
-    // Update exercises if provided
+    // Update exercises atomically if provided
     if (updates.exercises) {
-      // Delete existing exercises
-      await db
-        .from('custom_workout_exercises')
-        .delete()
-        .eq('workout_id', workoutId)
+      const { error: replaceExercisesError } = await db.rpc('replace_custom_workout_exercises', {
+        p_workout_id: workoutId,
+        p_exercises: updates.exercises,
+      })
 
-      // Insert new exercises
-      const exerciseInserts = updates.exercises.map((e, i) => ({
-        workout_id: workoutId,
-        name: e.name,
-        sets: e.sets,
-        reps: e.reps ?? null,
-        duration: e.duration ?? null,
-        rest_time: e.restTime,
-        notes: e.notes ?? null,
-        video_url: e.videoUrl ?? null,
-        order_index: i,
-      }))
-
-      await db.from('custom_workout_exercises').insert(exerciseInserts)
+      if (replaceExercisesError) throw new Error(`Failed to update workout exercises: ${replaceExercisesError.message}`)
     }
 
     const workout = await this.getWorkout(workoutId)
@@ -571,19 +598,13 @@ export const supabaseService = {
     const currentUser = await this.getCurrentUser()
     if (!currentUser) throw new Error('Must be logged in')
 
-    await db
-      .from('training_programs')
-      .update({ status: 'inactive', updated_at: new Date().toISOString() })
-      .eq('user_id', currentUser.id)
-      .eq('status', 'active')
-
     const { data: program, error: programError } = await db
       .from('training_programs')
       .insert({
         user_id: currentUser.id,
         sport: params.sport,
         training_days: params.trainingDays,
-        status: 'active',
+        status: 'inactive',
       })
       .select()
       .single()
@@ -605,13 +626,29 @@ export const supabaseService = {
 
     if (versionError || !version) throw new Error(versionError?.message ?? 'Failed to create program version')
 
-    await db
+    const { error: pointersError } = await db
       .from('training_programs')
       .update({
         current_version_id: version.id,
         original_version_id: version.id,
       })
       .eq('id', program.id)
+
+    if (pointersError) throw new Error(`Failed to link program versions: ${pointersError.message}`)
+
+    const { error: activateError } = await db.rpc('activate_training_program_for_user', {
+      p_program_id: program.id,
+    })
+
+    if (activateError) {
+      // Best-effort cleanup if activation fails after creating a program/version pair.
+      await db
+        .from('training_programs')
+        .delete()
+        .eq('id', program.id)
+        .eq('user_id', currentUser.id)
+      throw new Error(`Failed to activate program: ${activateError.message}`)
+    }
 
     return {
       programId: program.id,
@@ -842,6 +879,71 @@ export const supabaseService = {
         week_progress: weekProgress,
         updated_at: new Date().toISOString(),
       })
+  },
+
+  // ============================================
+  // WORKOUT DAY OVERRIDES (AAA "TODAY" INSTANCES)
+  // ============================================
+
+  async getWorkoutDayOverride(workoutDate: string): Promise<{ data: any; updatedAt: string } | null> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return null
+
+    try {
+      const { data, error } = await db
+        .from('workout_day_overrides')
+        .select('data, updated_at')
+        .eq('user_id', currentUser.id)
+        .eq('workout_date', workoutDate)
+        .maybeSingle()
+
+      if (error || !data) return null
+      return {
+        data: (data as any).data,
+        updatedAt: (data as any).updated_at ?? new Date().toISOString(),
+      }
+    } catch (error) {
+      // Table may not exist yet (migration not applied) or network error.
+      console.debug('Failed to fetch workout day override:', error)
+      return null
+    }
+  },
+
+  async upsertWorkoutDayOverride(workoutDate: string, payload: any): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return
+
+    try {
+      await db
+        .from('workout_day_overrides')
+        .upsert(
+          {
+            user_id: currentUser.id,
+            workout_date: workoutDate,
+            data: payload,
+            // Use the payload's timestamp to avoid endless realtime update loops.
+            updated_at: payload?.updatedAt ?? new Date().toISOString(),
+          },
+          { onConflict: 'user_id,workout_date' }
+        )
+    } catch (error) {
+      console.debug('Failed to upsert workout day override:', error)
+    }
+  },
+
+  async deleteWorkoutDayOverride(workoutDate: string): Promise<void> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return
+
+    try {
+      await db
+        .from('workout_day_overrides')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('workout_date', workoutDate)
+    } catch (error) {
+      console.debug('Failed to delete workout day override:', error)
+    }
   },
 
   // ============================================

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Equipment, ExperienceLevel, PrimaryGoal, Screen, SportType, WeightUnit } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
@@ -41,6 +41,14 @@ interface SettingsProps {
   onRevertProgramChanges?: () => void
   onResetProgram?: () => void
   onStartTrial?: () => Promise<void>
+  onManageSubscription?: () => Promise<void>
+  isPremium?: boolean
+  subscriptionStatus?: string | null
+  subscriptionPeriodEnd?: string | null
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function Settings({
@@ -73,13 +81,65 @@ export function Settings({
   onSaveProgramChanges,
   onRevertProgramChanges,
   onResetProgram,
-  onStartTrial
+  onStartTrial,
+  onManageSubscription,
+  isPremium = false,
+  subscriptionStatus,
+  subscriptionPeriodEnd,
+  initialScrollTop,
+  onScrollChange
 }: SettingsProps) {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    if (initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
   const [isStartingTrial, setIsStartingTrial] = useState(false)
+  const [isManagingSubscription, setIsManagingSubscription] = useState(false)
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
+
+  // Reset managing state when app becomes visible again (user returns from portal)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // User returned to app - reset loading states
+        setIsManagingSubscription(false)
+        setIsStartingTrial(false)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Also reset on mount
+    setIsManagingSubscription(false)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
   const LBS_PER_KG = 2.20462
   const sportOptions: { value: SportType; label: string }[] = [
     { value: 'wrestling', label: 'Wrestling' },
@@ -117,7 +177,11 @@ export function Settings({
           </h1>
         </header>
 
-        <ScreenShellContent className="px-6 pb-32">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain px-6 pb-32"
+        >
           {/* Sport Selection */}
           <div className="mb-10">
             <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -404,48 +468,116 @@ export function Settings({
               Subscription
             </p>
             <Card className="p-4 bg-card/50 border-border/60">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-base font-semibold text-foreground">Monthly Plan</p>
-                  <p className="text-sm text-muted-foreground">25 SEK / month</p>
-                </div>
-                <div className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
-                  2-week trial
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                All features are currently unlocked. Start a free trial anytime.
-              </p>
-              {subscriptionError && (
-                <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+              {isPremium ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        {subscriptionStatus === 'canceling' ? 'Premium (Canceling)' : 'Premium Active'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">25 SEK / month</p>
+                    </div>
+                    <div className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      subscriptionStatus === 'canceling'
+                        ? 'text-amber-400 bg-amber-400/10'
+                        : 'text-green-400 bg-green-400/10'
+                    }`}>
+                      {subscriptionStatus === 'canceling' ? 'Canceling' : 'Active'}
+                    </div>
+                  </div>
+                  {subscriptionStatus === 'canceling' && subscriptionPeriodEnd ? (
+                    <p className="text-xs text-amber-400 mt-3">
+                      Your subscription has been cancelled. Premium access ends on{' '}
+                      <span className="font-semibold">
+                        {new Date(subscriptionPeriodEnd).toLocaleDateString('en-US', {
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-3">
+                      You have full access to all premium features.
+                    </p>
+                  )}
+                  {subscriptionError && (
+                    <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={isManagingSubscription}
+                    className="mt-4 w-full"
+                    onClick={async () => {
+                      haptics.light()
+                      setSubscriptionError(null)
+
+                      if (!onManageSubscription) {
+                        setSubscriptionError('Unable to manage subscription.')
+                        return
+                      }
+
+                      setIsManagingSubscription(true)
+                      try {
+                        await onManageSubscription()
+                      } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Unable to open subscription management.'
+                        setSubscriptionError(message)
+                      } finally {
+                        setIsManagingSubscription(false)
+                      }
+                    }}
+                  >
+                    Manage Subscription
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Monthly Plan</p>
+                      <p className="text-sm text-muted-foreground">25 SEK / month</p>
+                    </div>
+                    <div className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
+                      2-week trial
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Start your free trial to unlock all features.
+                  </p>
+                  {subscriptionError && (
+                    <p className="text-xs text-red-400 mt-3">{subscriptionError}</p>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={isStartingTrial}
+                    className="mt-4 w-full"
+                    onClick={async () => {
+                      haptics.light()
+                      setSubscriptionError(null)
+
+                      if (!onStartTrial) {
+                        setSubscriptionError('Sign in required to start trial.')
+                        return
+                      }
+
+                      setIsStartingTrial(true)
+                      try {
+                        await onStartTrial()
+                      } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Unable to start checkout right now.'
+                        setSubscriptionError(message)
+                      } finally {
+                        setIsStartingTrial(false)
+                      }
+                    }}
+                  >
+                    Start Free Trial
+                  </Button>
+                </>
               )}
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={isStartingTrial}
-                className="mt-4 w-full"
-                onClick={async () => {
-                  haptics.light()
-                  setSubscriptionError(null)
-
-                  if (!onStartTrial) {
-                    setSubscriptionError('Sign in required to start trial.')
-                    return
-                  }
-
-                  setIsStartingTrial(true)
-                  try {
-                    await onStartTrial()
-                  } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Unable to start checkout right now.'
-                    setSubscriptionError(message)
-                  } finally {
-                    setIsStartingTrial(false)
-                  }
-                }}
-              >
-                Start Free Trial
-              </Button>
             </Card>
           </div>
 
@@ -541,7 +673,7 @@ export function Settings({
               Save Preferences
             </Button>
           </div>
-        </ScreenShellContent>
+        </div>
       </div>
 
       <ScreenShellFooter>

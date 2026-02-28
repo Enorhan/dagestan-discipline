@@ -21,6 +21,87 @@ function getSupabaseAdminClient() {
   return createClient(url, serviceKey)
 }
 
+type CheckoutRequestBody = {
+  mode?: 'subscription' | 'payment'
+  priceId?: string
+  programId?: string
+  successUrl?: string
+  cancelUrl?: string
+  userId?: string
+  email?: string
+}
+
+// App's custom URL scheme for deep linking (iOS/Android)
+const APP_URL_SCHEME = 'dagestanidiscipline://'
+
+function getAllowedCheckoutOrigins(request: NextRequest): Set<string> {
+  const origins = new Set<string>([request.nextUrl.origin])
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (appUrl) {
+    try {
+      origins.add(new URL(appUrl).origin)
+    } catch {
+      // Ignore invalid app URL values.
+    }
+  }
+  // Add the app's custom URL scheme origin
+  origins.add('dagestanidiscipline://app')
+  return origins
+}
+
+function validateCheckoutRedirectUrl(
+  rawUrl: string | undefined,
+  label: string,
+  allowedOrigins: Set<string>
+): string {
+  if (!rawUrl) {
+    throw new Error(`${label} URL is required`)
+  }
+
+  // Check if it's using the app's custom URL scheme (deep link)
+  if (rawUrl.startsWith(APP_URL_SCHEME)) {
+    // Validate the deep link format
+    return rawUrl
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    throw new Error(`${label} URL is invalid`)
+  }
+
+  if (!allowedOrigins.has(parsed.origin)) {
+    throw new Error(`${label} URL origin is not allowed`)
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`${label} URL must use http or https`)
+  }
+
+  return parsed.toString()
+}
+
+async function requireAuthenticatedUser(request: NextRequest): Promise<{ id: string; email: string | null }> {
+  const supabase = getSupabaseAdminClient()
+  const authHeader = request.headers.get('authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new Error('Missing bearer token')
+  }
+
+  const token = authHeader.slice('Bearer '.length).trim()
+  if (!token) {
+    throw new Error('Missing bearer token')
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(token)
+  if (error || !user) {
+    throw new Error('Unauthorized')
+  }
+
+  return { id: user.id, email: user.email ?? null }
+}
+
 // Premium subscription price: 25 SEK/month
 const PREMIUM_PRICE_SEK = 2500 // in öre (cents)
 
@@ -28,16 +109,18 @@ export async function POST(request: NextRequest) {
   try {
     const stripe = getStripeClient()
     const supabase = getSupabaseAdminClient()
-    const body = await request.json()
-    const { mode, priceId, programId, successUrl, cancelUrl, userId, email } = body
+    const user = await requireAuthenticatedUser(request)
+    const body = (await request.json()) as CheckoutRequestBody
+    const { mode, priceId, programId, userId, email } = body
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
+    if (userId && userId !== user.id) {
+      return NextResponse.json({ error: 'User ID mismatch' }, { status: 403 })
     }
 
-    if (!successUrl || !cancelUrl) {
-      return NextResponse.json({ error: 'Success and cancel URLs are required' }, { status: 400 })
-    }
+    const allowedOrigins = getAllowedCheckoutOrigins(request)
+    const successUrl = validateCheckoutRedirectUrl(body.successUrl, 'Success', allowedOrigins)
+    const cancelUrl = validateCheckoutRedirectUrl(body.cancelUrl, 'Cancel', allowedOrigins)
+    const customerEmail = email ?? user.email ?? undefined
 
     let sessionParams: Stripe.Checkout.SessionCreateParams
 
@@ -62,13 +145,13 @@ export async function POST(request: NextRequest) {
             }],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        customer_email: email,
+        customer_email: customerEmail,
         metadata: {
-          userId,
+          userId: user.id,
           mode: 'subscription',
         },
         subscription_data: {
-          metadata: { userId },
+          metadata: { userId: user.id },
         },
       }
     } else if (mode === 'payment' && programId) {
@@ -101,9 +184,9 @@ export async function POST(request: NextRequest) {
         }],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        customer_email: email,
+        customer_email: customerEmail,
         metadata: {
-          userId,
+          userId: user.id,
           programId,
           mode: 'payment',
         },
@@ -121,6 +204,16 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating checkout session:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'
+    if (message === 'Unauthorized') {
+      return NextResponse.json({ error: message }, { status: 401 })
+    }
+    if (
+      message === 'Missing bearer token' ||
+      message.includes('URL is') ||
+      message.includes('URL must use')
+    ) {
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

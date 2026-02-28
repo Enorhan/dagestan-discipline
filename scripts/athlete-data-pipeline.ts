@@ -404,6 +404,84 @@ function isPlaceholderValue(value: string): boolean {
   return placeholders.has(lowered)
 }
 
+function isLikelyExerciseName(value: string): boolean {
+  const normalized = normalizeText(value)
+  if (!normalized || normalized.length < 3 || normalized.length > 90) {
+    return false
+  }
+
+  const lowered = normalized.toLowerCase()
+  if (isPlaceholderValue(lowered)) {
+    return false
+  }
+
+  if (/(https?:\/\/|www\.)/i.test(lowered)) {
+    return false
+  }
+
+  if (/[<>{}[\]|]/.test(lowered)) {
+    return false
+  }
+
+  const blockedFragments = [
+    'svg',
+    'thumbnail',
+    'subscribe',
+    'follow',
+    'click',
+    'link in bio',
+    'resolve',
+  ]
+  if (blockedFragments.some((fragment) => lowered.includes(fragment))) {
+    return false
+  }
+
+  const alphaCount = (lowered.match(/[a-z]/g) ?? []).length
+  if (alphaCount < 3) {
+    return false
+  }
+
+  const validChars = (lowered.match(/[a-z0-9\s\-()'’,.&/+]/g) ?? []).length
+  if (validChars / lowered.length < 0.85) {
+    return false
+  }
+
+  const exerciseTokens = [
+    'squat',
+    'deadlift',
+    'press',
+    'pull',
+    'row',
+    'jump',
+    'clean',
+    'jerk',
+    'snatch',
+    'curl',
+    'carry',
+    'plank',
+    'push-up',
+    'push up',
+    'pull-up',
+    'pull up',
+    'lunge',
+    'sprint',
+    'rope',
+    'slam',
+    'twist',
+    'crunch',
+    'bridge',
+    'crawl',
+    'drill',
+    'uchikomi',
+    'randori',
+    'sparring',
+    'windmill',
+    'v-up',
+  ]
+
+  return exerciseTokens.some((token) => lowered.includes(token))
+}
+
 function toFingerprint(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }
@@ -1540,7 +1618,7 @@ function normalizeExerciseMentions(raw: unknown, defaultSport: SportType | null)
       confidence = clampConfidence(toNumberOrNull(row.confidence) ?? toNumberOrNull(row.confidence_score) ?? 0.52)
     }
 
-    if (!name || isPlaceholderValue(name) || name.length < 3) {
+    if (!name || isPlaceholderValue(name) || name.length < 3 || !isLikelyExerciseName(name)) {
       continue
     }
 
@@ -3153,7 +3231,7 @@ function buildQueueProposals(
 
   for (const exercise of exerciseMentions) {
     const name = String(exercise.name ?? '').trim()
-    if (!name || isPlaceholderValue(name)) {
+    if (!name || isPlaceholderValue(name) || !isLikelyExerciseName(name)) {
       continue
     }
 
@@ -3188,7 +3266,7 @@ function buildQueueProposals(
 
   const exerciseNames = exerciseMentions
     .map((item) => String(item.name ?? '').trim())
-    .filter((value) => value.length > 0)
+    .filter((value) => value.length > 0 && isLikelyExerciseName(value))
     .slice(0, 6)
 
   for (const athleteName of athleteNames) {
@@ -3607,6 +3685,9 @@ async function upsertExercise(
 
   if (!name) {
     throw new Error('Exercise proposal missing name')
+  }
+  if (!isLikelyExerciseName(name)) {
+    throw new Error('Exercise proposal failed quality validation')
   }
 
   const existing = await findExerciseByName(client, name, sport)

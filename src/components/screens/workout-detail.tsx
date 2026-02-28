@@ -7,6 +7,7 @@ import { supabaseService } from '@/lib/supabase-service'
 import { CustomWorkout, UserProfile, focusAreaInfo } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
+import { EliteInsightsPanel } from '@/components/ui/elite-insights-panel'
 import { Copy, Play, Clock, Dumbbell } from '@/components/ui/icons'
 
 interface WorkoutDetailProps {
@@ -132,6 +133,12 @@ export function WorkoutDetail({
 
           {/* Exercises */}
           <div>
+            <EliteInsightsPanel
+              exercises={workout.exercises}
+              focusHint={workout.focus}
+              className="mb-4"
+            />
+
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Exercises ({workout.exercises.length})
             </h2>

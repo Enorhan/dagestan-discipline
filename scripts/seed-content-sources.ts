@@ -17,7 +17,7 @@ interface ContentSourceSeed {
   is_active: boolean
 }
 
-const DEFAULT_SOURCES: ContentSourceSeed[] = [
+const BASE_SOURCES: ContentSourceSeed[] = [
   {
     name: 'YouTube Wrestling S&C',
     source_type: 'youtube_search',
@@ -109,6 +109,70 @@ const DEFAULT_SOURCES: ContentSourceSeed[] = [
     metadata: { sport: 'bjj', lang: 'en', kind: 'web_search', provider: 'brave_search', allow_video_ingest: false },
     is_active: true,
   },
+]
+
+const ELITE_ATHLETES: Array<{ sport: 'wrestling' | 'judo' | 'bjj'; athlete: string }> = [
+  { sport: 'wrestling', athlete: 'Jordan Burroughs' },
+  { sport: 'wrestling', athlete: 'Kyle Dake' },
+  { sport: 'wrestling', athlete: 'Kyle Snyder' },
+  { sport: 'wrestling', athlete: 'Abdulrashid Sadulaev' },
+  { sport: 'wrestling', athlete: 'Gable Steveson' },
+  { sport: 'wrestling', athlete: 'Helen Maroulis' },
+  { sport: 'judo', athlete: 'Shohei Ono' },
+  { sport: 'judo', athlete: 'Teddy Riner' },
+  { sport: 'judo', athlete: 'Uta Abe' },
+  { sport: 'judo', athlete: 'Hifumi Abe' },
+  { sport: 'judo', athlete: 'Clarisse Agbegnenou' },
+  { sport: 'judo', athlete: 'Kayla Harrison' },
+  { sport: 'bjj', athlete: 'Gordon Ryan' },
+  { sport: 'bjj', athlete: 'Roger Gracie' },
+  { sport: 'bjj', athlete: 'Marcus Buchecha Almeida' },
+  { sport: 'bjj', athlete: 'Andre Galvao' },
+  { sport: 'bjj', athlete: 'Xande Ribeiro' },
+  { sport: 'bjj', athlete: 'Marcelo Garcia' },
+]
+
+const ELITE_ATHLETE_SOURCES: ContentSourceSeed[] = ELITE_ATHLETES.flatMap(
+  ({ sport, athlete }) => [
+    {
+      name: `YouTube Elite ${sport.toUpperCase()} ${athlete}`,
+      source_type: 'youtube_search',
+      platform: 'youtube',
+      query: `"${athlete}" ${sport} training workout strength conditioning exercises`,
+      url: null,
+      metadata: {
+        sport,
+        athlete,
+        tier: 'elite',
+        lang: 'en',
+        order: 'relevance',
+        allow_video_ingest: true,
+      },
+      is_active: true,
+    },
+    {
+      name: `Web Search Elite ${sport.toUpperCase()} ${athlete}`,
+      source_type: 'social_feed',
+      platform: 'web',
+      query: `"${athlete}" ${sport} workout routine exercises sets reps strength conditioning`,
+      url: null,
+      metadata: {
+        sport,
+        athlete,
+        tier: 'elite',
+        lang: 'en',
+        kind: 'web_search',
+        provider: 'brave_search',
+        allow_video_ingest: false,
+      },
+      is_active: true,
+    },
+  ]
+)
+
+const DEFAULT_SOURCES: ContentSourceSeed[] = [
+  ...BASE_SOURCES,
+  ...ELITE_ATHLETE_SOURCES,
 ]
 
 function loadLocalEnv(): void {

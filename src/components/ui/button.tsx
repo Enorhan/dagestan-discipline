@@ -108,6 +108,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={[
           // Base styles
           'inline-flex',
+          'relative',
           stacked ? 'items-start justify-start' : 'items-center justify-center',
           'font-semibold normal-case tracking-normal',
           'rounded-xl transition-all duration-normal',

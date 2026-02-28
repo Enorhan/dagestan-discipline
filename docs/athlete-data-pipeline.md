@@ -90,6 +90,8 @@ This v1 pipeline grows the athlete/exercise library from real video content with
 
 Seed default sources:
 - `npm run pipeline:sources`
+  - Seeds both base sport-wide queries and elite athlete-specific queries
+  - Current elite set covers wrestling, judo, and BJJ athlete names for YouTube + web search discovery
 
 Run stages individually:
 - `npm run pipeline:collect`
@@ -119,3 +121,4 @@ Then publish:
 
 - In `PIPELINE_VIDEO_ONLY=true` mode, non-video sources are ignored/discarded during extraction.
 - If `yt-dlp`, `ffmpeg`, or `OPENAI_API_KEY` are missing, extract stage will fail for video ingestion.
+- Exercise proposals now pass a name-quality validator before publish, which drops obvious junk labels from noisy extraction.

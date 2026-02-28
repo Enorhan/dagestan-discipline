@@ -24,6 +24,11 @@ export interface UserProfile {
   combatSessionsPerWeek?: number
   sessionMinutes?: number
   injuryNotes?: string | null
+  // Subscription (Stripe)
+  isPremium?: boolean
+  stripeCustomerId?: string | null
+  subscriptionStatus?: string | null // 'active' | 'trialing' | 'canceling' | 'canceled' | 'past_due' | etc
+  subscriptionPeriodEnd?: string | null // ISO date string - when current period ends
   // Stats
   workoutCount: number
   followerCount: number
@@ -126,6 +131,7 @@ export interface AuthState {
   user: UserProfile | null
   isLoading: boolean
   error: string | null
+  emailVerified: boolean
 }
 
 // Social state for the app

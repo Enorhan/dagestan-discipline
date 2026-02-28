@@ -43,9 +43,50 @@ const cache: AthletesCache = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
+const FALLBACK_ATHLETE_NAME_PATTERN = /^Source Coach\s*\(/i
+
+function isFallbackAthleteName(name?: string | null): boolean {
+  if (!name) {
+    return false
+  }
+  return FALLBACK_ATHLETE_NAME_PATTERN.test(name.trim())
+}
+
+const CANONICAL_EXERCISE_CATEGORIES = new Set<ExerciseCategory>([
+  'full-body',
+  'legs',
+  'chest',
+  'shoulders',
+  'back',
+  'arms',
+  'core',
+  'neck'
+])
+
+function normalizeExerciseCategory(rawCategory: string | null | undefined, exerciseName: string): ExerciseCategory {
+  const normalizedCategory = rawCategory?.trim().toLowerCase() ?? ''
+  if (CANONICAL_EXERCISE_CATEGORIES.has(normalizedCategory as ExerciseCategory)) {
+    return normalizedCategory as ExerciseCategory
+  }
+  if (normalizedCategory === 'lower-body') {
+    return 'legs'
+  }
+  if (normalizedCategory === 'upper-body') {
+    return 'back'
+  }
+  if (normalizedCategory === 'cardio') {
+    return 'full-body'
+  }
+  return getExerciseCategory(exerciseName)
+}
 
 function isCacheValid(timestamp: number): boolean {
   return Date.now() - timestamp < CACHE_TTL
+}
+
+interface GetAthletesOptions {
+  includeWithoutExercises?: boolean
+  includeFallbackAthletes?: boolean
 }
 
 export class AthletesService {
@@ -91,8 +132,19 @@ export class AthletesService {
   /**
    * Get all athletes, optionally filtered by sport
    */
-  async getAthletes(sport?: SportType): Promise<Athlete[]> {
+  async getAthletes(
+    sport?: SportType,
+    options: GetAthletesOptions = {}
+  ): Promise<Athlete[]> {
     await this.refreshCacheIfPublishedUpdates()
+
+    const includeWithoutExercises = options.includeWithoutExercises ?? false
+    const includeFallbackAthletes = options.includeFallbackAthletes ?? false
+    const cacheKey = `athletes:${sport ?? 'all'}:${includeWithoutExercises ? 'all' : 'linked'}:${includeFallbackAthletes ? 'with-fallback' : 'real-only'}`
+    const cached = cache.athletes.get(cacheKey)
+    if (cached && isCacheValid(cached.timestamp)) {
+      return cached.data
+    }
 
     let query = supabase
       .from('athletes')
@@ -110,7 +162,29 @@ export class AthletesService {
       return []
     }
 
-    return data.map((a: any) => ({
+    let filteredRows = data as any[]
+
+    if (!includeWithoutExercises) {
+      const { data: linksData, error: linksError } = await supabase
+        .from('athlete_exercises')
+        .select('athlete_id')
+
+      if (linksError || !linksData) {
+        console.error('[AthletesService] Error fetching athlete links:', linksError)
+        return []
+      }
+
+      const linkedAthleteIds = new Set(
+        (linksData as { athlete_id: string }[]).map((row) => row.athlete_id)
+      )
+      filteredRows = filteredRows.filter((athlete) => linkedAthleteIds.has(athlete.id))
+    }
+
+    if (!includeFallbackAthletes) {
+      filteredRows = filteredRows.filter((athlete) => !isFallbackAthleteName(athlete.name))
+    }
+
+    const athletes = filteredRows.map((a: any) => ({
       id: a.id,
       name: a.name,
       sport: a.sport as SportType,
@@ -119,6 +193,13 @@ export class AthletesService {
       bio: a.bio,
       imageUrl: a.image_url
     }))
+
+    cache.athletes.set(cacheKey, {
+      data: athletes,
+      timestamp: Date.now()
+    })
+
+    return athletes
   }
 
   /**
@@ -277,7 +358,9 @@ export class AthletesService {
       return []
     }
 
-    return data.map((ae: any) => ({
+    return data
+      .filter((ae: any) => !isFallbackAthleteName(ae.athlete?.name))
+      .map((ae: any) => ({
       athleteId: ae.athlete.id,
       athleteName: ae.athlete.name,
       athleteSport: ae.athlete.sport as SportType,
@@ -472,6 +555,10 @@ export class AthletesService {
       const exercise = item.exercise
       const athlete = item.athlete
 
+      if (isFallbackAthleteName(athlete?.name)) {
+        continue
+      }
+
       // Filter by category
       const exerciseCategory = getExerciseCategory(exercise.name)
       if (exerciseCategory !== category) continue
@@ -571,7 +658,6 @@ export class AthletesService {
           athlete:athletes!inner(id, name, sport, achievements, image_url)
         `)
         .eq('athlete.sport', sport)
-        .eq('exercise.category', category)
         .order('priority', { ascending: false })
 
       if (error || !data || data.length === 0) {
@@ -588,6 +674,15 @@ export class AthletesService {
       for (const item of typedData) {
         const exercise = item.exercise
         const athlete = item.athlete
+        const normalizedCategory = normalizeExerciseCategory(exercise.category, exercise.name)
+
+        if (normalizedCategory !== category) {
+          continue
+        }
+
+        if (isFallbackAthleteName(athlete?.name)) {
+          continue
+        }
 
         if (!athleteMap.has(athlete.id)) {
           athleteMap.set(athlete.id, {
@@ -604,7 +699,7 @@ export class AthletesService {
         group.exercises.push({
           id: exercise.id,
           name: exercise.name,
-          category: exercise.category,
+          category: normalizedCategory,
           muscleGroups: exercise.muscle_groups || [],
           equipment: exercise.equipment || [],
           description: exercise.description,
@@ -661,14 +756,17 @@ export class AthletesService {
     }
 
     // Types for query responses
-    interface ExerciseRow { id: string; sport: string; category: string }
-    interface AthleteRow { id: string; sport: string }
+    interface ExerciseRow { id: string; sport: string; category: string; name: string }
+    interface LinkedAthleteRow {
+      athlete_id: string
+      athlete: { id: string; sport: string; name: string } | { id: string; sport: string; name: string }[]
+    }
 
     try {
       // Get exercise counts by sport and category
       const { data: exercisesData, error: exerciseError } = await supabase
         .from('exercises')
-        .select('id, sport, category')
+        .select('id, sport, category, name')
 
       if (exerciseError || !exercisesData) {
         return defaultCounts
@@ -676,23 +774,25 @@ export class AthletesService {
 
       const exercises = exercisesData as unknown as ExerciseRow[]
 
-      // Get athlete counts by sport
+      // Get athlete counts by sport for display-eligible athletes only:
+      // - athlete must have at least one linked exercise
+      // - fallback "Source Coach (...)" records are excluded
       const { data: athletesData, error: athleteError } = await supabase
-        .from('athletes')
-        .select('id, sport')
+        .from('athlete_exercises')
+        .select('athlete_id, athlete:athletes!inner(id, sport, name)')
 
       if (athleteError || !athletesData) {
         return defaultCounts
       }
 
-      const athletes = athletesData as unknown as AthleteRow[]
+      const linkedAthletes = athletesData as unknown as LinkedAthleteRow[]
 
       // Calculate counts
       const counts: ExerciseCounts = { ...defaultCounts }
 
       for (const exercise of exercises) {
         const sport = exercise.sport as SportType
-        const category = exercise.category as ExerciseCategory
+        const category = normalizeExerciseCategory(exercise.category, exercise.name)
 
         if (sport && counts.bySport[sport] !== undefined) {
           counts.bySport[sport]++
@@ -706,11 +806,32 @@ export class AthletesService {
         }
       }
 
-      for (const athlete of athletes) {
-        const sport = athlete.sport as SportType
-        if (sport && counts.athletesBySport[sport] !== undefined) {
-          counts.athletesBySport[sport]++
+      const athleteIdsBySport: Record<SportType, Set<string>> = {
+        wrestling: new Set<string>(),
+        judo: new Set<string>(),
+        bjj: new Set<string>()
+      }
+
+      for (const linkedAthlete of linkedAthletes) {
+        const athlete = Array.isArray(linkedAthlete.athlete)
+          ? linkedAthlete.athlete[0]
+          : linkedAthlete.athlete
+        if (!athlete) {
+          continue
         }
+        if (isFallbackAthleteName(athlete.name)) {
+          continue
+        }
+        const sport = athlete.sport as SportType
+        if (sport && athleteIdsBySport[sport] !== undefined) {
+          athleteIdsBySport[sport].add(athlete.id ?? linkedAthlete.athlete_id)
+        }
+      }
+
+      counts.athletesBySport = {
+        wrestling: athleteIdsBySport.wrestling.size,
+        judo: athleteIdsBySport.judo.size,
+        bjj: athleteIdsBySport.bjj.size
       }
 
       // Cache the result

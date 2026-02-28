@@ -49,8 +49,26 @@ npm run dev
 - `npm run build` - Build for production
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
+- `npm run verify:ci` - Run lint + production build checks
+- `npm run test:payments:smoke` - Run live checkout/webhook smoke tests
 - `npm run pipeline:sources` - Seed default external collection sources
 - `npm run pipeline:run` - Run athlete/exercise data expansion pipeline end-to-end
+
+## CI Setup
+
+The repository now includes [`.github/workflows/ci.yml`](/Users/enesorhan/WebstormProjects/dagestaniDisciple/.github/workflows/ci.yml) with two jobs:
+
+- `quality`: installs dependencies, runs `npm run lint`, then `npm run build`
+- `payment-smoke`: runs `npm run test:payments:smoke` (only when required secrets are configured and the event is not `pull_request`)
+
+Set these GitHub repository secrets for payment smoke tests:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `PAYMENT_SMOKE_SUCCESS_URL` (optional)
+- `PAYMENT_SMOKE_CANCEL_URL` (optional)
 
 ## Project Structure
 

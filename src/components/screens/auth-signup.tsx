@@ -1,19 +1,20 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
 import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
-import { Wrestling, Gi, Trophy } from '@/components/ui/icons'
+import { Wrestling, Gi, Trophy, Check, X } from '@/components/ui/icons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 interface AuthSignupProps {
   onSignup: (user: UserProfile) => void
   onNavigate: (screen: Screen) => void
+  onEmailVerificationRequired?: (email: string) => void
 }
 
 const SPORTS: { value: SportType; label: string; icon: React.ReactNode }[] = [
@@ -22,7 +23,7 @@ const SPORTS: { value: SportType; label: string; icon: React.ReactNode }[] = [
   { value: 'judo', label: 'Judo', icon: <Trophy size={28} className="text-primary" /> }
 ]
 
-export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
+export function AuthSignup({ onSignup, onNavigate, onEmailVerificationRequired }: AuthSignupProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -31,6 +32,48 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
   const [sport, setSport] = useState<SportType>('wrestling')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  // Username availability state
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const usernameCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Debounced username availability check
+  const checkUsernameAvailability = useCallback(async (usernameToCheck: string) => {
+    if (usernameToCheck.length < 3 || !/^[a-zA-Z0-9_]+$/.test(usernameToCheck)) {
+      setUsernameStatus('idle')
+      return
+    }
+
+    setUsernameStatus('checking')
+    try {
+      const isAvailable = await supabaseService.checkUsernameAvailable(usernameToCheck)
+      setUsernameStatus(isAvailable ? 'available' : 'taken')
+    } catch (e) {
+      console.error('Username check failed:', e)
+      setUsernameStatus('idle')
+    }
+  }, [])
+
+  // Effect to debounce username checks
+  useEffect(() => {
+    if (usernameCheckTimeoutRef.current) {
+      clearTimeout(usernameCheckTimeoutRef.current)
+    }
+
+    if (username.length >= 3 && /^[a-zA-Z0-9_]+$/.test(username)) {
+      usernameCheckTimeoutRef.current = setTimeout(() => {
+        checkUsernameAvailability(username)
+      }, 500) // 500ms debounce
+    } else {
+      setUsernameStatus('idle')
+    }
+
+    return () => {
+      if (usernameCheckTimeoutRef.current) {
+        clearTimeout(usernameCheckTimeoutRef.current)
+      }
+    }
+  }, [username, checkUsernameAvailability])
 
   const handleSignup = async () => {
     if (!email.trim()) {
@@ -78,12 +121,32 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
       haptics.error()
       return
     }
+    if (usernameStatus === 'taken') {
+      setError('This username is already taken')
+      haptics.error()
+      return
+    }
+    if (usernameStatus === 'checking') {
+      setError('Please wait while we check username availability')
+      haptics.error()
+      return
+    }
 
     setIsLoading(true)
     setError(null)
 
     try {
       const user = await supabaseService.signUp(email.trim(), password, username.trim(), displayName.trim(), sport)
+
+      // Check if email verification is required
+      const authState = await supabaseService.getAuthState()
+      if (!authState.emailVerified && onEmailVerificationRequired) {
+        // Email verification required - redirect to verification screen
+        haptics.success()
+        onEmailVerificationRequired(email.trim())
+        return
+      }
+
       haptics.success()
       onSignup(user)
     } catch (e) {
@@ -160,15 +223,41 @@ export function AuthSignup({ onSignup, onNavigate }: AuthSignupProps) {
               <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Username
               </label>
-              <Input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                placeholder="Choose a unique username"
-                className="h-14"
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                  placeholder="Choose a unique username"
+                  className={`h-14 pr-10 ${
+                    usernameStatus === 'taken' ? 'border-red-500 focus:ring-red-500' :
+                    usernameStatus === 'available' ? 'border-green-500 focus:ring-green-500' : ''
+                  }`}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                {/* Username status indicator */}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {usernameStatus === 'checking' && (
+                    <svg className="animate-spin h-5 w-5 text-muted-foreground" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  )}
+                  {usernameStatus === 'available' && (
+                    <Check size={20} className="text-green-500" />
+                  )}
+                  {usernameStatus === 'taken' && (
+                    <X size={20} className="text-red-500" />
+                  )}
+                </div>
+              </div>
+              {usernameStatus === 'taken' && (
+                <p className="text-xs text-red-400 mt-1">This username is already taken</p>
+              )}
+              {usernameStatus === 'available' && (
+                <p className="text-xs text-green-400 mt-1">Username is available</p>
+              )}
             </div>
 
             <div>

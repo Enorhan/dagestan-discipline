@@ -5,6 +5,7 @@ import './globals.css'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { OfflineBanner } from '@/components/ui/offline-banner'
 import { AuthProvider } from '@/contexts/auth-context'
+import { ToastProvider } from '@/contexts/toast-context'
 
 export const metadata: Metadata = {
   title: 'Dagestan Discipline',
@@ -49,7 +50,9 @@ export default function RootLayout({
         <OfflineBanner />
         <ErrorBoundary>
           <AuthProvider>
-            {children}
+            <ToastProvider>
+              {children}
+            </ToastProvider>
           </AuthProvider>
         </ErrorBoundary>
         <Analytics />

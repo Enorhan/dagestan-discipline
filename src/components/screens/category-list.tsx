@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Drill, DrillCategory, DrillSubcategory, Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Search, X, ChevronRight, Clock, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Refresh
+  Search, X, ChevronRight, Clock, Shield, Target, Zap, Stretch, Flame, Heart, Activity, Refresh, Plus, Check
 } from '@/components/ui/icons'
 
 // Map category to icon component
@@ -121,27 +121,64 @@ const categoryThemes: Record<DrillCategory, { gradient: string; cardGradient: st
 
 interface CategoryListProps {
   category: DrillCategory
+  dataVersion?: number
   onBack: () => void
   onSelectDrill: (drill: Drill) => void
+  onAddToToday?: (drill: Drill) => void
+  todayDrillIds?: Set<string>
   initialSubcategory?: DrillSubcategory
   onNavigate: (screen: Screen) => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 export function CategoryList({
   category,
+  dataVersion = 0,
   onBack,
   onSelectDrill,
+  onAddToToday,
+  todayDrillIds,
   initialSubcategory,
   onNavigate,
   onStartAction,
   hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange,
 }: CategoryListProps) {
   const [selectedSubcategory, setSelectedSubcategory] = useState<DrillSubcategory | 'all'>(initialSubcategory || 'all')
   const [searchQuery, setSearchQuery] = useState('')
   const [allDrillsInCategory, setAllDrillsInCategory] = useState<Drill[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position after loading completes
+  useEffect(() => {
+    if (!isLoading && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoading, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   const categoryDisplay = categoryInfo[category]
   const theme = categoryThemes[category]
@@ -164,7 +201,7 @@ export function CategoryList({
     return () => {
       isMounted = false
     }
-  }, [category])
+  }, [category, dataVersion])
 
   // Get unique subcategories
   const subcategories = useMemo(() => {
@@ -193,12 +230,19 @@ export function CategoryList({
     setSelectedSubcategory('all')
   }
 
+  const hasActiveFilters = searchQuery.trim().length > 0 || selectedSubcategory !== 'all'
+  const hasAnyDrillsInCategory = allDrillsInCategory.length > 0
+
   return (
     <ScreenShell>
-      <ScreenShellContent>
-        <div className="pb-24">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
+        <div className="pb-32">
           {/* Hero Header */}
-          <div className="relative pt-4 pb-10 px-6 overflow-hidden">
+          <div className="relative safe-area-top pb-10 px-6 overflow-hidden">
             <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
 
@@ -308,28 +352,38 @@ export function CategoryList({
                 <p className="text-sm text-muted-foreground mt-2">Loading drills...</p>
               </div>
             ) : filteredDrills.length === 0 ? (
-              <EmptyState
-                icon={<Search size={40} className="text-muted-foreground/50" />}
-                title="No drills found"
-                message={searchQuery ? `No results for "${searchQuery}"` : "Try adjusting your filters"}
-                actionText="Clear filters"
-                onAction={clearFilters}
-                variant="compact"
-              />
+              hasAnyDrillsInCategory ? (
+                <EmptyState
+                  icon={<Search size={40} className="text-muted-foreground/50" />}
+                  title="No matches"
+                  message={searchQuery ? `No results for "${searchQuery}"` : "Try adjusting your filters."}
+                  actionText={hasActiveFilters ? "Clear filters" : undefined}
+                  onAction={hasActiveFilters ? clearFilters : undefined}
+                />
+              ) : (
+                <EmptyState
+                  icon={categoryIcons[category]}
+                  title="No drills available yet"
+                  message={`No ${categoryDisplay?.name.toLowerCase() ?? 'category'} drills are currently available.`}
+                  actionText="Back"
+                  onAction={onBack}
+                />
+              )
             ) : (
               <div className="space-y-3">
                 {filteredDrills.map((drill, index) => (
-                  <Button
+                  <div
                     key={drill.id}
-                    onClick={() => onSelectDrill(drill)}
-                    variant="secondary"
-                    size="sm"
-                    className={`w-full rounded-2xl p-5 text-left justify-start items-start normal-case tracking-normal h-auto border border-white/10 bg-gradient-to-br ${theme.cardGradient} card-interactive stagger-item`}
+                    className={`w-full rounded-2xl p-5 border border-white/10 bg-gradient-to-br ${theme.cardGradient} card-interactive stagger-item`}
                     style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
                   >
                     <div className="relative z-10 flex flex-col gap-3 w-full">
                       <div className="flex items-start justify-between gap-3 w-full">
-                        <div className="flex items-start gap-4 min-w-0">
+                        <button
+                          onClick={() => onSelectDrill(drill)}
+                          className="flex items-start gap-4 min-w-0 flex-1 text-left"
+                          aria-label={`Open ${drill.name}`}
+                        >
                           <div className={`w-12 h-12 rounded-xl ${theme.iconBg} flex items-center justify-center border border-white/10 flex-shrink-0`}>
                             {categoryIcons[category]}
                           </div>
@@ -358,20 +412,45 @@ export function CategoryList({
                               )}
                             </div>
                           </div>
+                        </button>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {onAddToToday && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={`h-10 w-10 rounded-xl border ${
+                                todayDrillIds?.has(drill.id)
+                                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                  : 'bg-white/5 border-white/10 text-white/70 hover:text-white'
+                              }`}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (todayDrillIds?.has(drill.id)) return
+                                haptics.medium()
+                                onAddToToday(drill)
+                              }}
+                              aria-label={todayDrillIds?.has(drill.id) ? 'Added to today' : 'Add to today'}
+                            >
+                              {todayDrillIds?.has(drill.id) ? <Check size={16} /> : <Plus size={16} />}
+                            </Button>
+                          )}
+                          <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
                         </div>
-                        <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
                       </div>
                       <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                         View Drill
                       </span>
                     </div>
-                  </Button>
+                  </div>
                 ))}
               </div>
             )}
           </div>
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav

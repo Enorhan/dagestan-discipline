@@ -21,7 +21,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Search, X, ChevronRight, ChevronDown, AlertCircle, RefreshCw,
-  Video, Filter, Trophy, Dumbbell, ArrowUpDown, Tag
+  Video, Filter, Trophy, Dumbbell, ArrowUpDown, Tag, Plus, Check
 } from '@/components/ui/icons'
 
 const categoryLabels: Record<ExerciseCategory, { title: string; description: string }> = {
@@ -68,11 +68,18 @@ const sportLabels: Record<SportType, string> = {
 interface SportCategoryExercisesProps {
   sport: SportType
   category: ExerciseCategory
+  dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onExerciseSelect?: (exercise: EnhancedExerciseData) => void
+  onAddToToday?: (exercise: EnhancedExerciseData) => void
+  todayExerciseIds?: Set<string>
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  /** Scroll position to restore when returning to this screen */
+  initialScrollTop?: number
+  /** Callback to save scroll position when navigating away */
+  onScrollChange?: (scrollTop: number) => void
 }
 
 const MAX_VISIBLE_EXERCISES = 6
@@ -165,11 +172,16 @@ function Breadcrumb({
 export function SportCategoryExercises({
   sport,
   category,
+  dataVersion = 0,
   onNavigate,
   onBack,
   onExerciseSelect,
+  onAddToToday,
+  todayExerciseIds,
   onStartAction,
-  hasWorkoutToday = false
+  hasWorkoutToday = false,
+  initialScrollTop,
+  onScrollChange
 }: SportCategoryExercisesProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -184,6 +196,31 @@ export function SportCategoryExercises({
   const [showFilterOptions, setShowFilterOptions] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Scroll position preservation
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const hasRestoredScroll = useRef(false)
+
+  // Restore scroll position after loading completes
+  useEffect(() => {
+    if (!isLoading && initialScrollTop !== undefined && scrollContainerRef.current && !hasRestoredScroll.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop
+            hasRestoredScroll.current = true
+          }
+        })
+      })
+    }
+  }, [isLoading, initialScrollTop])
+
+  // Handle scroll to save position
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (onScrollChange) {
+      onScrollChange((e.target as HTMLDivElement).scrollTop)
+    }
+  }, [onScrollChange])
 
   // Debounce search query
   useEffect(() => {
@@ -227,7 +264,7 @@ export function SportCategoryExercises({
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+  }, [fetchData, dataVersion])
 
   // Pull to refresh handler
   const handleRefresh = useCallback(() => {
@@ -340,15 +377,19 @@ export function SportCategoryExercises({
 
   return (
     <ScreenShell>
-      <ScreenShellContent>
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
+      >
         <div
-          className="pb-24"
+          className="pb-32"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
           {/* Hero Header */}
-          <div className={`relative pt-4 pb-8 px-6 overflow-hidden`}>
+          <div className={`relative safe-area-top pb-8 px-6 overflow-hidden`}>
             {/* Background Gradient */}
             <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
@@ -358,7 +399,7 @@ export function SportCategoryExercises({
                 <BackButton onClick={onBack} label={sportLabels[sport]} styleVariant="glass" />
                 {!isLoading && !error && (
                   <div className="text-[10px] font-bold tracking-widest text-white/40 uppercase">
-                    {totalExercises} Drills
+                    {totalExercises} Exercises
                   </div>
                 )}
               </div>
@@ -391,7 +432,7 @@ export function SportCategoryExercises({
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
                   <input
                     type="text"
-                    placeholder="Search drills..."
+                    placeholder="Search exercises..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-white/5 border-none rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30 focus:ring-1 focus:ring-white/20 transition-all"
@@ -603,13 +644,16 @@ export function SportCategoryExercises({
                       {/* Exercise List */}
                       <div className="space-y-2">
                         {visibleExercises.map((exercise) => (
-                          <button
+                          <div
                             key={exercise.id}
-                            onClick={() => handleExerciseTap(exercise)}
-                            className="group/row w-full text-left rounded-xl border border-white/5 bg-white/[0.02] p-3 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200"
+                            className="group/row w-full rounded-xl border border-white/5 bg-white/[0.02] p-3 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1 min-w-0">
+                              <button
+                                onClick={() => handleExerciseTap(exercise)}
+                                className="flex-1 min-w-0 text-left"
+                                aria-label={`Open ${exercise.name}`}
+                              >
                                 <span className="text-sm font-bold text-foreground group-hover/row:text-primary transition-colors">
                                   {formatExerciseName(exercise.name)}
                                 </span>
@@ -630,9 +674,31 @@ export function SportCategoryExercises({
                                     </div>
                                   )}
                                 </div>
-                              </div>
+                              </button>
 
                               <div className="flex items-center gap-2">
+                                {onAddToToday && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-9 w-9 rounded-xl border ${
+                                      todayExerciseIds?.has(exercise.id)
+                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                        : 'bg-white/5 border-white/10 text-white/70 hover:text-white'
+                                    }`}
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      if (todayExerciseIds?.has(exercise.id)) return
+                                      haptics.medium()
+                                      onAddToToday(exercise)
+                                    }}
+                                    aria-label={todayExerciseIds?.has(exercise.id) ? 'Added to today' : 'Add to today'}
+                                  >
+                                    {todayExerciseIds?.has(exercise.id) ? <Check size={16} /> : <Plus size={16} />}
+                                  </Button>
+                                )}
                                 {exercise.videoUrl && (
                                   <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
                                     <Video size={16} fill="currentColor" className="opacity-80" />
@@ -646,7 +712,7 @@ export function SportCategoryExercises({
                                 <ChevronRight size={16} className="text-white/20 group-hover/row:translate-x-0.5 transition-transform" />
                               </div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
 
@@ -660,7 +726,7 @@ export function SportCategoryExercises({
                           size="sm"
                           className={`w-full mt-3 h-10 text-[11px] font-bold uppercase tracking-widest ${theme.color} bg-white/5 hover:bg-white/10 rounded-xl transition-colors`}
                         >
-                          {isExpanded ? 'Show fewer' : `+ ${hiddenCount} more drills`}
+                          {isExpanded ? 'Show fewer' : `+ ${hiddenCount} more exercises`}
                         </Button>
                       )}
                     </div>
@@ -670,7 +736,7 @@ export function SportCategoryExercises({
             )}
           </div>
         </div>
-      </ScreenShellContent>
+      </div>
 
       <ScreenShellFooter>
         <BottomNav

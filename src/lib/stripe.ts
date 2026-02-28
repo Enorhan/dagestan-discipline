@@ -37,7 +37,8 @@ export interface CreateCheckoutParams {
   programId?: string // For one-time premium program purchases
   successUrl: string
   cancelUrl: string
-  userId: string
+  // Deprecated: user identity is derived from the authenticated session on the server.
+  userId?: string
   email?: string
 }
 
@@ -59,4 +60,3 @@ export type SubscriptionStatus =
 
 // Purchase status types
 export type PurchaseStatus = 'pending' | 'completed' | 'failed' | 'refunded'
-
