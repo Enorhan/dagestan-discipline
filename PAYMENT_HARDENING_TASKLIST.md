@@ -1,0 +1,22 @@
+# Payment Hardening Tasklist
+
+- [x] Define implementation plan and execution order
+- [x] Harden Supabase Stripe checkout
+  - [x] Enforce server-side allowed subscription price IDs
+  - [x] Block duplicate active/trialing subscriptions before checkout
+  - [x] Validate success/cancel redirect URLs against allowlist
+- [x] Harden Supabase Stripe webhook
+  - [x] Handle `checkout.session.completed` by `metadata.mode` (`subscription` vs `payment`)
+  - [x] Grant one-time purchases to `purchases` + `user_programs`
+  - [x] Keep `profiles` and `subscriptions` in sync on create/update/delete/invoice events
+  - [x] Improve idempotency safety for duplicate webhook deliveries
+- [x] Add DB migration for lifecycle + enforcement
+  - [x] Add `profiles.first_active_at`
+  - [x] Backfill existing rows safely
+  - [x] Add premium/grace access function + RLS policies for premium tables
+- [x] Wire app/service to use `first_active_at` for mandatory paywall timing
+  - [x] Extend profile model mapping
+  - [x] Persist `first_active_at` when onboarding is completed (if null)
+  - [x] Keep blocking gate based on server-backed timestamp
+- [x] Decommission duplicate Next Stripe API routes (prevent split-brain)
+- [x] Validate production build and summarize residual risks

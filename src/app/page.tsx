@@ -61,6 +61,8 @@ const UNDO_TTL_MS = 6000
 const STREAK_GRACE_HOURS = 36
 const DEFAULT_SCREENSHOT_INTERVAL_MS = 1400
 const DEFAULT_SCREENSHOT_DELAY_MS = 400
+const SUBSCRIPTION_REQUIRED_AFTER_DAYS = 7
+const SUBSCRIPTION_REQUIRED_AFTER_MS = SUBSCRIPTION_REQUIRED_AFTER_DAYS * 24 * 60 * 60 * 1000
 const IMPLEMENTED_SCREENS: ReadonlySet<Screen> = new Set([
   'onboarding-sport',
   'onboarding-schedule',
@@ -153,6 +155,17 @@ const getLocalDateKey = (date: Date = new Date()) => {
   const mm = String(date.getMonth() + 1).padStart(2, '0')
   const dd = String(date.getDate()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}`
+}
+
+const getSubscriptionRequiredAt = (
+  firstActiveAt?: string | null,
+  createdAt?: string | null
+): number | null => {
+  const anchor = firstActiveAt ?? createdAt
+  if (!anchor) return null
+  const anchorMs = Date.parse(anchor)
+  if (!Number.isFinite(anchorMs)) return null
+  return anchorMs + SUBSCRIPTION_REQUIRED_AFTER_MS
 }
 
 const estimateDurationMinutes = (exercises: Exercise[]) => {
@@ -369,6 +382,7 @@ export default function App() {
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const hasHydratedRef = useRef(false)
+  const firstActiveSyncUserRef = useRef<string | null>(null)
 
   // Round timer state
   const [roundTimerMode, setRoundTimerMode] = useState<TimerMode>('mma')
@@ -433,6 +447,10 @@ export default function App() {
   // Social state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
   const [selectedWorkout, setSelectedWorkout] = useState<CustomWorkout | null>(null)
+  const [subscriptionGateNow, setSubscriptionGateNow] = useState<number>(() => Date.now())
+  const [isStartingMandatorySubscription, setIsStartingMandatorySubscription] = useState(false)
+  const [isRefreshingMandatorySubscription, setIsRefreshingMandatorySubscription] = useState(false)
+  const [mandatorySubscriptionError, setMandatorySubscriptionError] = useState<string | null>(null)
 
   // Loading state for Supabase data
   const [isLoadingSupabaseData, setIsLoadingSupabaseData] = useState(false)
@@ -459,6 +477,139 @@ export default function App() {
       setContentDataVersion((v) => v + 1)
     }, 350)
   }, [])
+
+  const subscriptionRequiredAt = useMemo(
+    () => getSubscriptionRequiredAt(currentUser?.firstActiveAt, currentUser?.createdAt),
+    [currentUser?.firstActiveAt, currentUser?.createdAt]
+  )
+
+  useEffect(() => {
+    if (!currentUser || isScreenshotMode) return
+    if (currentUser.onboardingCompleted !== true) return
+    if (currentUser.firstActiveAt) return
+
+    const userId = currentUser.id
+    if (firstActiveSyncUserRef.current === userId) return
+    firstActiveSyncUserRef.current = userId
+
+    void (async () => {
+      try {
+        const firstActiveAt = await supabaseService.setFirstActiveIfMissing()
+        if (!firstActiveAt) return
+        setCurrentUser((prev) => (
+          prev && prev.id === userId
+            ? { ...prev, firstActiveAt }
+            : prev
+        ))
+      } catch (error) {
+        console.debug('Failed to set first_active_at:', error)
+        firstActiveSyncUserRef.current = null
+      }
+    })()
+  }, [currentUser?.id, currentUser?.onboardingCompleted, currentUser?.firstActiveAt, isScreenshotMode])
+
+  const shouldShowMandatorySubscriptionGate = useMemo(() => {
+    if (isScreenshotMode) return false
+    if (!currentUser) return false
+    if (currentUser.onboardingCompleted !== true) return false
+    if (currentUser.isPremium) return false
+    if (!subscriptionRequiredAt) return false
+    return subscriptionGateNow >= subscriptionRequiredAt
+  }, [
+    currentUser,
+    isScreenshotMode,
+    subscriptionRequiredAt,
+    subscriptionGateNow,
+  ])
+
+  const handleStartMandatorySubscription = useCallback(async () => {
+    if (!currentUser) return
+    setMandatorySubscriptionError(null)
+    setIsStartingMandatorySubscription(true)
+    try {
+      await stripeService.subscribeToPremium()
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Unable to start subscription checkout right now.'
+      setMandatorySubscriptionError(message)
+    } finally {
+      setIsStartingMandatorySubscription(false)
+      setSubscriptionGateNow(Date.now())
+    }
+  }, [currentUser])
+
+  const handleRefreshMandatorySubscription = useCallback(async () => {
+    setMandatorySubscriptionError(null)
+    setIsRefreshingMandatorySubscription(true)
+    try {
+      const authState = await supabaseService.getAuthState()
+      if (authState.isAuthenticated && authState.user) {
+        setCurrentUser(authState.user)
+        if (authState.user.isPremium) return
+      }
+
+      const isPremiumConfirmed = await stripeService.pollForSubscriptionStatus(4, 1500)
+      if (!isPremiumConfirmed) {
+        setMandatorySubscriptionError('Subscription not active yet. Complete checkout, then try again.')
+        return
+      }
+
+      const refreshedAuthState = await supabaseService.getAuthState()
+      if (refreshedAuthState.isAuthenticated && refreshedAuthState.user) {
+        setCurrentUser(refreshedAuthState.user)
+      }
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Unable to refresh subscription status.'
+      setMandatorySubscriptionError(message)
+    } finally {
+      setIsRefreshingMandatorySubscription(false)
+      setSubscriptionGateNow(Date.now())
+    }
+  }, [])
+
+  useEffect(() => {
+    setSubscriptionGateNow(Date.now())
+  }, [currentUser?.id, currentUser?.isPremium, currentUser?.createdAt, currentUser?.onboardingCompleted])
+
+  useEffect(() => {
+    if (!currentUser || currentUser.isPremium || currentUser.onboardingCompleted !== true || isScreenshotMode) {
+      return
+    }
+
+    const interval = setInterval(() => {
+      setSubscriptionGateNow(Date.now())
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [currentUser?.id, currentUser?.isPremium, currentUser?.onboardingCompleted, isScreenshotMode])
+
+  useEffect(() => {
+    if (!currentUser || currentUser.isPremium || currentUser.onboardingCompleted !== true || isScreenshotMode) {
+      return
+    }
+    if (!subscriptionRequiredAt) return
+
+    const msUntilRequired = subscriptionRequiredAt - Date.now()
+    if (msUntilRequired <= 0) {
+      setSubscriptionGateNow(Date.now())
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      setSubscriptionGateNow(Date.now())
+    }, msUntilRequired)
+
+    return () => clearTimeout(timeout)
+  }, [
+    currentUser?.id,
+    currentUser?.isPremium,
+    currentUser?.onboardingCompleted,
+    isScreenshotMode,
+    subscriptionRequiredAt,
+  ])
 
   useEffect(() => {
     const previous = lastHistoryScreenRef.current
@@ -1018,6 +1169,7 @@ export default function App() {
             ...prev,
             // Subscription fields (updated by Stripe webhook)
             isPremium: row.is_premium ?? prev.isPremium,
+            firstActiveAt: row.first_active_at ?? prev.firstActiveAt,
             stripeCustomerId: row.stripe_customer_id ?? prev.stripeCustomerId,
             subscriptionStatus: row.subscription_status ?? prev.subscriptionStatus,
             subscriptionPeriodEnd: row.subscription_period_end ?? prev.subscriptionPeriodEnd,
@@ -4075,6 +4227,43 @@ export default function App() {
               cancelText="Keep session"
               variant="destructive"
             />
+          </div>
+        </div>
+      )}
+      {shouldShowMandatorySubscriptionGate && (
+        <div className="fixed inset-0 z-[70] bg-background/95 flex items-center justify-center px-6">
+          <div className="w-full max-w-sm text-center">
+            <p className="text-xs font-semibold tracking-[0.3em] text-muted-foreground uppercase mb-4">
+              Subscription required
+            </p>
+            <h2 className="text-2xl font-black text-foreground mb-3">
+              Continue with Premium
+            </h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              To continue using the app, you need an active subscription.
+            </p>
+            <p className="text-lg font-black text-foreground mb-8">
+              25 SEK / month
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleStartMandatorySubscription}
+                disabled={isStartingMandatorySubscription || isRefreshingMandatorySubscription}
+                className="w-full h-14 bg-foreground text-background font-semibold text-base tracking-wide uppercase transition-opacity hover:opacity-90 active:opacity-80 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isStartingMandatorySubscription ? 'Opening checkout...' : 'Subscribe now'}
+              </button>
+              <button
+                onClick={handleRefreshMandatorySubscription}
+                disabled={isStartingMandatorySubscription || isRefreshingMandatorySubscription}
+                className="w-full h-12 text-muted-foreground font-medium text-sm tracking-wide hover:text-foreground transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRefreshingMandatorySubscription ? 'Checking status...' : 'I already subscribed'}
+              </button>
+            </div>
+            {mandatorySubscriptionError && (
+              <p className="text-sm text-red-400 mt-4">{mandatorySubscriptionError}</p>
+            )}
           </div>
         </div>
       )}

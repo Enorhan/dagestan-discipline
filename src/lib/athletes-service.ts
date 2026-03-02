@@ -720,6 +720,27 @@ export class AthletesService {
       }
 
       const result = Array.from(athleteMap.values())
+        .map((group) => ({
+          ...group,
+          exercises: [...group.exercises].sort((a, b) => {
+            if (b.priority !== a.priority) {
+              return b.priority - a.priority
+            }
+            return a.name.localeCompare(b.name)
+          })
+        }))
+        .sort((a, b) => {
+          const topPriorityA = a.exercises[0]?.priority ?? 0
+          const topPriorityB = b.exercises[0]?.priority ?? 0
+          if (topPriorityB !== topPriorityA) {
+            return topPriorityB - topPriorityA
+          }
+          const nameSort = a.athleteName.localeCompare(b.athleteName)
+          if (nameSort !== 0) {
+            return nameSort
+          }
+          return a.athleteId.localeCompare(b.athleteId)
+        })
 
       // Cache the result
       cache.enhancedExercises.set(cacheKey, {
@@ -756,54 +777,39 @@ export class AthletesService {
     }
 
     // Types for query responses
-    interface ExerciseRow { id: string; sport: string; category: string; name: string }
-    interface LinkedAthleteRow {
+    interface LinkedExerciseRow {
       athlete_id: string
-      athlete: { id: string; sport: string; name: string } | { id: string; sport: string; name: string }[]
+      exercise_id: string
+      exercise:
+      | { id: string; sport: string; category: string; name: string }
+      | { id: string; sport: string; category: string; name: string }[]
+      athlete:
+      | { id: string; sport: string; name: string }
+      | { id: string; sport: string; name: string }[]
     }
 
     try {
-      // Get exercise counts by sport and category
-      const { data: exercisesData, error: exerciseError } = await supabase
-        .from('exercises')
-        .select('id, sport, category, name')
-
-      if (exerciseError || !exercisesData) {
-        return defaultCounts
-      }
-
-      const exercises = exercisesData as unknown as ExerciseRow[]
-
-      // Get athlete counts by sport for display-eligible athletes only:
-      // - athlete must have at least one linked exercise
-      // - fallback "Source Coach (...)" records are excluded
-      const { data: athletesData, error: athleteError } = await supabase
+      const { data, error } = await supabase
         .from('athlete_exercises')
-        .select('athlete_id, athlete:athletes!inner(id, sport, name)')
+        .select(`
+          athlete_id,
+          exercise_id,
+          exercise:exercises!inner(id, sport, category, name),
+          athlete:athletes!inner(id, sport, name)
+        `)
 
-      if (athleteError || !athletesData) {
+      if (error || !data) {
         return defaultCounts
       }
 
-      const linkedAthletes = athletesData as unknown as LinkedAthleteRow[]
+      const linkedRows = data as unknown as LinkedExerciseRow[]
 
       // Calculate counts
-      const counts: ExerciseCounts = { ...defaultCounts }
-
-      for (const exercise of exercises) {
-        const sport = exercise.sport as SportType
-        const category = normalizeExerciseCategory(exercise.category, exercise.name)
-
-        if (sport && counts.bySport[sport] !== undefined) {
-          counts.bySport[sport]++
-        }
-        if (category && counts.byCategory[category] !== undefined) {
-          counts.byCategory[category]++
-        }
-        if (sport && category) {
-          const key = `${sport}-${category}`
-          counts.bySportAndCategory[key] = (counts.bySportAndCategory[key] || 0) + 1
-        }
+      const counts: ExerciseCounts = {
+        bySport: { ...defaultCounts.bySport },
+        byCategory: { ...defaultCounts.byCategory },
+        bySportAndCategory: {},
+        athletesBySport: { ...defaultCounts.athletesBySport }
       }
 
       const athleteIdsBySport: Record<SportType, Set<string>> = {
@@ -811,20 +817,48 @@ export class AthletesService {
         judo: new Set<string>(),
         bjj: new Set<string>()
       }
+      const uniqueSportExerciseKeys = new Set<string>()
+      const uniqueCategoryExerciseKeys = new Set<string>()
+      const uniqueSportCategoryExerciseKeys = new Set<string>()
 
-      for (const linkedAthlete of linkedAthletes) {
-        const athlete = Array.isArray(linkedAthlete.athlete)
-          ? linkedAthlete.athlete[0]
-          : linkedAthlete.athlete
-        if (!athlete) {
+      for (const row of linkedRows) {
+        const athlete = Array.isArray(row.athlete) ? row.athlete[0] : row.athlete
+        const exercise = Array.isArray(row.exercise) ? row.exercise[0] : row.exercise
+        if (!athlete || !exercise) {
           continue
         }
+
         if (isFallbackAthleteName(athlete.name)) {
           continue
         }
-        const sport = athlete.sport as SportType
-        if (sport && athleteIdsBySport[sport] !== undefined) {
-          athleteIdsBySport[sport].add(athlete.id ?? linkedAthlete.athlete_id)
+
+        const sport = (exercise.sport || athlete.sport) as SportType
+        if (!(sport in counts.bySport)) {
+          continue
+        }
+
+        athleteIdsBySport[sport].add(athlete.id ?? row.athlete_id)
+
+        const exerciseId = exercise.id || row.exercise_id
+        const sportExerciseKey = `${sport}-${exerciseId}`
+        if (!uniqueSportExerciseKeys.has(sportExerciseKey)) {
+          counts.bySport[sport] += 1
+          uniqueSportExerciseKeys.add(sportExerciseKey)
+        }
+
+        const category = normalizeExerciseCategory(exercise.category, exercise.name)
+
+        const categoryExerciseKey = `${category}-${exerciseId}`
+        if (!uniqueCategoryExerciseKeys.has(categoryExerciseKey)) {
+          counts.byCategory[category] += 1
+          uniqueCategoryExerciseKeys.add(categoryExerciseKey)
+        }
+
+        const sportCategoryKey = `${sport}-${category}`
+        const sportCategoryExerciseKey = `${sportCategoryKey}-${exerciseId}`
+        if (!uniqueSportCategoryExerciseKeys.has(sportCategoryExerciseKey)) {
+          counts.bySportAndCategory[sportCategoryKey] = (counts.bySportAndCategory[sportCategoryKey] || 0) + 1
+          uniqueSportCategoryExerciseKeys.add(sportCategoryExerciseKey)
         }
       }
 

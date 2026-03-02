@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "verify:ci": "npm run lint && npm run build",
     "test:payments:smoke": "npx tsx scripts/payment-smoke-test.ts",
+    "import:dagestan": "npx tsx scripts/import-dagestan-discipline.ts",
     "pipeline:sources": "npx tsx scripts/seed-content-sources.ts",
     "pipeline:collect": "npx tsx scripts/athlete-data-pipeline.ts collect",
     "pipeline:extract": "npx tsx scripts/athlete-data-pipeline.ts extract",
@@ -92,6 +93,7 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "xlsx": "^0.18.5"
   }
 }

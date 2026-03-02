@@ -40,7 +40,7 @@ const sportThemes: Record<SportType, { gradient: string; color: string; bg: stri
 const sportNames: Record<SportType, string> = {
   wrestling: 'Wrestling',
   judo: 'Judo',
-  bjj: 'Ju Jitsu'
+  bjj: 'Jiu-Jitsu'
 }
 
 // Breadcrumb component matching other screens

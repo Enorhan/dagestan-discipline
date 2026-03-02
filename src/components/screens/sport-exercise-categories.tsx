@@ -120,7 +120,7 @@ const categoryInfo: Record<ExerciseCategory, CategoryInfo> = {
 const sportNames: Record<SportType, string> = {
   'wrestling': 'Wrestling',
   'judo': 'Judo',
-  'bjj': 'Ju Jitsu'
+  'bjj': 'Jiu-Jitsu'
 }
 
 interface SportExerciseCategoriesProps {

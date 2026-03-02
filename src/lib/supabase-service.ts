@@ -81,6 +81,7 @@ function dbProfileToUserProfile(
     injuryNotes: profile.injury_notes ?? null,
     // Subscription (Stripe)
     isPremium: (profile as any).is_premium ?? false,
+    firstActiveAt: (profile as any).first_active_at ?? null,
     stripeCustomerId: (profile as any).stripe_customer_id ?? null,
     subscriptionStatus: (profile as any).subscription_status ?? null,
     subscriptionPeriodEnd: (profile as any).subscription_period_end ?? null,
@@ -354,6 +355,12 @@ export const supabaseService = {
     if (!profile) throw new Error('Profile not found after update')
 
     return profile
+  },
+
+  async setFirstActiveIfMissing(): Promise<string | null> {
+    const { data, error } = await db.rpc('set_first_active_if_missing')
+    if (error) throw new Error(error.message)
+    return typeof data === 'string' ? data : null
   },
 
   // ============================================

@@ -62,7 +62,7 @@ const categoryLabels: Record<ExerciseCategory, { title: string; description: str
 const sportLabels: Record<SportType, string> = {
   wrestling: 'Wrestling',
   judo: 'Judo',
-  bjj: 'Ju Jitsu'
+  bjj: 'Jiu-Jitsu'
 }
 
 interface SportCategoryExercisesProps {
@@ -91,6 +91,23 @@ const sortOptions: { value: ExerciseSortOption; label: string }[] = [
   { value: 'priority', label: 'By Priority' },
   { value: 'equipment', label: 'By Equipment' }
 ]
+
+function getEquipmentFromGroups(groups: EnhancedAthleteExerciseGroup[]): string[] {
+  const equipmentSet = new Set<string>()
+
+  groups.forEach((group) => {
+    group.exercises.forEach((exercise) => {
+      exercise.equipment.forEach((equipmentItem) => {
+        const normalized = equipmentItem.trim()
+        if (normalized) {
+          equipmentSet.add(normalized)
+        }
+      })
+    })
+  })
+
+  return Array.from(equipmentSet).sort((a, b) => a.localeCompare(b))
+}
 
 // Loading skeleton for athlete cards
 function AthleteCardSkeleton() {
@@ -247,12 +264,9 @@ export function SportCategoryExercises({
     }
     setError(null)
     try {
-      const [groups, equipment] = await Promise.all([
-        athletesService.getEnhancedExercisesBySportAndCategory(sport, category),
-        athletesService.getEquipmentForSport(sport)
-      ])
+      const groups = await athletesService.getEnhancedExercisesBySportAndCategory(sport, category)
       setRawAthleteGroups(groups)
-      setAvailableEquipment(equipment)
+      setAvailableEquipment(getEquipmentFromGroups(groups))
     } catch (err) {
       console.error('[SportCategoryExercises] Error fetching data:', err)
       setError('Failed to load exercises. Please try again.')
@@ -261,6 +275,12 @@ export function SportCategoryExercises({
       setIsRefreshing(false)
     }
   }, [sport, category])
+
+  useEffect(() => {
+    if (equipmentFilter && !availableEquipment.includes(equipmentFilter)) {
+      setEquipmentFilter(null)
+    }
+  }, [availableEquipment, equipmentFilter])
 
   useEffect(() => {
     fetchData()

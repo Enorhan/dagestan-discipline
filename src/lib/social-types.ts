@@ -26,6 +26,7 @@ export interface UserProfile {
   injuryNotes?: string | null
   // Subscription (Stripe)
   isPremium?: boolean
+  firstActiveAt?: string | null
   stripeCustomerId?: string | null
   subscriptionStatus?: string | null // 'active' | 'trialing' | 'canceling' | 'canceled' | 'past_due' | etc
   subscriptionPeriodEnd?: string | null // ISO date string - when current period ends

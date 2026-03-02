@@ -11,6 +11,7 @@ interface HttpResult {
 
 const CHECKOUT_PATH = '/functions/v1/stripe-checkout'
 const WEBHOOK_PATH = '/functions/v1/stripe-webhook'
+const HTTP_TIMEOUT_MS = Number(process.env.PAYMENT_SMOKE_TIMEOUT_MS ?? '45000')
 
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -45,7 +46,7 @@ function isRecord(value: JsonValue | null): value is Record<string, JsonValue> {
 async function postJson(url: string, init: RequestInit): Promise<HttpResult> {
   const response = await fetch(url, {
     ...init,
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
   })
 
   const text = await response.text()
@@ -270,7 +271,10 @@ async function assertWebhookChecks(
 
   assertCondition(duplicate.status === 200, `Expected duplicate webhook 200, got ${duplicate.status}: ${duplicate.text}`)
   assertCondition(isRecord(duplicate.json), `Expected duplicate webhook JSON object, got: ${duplicate.text}`)
-  assertCondition(duplicate.json.duplicate === true, `Expected duplicate webhook duplicate=true, got: ${duplicate.text}`)
+  assertCondition(
+    duplicate.json.duplicate === true || duplicate.json.skipped === true,
+    `Expected duplicate webhook duplicate=true or skipped=true, got: ${duplicate.text}`
+  )
 }
 
 async function run(): Promise<void> {

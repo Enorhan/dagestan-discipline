@@ -14,6 +14,97 @@ const corsHeaders = {
 
 // Premium subscription price: 25 SEK/month (in öre)
 const PREMIUM_PRICE_SEK = 2500
+const APP_URL_SCHEME = 'dagestanidiscipline://'
+const DEFAULT_REDIRECT_ORIGIN = 'https://enorhan.github.io'
+
+function parseCsvEnv(name: string): string[] {
+  const raw = Deno.env.get(name)
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
+
+function getAllowedSubscriptionPriceIds(): Set<string> {
+  const ids = new Set<string>()
+
+  const primaryPriceId = Deno.env.get('STRIPE_PREMIUM_PRICE_ID')
+  if (primaryPriceId) ids.add(primaryPriceId)
+
+  for (const id of parseCsvEnv('STRIPE_ALLOWED_SUBSCRIPTION_PRICE_IDS')) {
+    ids.add(id)
+  }
+
+  return ids
+}
+
+function validateCheckoutRedirectUrl(rawUrl: string | undefined, label: string): string {
+  if (!rawUrl) throw new Error(`${label} URL is required`)
+
+  if (rawUrl.startsWith(APP_URL_SCHEME)) {
+    return rawUrl
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    throw new Error(`${label} URL is invalid`)
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`${label} URL must use http or https`)
+  }
+
+  const allowedOrigins = new Set<string>([DEFAULT_REDIRECT_ORIGIN])
+  const appUrl = Deno.env.get('APP_URL')
+  if (appUrl) {
+    try {
+      allowedOrigins.add(new URL(appUrl).origin)
+    } catch {
+      // Ignore malformed APP_URL values.
+    }
+  }
+  for (const origin of parseCsvEnv('CHECKOUT_ALLOWED_ORIGINS')) {
+    try {
+      allowedOrigins.add(new URL(origin).origin)
+    } catch {
+      // Ignore malformed allowlist entries.
+    }
+  }
+
+  if (!allowedOrigins.has(parsed.origin)) {
+    throw new Error(`${label} URL origin is not allowed`)
+  }
+
+  return parsed.toString()
+}
+
+async function hasOpenSubscription(supabaseAdmin: any, userId: string): Promise<boolean> {
+  const openStatuses = ['active', 'trialing', 'canceling', 'past_due', 'unpaid']
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('is_premium, subscription_status')
+    .eq('id', userId)
+    .maybeSingle()
+
+  const profileIsPremium = (profile as any)?.is_premium === true
+  const profileSubscriptionStatus = String((profile as any)?.subscription_status ?? '')
+  if (profileIsPremium || openStatuses.includes(profileSubscriptionStatus)) {
+    return true
+  }
+
+  const { data: subscription } = await supabaseAdmin
+    .from('subscriptions')
+    .select('id')
+    .eq('user_id', userId)
+    .in('status', openStatuses)
+    .maybeSingle()
+
+  return !!subscription
+}
 
 interface CheckoutRequest {
   mode: 'subscription' | 'payment'
@@ -89,15 +180,31 @@ Deno.serve(async (req) => {
       throw new Error('Missing required fields: mode, successUrl, cancelUrl')
     }
 
+    const validatedSuccessUrl = validateCheckoutRedirectUrl(successUrl, 'Success')
+    const validatedCancelUrl = validateCheckoutRedirectUrl(cancelUrl, 'Cancel')
     const customerEmail = email ?? user.email ?? undefined
     let sessionParams: Stripe.Checkout.SessionCreateParams
 
     if (mode === 'subscription') {
+      const alreadySubscribed = await hasOpenSubscription(supabaseAdmin, user.id)
+      if (alreadySubscribed) {
+        throw new Error('You already have an active subscription. Use Manage Subscription to update billing.')
+      }
+
+      const allowedPriceIds = getAllowedSubscriptionPriceIds()
+      const selectedPriceId = priceId
+        ? (allowedPriceIds.has(priceId) ? priceId : null)
+        : (allowedPriceIds.size > 0 ? [...allowedPriceIds][0] : null)
+
+      if (priceId && !selectedPriceId) {
+        throw new Error('Invalid subscription price ID')
+      }
+
       sessionParams = {
         mode: 'subscription',
         payment_method_types: ['card'],
-        line_items: priceId
-          ? [{ price: priceId, quantity: 1 }]
+        line_items: selectedPriceId
+          ? [{ price: selectedPriceId, quantity: 1 }]
           : [{
               price_data: {
                 currency: 'sek',
@@ -110,8 +217,8 @@ Deno.serve(async (req) => {
               },
               quantity: 1,
             }],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
+        success_url: validatedSuccessUrl,
+        cancel_url: validatedCancelUrl,
         customer_email: customerEmail,
         metadata: {
           userId: user.id,
@@ -148,8 +255,8 @@ Deno.serve(async (req) => {
           },
           quantity: 1,
         }],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
+        success_url: validatedSuccessUrl,
+        cancel_url: validatedCancelUrl,
         customer_email: customerEmail,
         metadata: {
           userId: user.id,
@@ -169,11 +276,11 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     console.error('Error creating checkout session:', error)
     return new Response(
-      JSON.stringify({ error: error.message || 'Failed to create checkout session' }),
+      JSON.stringify({ error: message || 'Failed to create checkout session' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }
 })
-
