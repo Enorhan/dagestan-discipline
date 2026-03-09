@@ -9,7 +9,7 @@ on:
 
 jobs:
   quality:
-    name: Lint and Build
+    name: Verify CI
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -26,14 +26,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
+      - name: Verify lint, typecheck, scripts, and build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-        run: npm run build
+          NEXT_PUBLIC_SUPPORT_EMAIL: support@dagestanidisciple.com
+          NEXT_PUBLIC_BILLING_SUPPORT_EMAIL: support@dagestanidisciple.com
+        run: npm run verify:ci
 
   payment-smoke:
     name: Payment Smoke Test

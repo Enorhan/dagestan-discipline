@@ -112,6 +112,7 @@ export function EditProfile({ user, onSave, onBack }: EditProfileProps) {
             <div className="flex flex-col items-center gap-3">
               <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center">
                 {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- Avatar previews may use arbitrary user-provided URLs and are not LCP-critical.
                   <img 
                     src={avatarUrl} 
                     alt="Avatar preview" 

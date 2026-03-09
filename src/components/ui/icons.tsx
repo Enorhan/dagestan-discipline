@@ -54,6 +54,41 @@ export const Edit = createIcon(['M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 00
 export const Trash = createIcon(['M3 6h18', 'M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2', 'M10 11v6', 'M14 11v6'])
 export const Plus = createIcon(['M12 5v14', 'M5 12h14'])
 export const Minus = createIcon(['M5 12h14'])
+export const Lock = createIcon(['M7 10V7a5 5 0 0110 0v3', 'M5 10h14v11H5z', 'M12 14v3'])
+export const Sparkles = createIcon([
+  'M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z',
+  'M5 14l.8 1.7L7.5 16l-1.7.8L5 18.5l-.8-1.7L2.5 16l1.7-.3L5 14z',
+  'M19 14l.8 1.7 1.7.3-1.7.8L19 18.5l-.8-1.7-1.7-.8 1.7-.3L19 14z'
+])
+export const TrendingUp = createIcon(['M3 17l6-6 4 4 7-7', 'M14 8h6v6'])
+export const Sun = createIcon([
+  'M12 12m-4 0a4 4 0 108 0 4 4 0 10-8 0',
+  'M12 1v3',
+  'M12 20v3',
+  'M4.22 4.22l2.12 2.12',
+  'M17.66 17.66l2.12 2.12',
+  'M1 12h3',
+  'M20 12h3',
+  'M4.22 19.78l2.12-2.12',
+  'M17.66 6.34l2.12-2.12',
+])
+export const Code = createIcon(['M8 8l-4 4 4 4', 'M16 8l4 4-4 4', 'M14 4l-4 16'])
+export const Award = createIcon([
+  'M12 16m-6 0a6 6 0 1012 0 6 6 0 10-12 0',
+  'M12 10l1.5 3 3.5.5-2.5 2.4.6 3.6-3.1-1.7-3.1 1.7.6-3.6-2.5-2.4 3.5-.5L12 10z',
+  'M8 20l-2 3',
+  'M16 20l2 3',
+])
+export const Medal = createIcon([
+  'M8 3l4 6 4-6',
+  'M9 3h6',
+  'M12 13m-6 0a6 6 0 1012 0 6 6 0 10-12 0',
+  'M12 10l1.3 2.7 3 .4-2.2 2.1.5 3.1-2.6-1.4-2.6 1.4.5-3.1-2.2-2.1 3-.4L12 10z',
+])
+export const Crown = createIcon([
+  'M3 18l2-10 5 4 2-6 2 6 5-4 2 10H3z',
+  'M3 18h18',
+])
 
 // Categories
 export const Shield = createIcon(['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'])

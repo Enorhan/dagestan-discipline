@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
+import { analytics } from '@/lib/analytics'
+import { SUPPORT_EMAIL, buildSupportMailtoLink, openSupportLink } from '@/lib/app-support'
+import { captureException } from '@/lib/monitoring'
 import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile } from '@/lib/social-types'
 import { BackButton } from '@/components/ui/back-button'
@@ -32,6 +35,7 @@ export function AuthSignup({ onSignup, onNavigate, onEmailVerificationRequired }
   const [sport, setSport] = useState<SportType>('wrestling')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [supportError, setSupportError] = useState<string | null>(null)
 
   // Username availability state
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
@@ -49,7 +53,9 @@ export function AuthSignup({ onSignup, onNavigate, onEmailVerificationRequired }
       const isAvailable = await supabaseService.checkUsernameAvailable(usernameToCheck)
       setUsernameStatus(isAvailable ? 'available' : 'taken')
     } catch (e) {
-      console.error('Username check failed:', e)
+      captureException('auth-signup', e, {
+        step: 'username-availability',
+      }, 'warning')
       setUsernameStatus('idle')
     }
   }, [])
@@ -134,6 +140,7 @@ export function AuthSignup({ onSignup, onNavigate, onEmailVerificationRequired }
 
     setIsLoading(true)
     setError(null)
+    setSupportError(null)
 
     try {
       const user = await supabaseService.signUp(email.trim(), password, username.trim(), displayName.trim(), sport)
@@ -150,10 +157,43 @@ export function AuthSignup({ onSignup, onNavigate, onEmailVerificationRequired }
       haptics.success()
       onSignup(user)
     } catch (e) {
+      captureException('auth-signup', e, {
+        step: 'sign-up',
+      }, 'warning')
       setError(e instanceof Error ? e.message : 'Signup failed')
       haptics.error()
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleSignupSupport = async () => {
+    setSupportError(null)
+    analytics.track('support_contact_opened', {
+      source: 'auth-signup',
+      channel: 'email',
+      reason: 'sign-up-help',
+    })
+
+    const body = [
+      'Hi Dagestani Disciple support,',
+      '',
+      'I need help with sign up or email verification.',
+      '',
+      `Email: ${email.trim() || '[enter your email]'}`,
+      `Username: ${username.trim() || '[enter your username]'}`,
+      '',
+      'What happened:',
+      '[add a short description here]',
+    ].join('\n')
+
+    try {
+      await openSupportLink(buildSupportMailtoLink(SUPPORT_EMAIL, 'Dagestani Disciple sign-up help', body))
+    } catch (error) {
+      captureException('auth-signup-support', error, {
+        step: 'open-support',
+      }, 'warning')
+      setSupportError(`Unable to open support right now. Please email ${SUPPORT_EMAIL}.`)
     }
   }
 
@@ -336,6 +376,17 @@ export function AuthSignup({ onSignup, onNavigate, onEmailVerificationRequired }
                 Sign In
               </Button>
             </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="mt-3 text-muted-foreground p-0 h-auto min-h-0 normal-case tracking-normal"
+              onClick={() => void handleSignupSupport()}
+            >
+              Need help with sign up or verification?
+            </Button>
+            {supportError && (
+              <p className="mt-2 text-xs text-red-400">{supportError}</p>
+            )}
           </div>
         </div>
       </ScreenShellContent>

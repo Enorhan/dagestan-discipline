@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Drill, Exercise, Screen, Session, SportType } from '@/lib/types'
+import { Drill, Exercise, Screen, Session, SessionAdjustmentMode, SportType } from '@/lib/types'
 import { drillsService } from '@/lib/drills-service'
 import { haptics } from '@/lib/haptics'
+import { useToast } from '@/contexts/toast-context'
+import { getTodayExerciseSaveFeedback } from '@/lib/action-feedback'
+import { getSessionAdjustmentDescription, getSessionAdjustmentLabel } from '@/lib/session-adjustment'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { BackButton } from '@/components/ui/back-button'
@@ -29,6 +32,7 @@ interface TodayEditorProps {
 
   hasOverrides: boolean
   hasBaseChanged: boolean
+  sessionAdjustmentMode: SessionAdjustmentMode | null
   canEditProgram: boolean
 
   onBack: () => void
@@ -72,6 +76,7 @@ export function TodayEditor({
   drillsLoggedAt,
   hasOverrides,
   hasBaseChanged,
+  sessionAdjustmentMode,
   canEditProgram,
   onBack,
   onNavigate,
@@ -93,6 +98,7 @@ export function TodayEditor({
   onLogDrills,
   onOpenDrill,
 }: TodayEditorProps) {
+  const { showToast } = useToast()
   const [libraryMode, setLibraryMode] = useState<'add' | 'replace' | null>(null)
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null)
   const [expandedEdits, setExpandedEdits] = useState<Set<string>>(() => new Set())
@@ -178,6 +184,20 @@ export function TodayEditor({
               <p className="text-muted-foreground text-sm mt-2 max-w-[320px] leading-relaxed">
                 Adjust today without breaking your program template. Reset anytime.
               </p>
+
+              {sessionAdjustmentMode && (
+                <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/10 p-4">
+                  <p className="text-xs font-bold tracking-[0.2em] uppercase text-primary/80">
+                    Adaptive session active
+                  </p>
+                  <p className="text-sm font-semibold text-foreground mt-2">
+                    {getSessionAdjustmentLabel(sessionAdjustmentMode)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {getSessionAdjustmentDescription(sessionAdjustmentMode)}
+                  </p>
+                </div>
+              )}
 
               {hasBaseChanged && !dismissedBaseWarning && (
                 <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
@@ -531,6 +551,8 @@ export function TodayEditor({
                                       next.delete(exercise.id)
                                       return next
                                     })
+                                    const feedback = getTodayExerciseSaveFeedback(exercise.name)
+                                    showToast(feedback.message, feedback.variant)
                                   }}
                                   variant="ghost"
                                   size="sm"
@@ -568,21 +590,26 @@ export function TodayEditor({
             )}
 
             {removedExercises.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/60 uppercase mb-3">
-                  Removed
-                </h3>
+              <div className="mt-8 border-t border-white/5 pt-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/60 uppercase">
+                    Removed
+                  </h3>
+                  <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">
+                    Archived for today
+                  </span>
+                </div>
                 <div className="space-y-2">
                   {removedExercises.map((exercise, index) => (
                     <div
                       key={`${exercise.id}-${index}`}
-                      className="rounded-2xl p-4 border border-white/10 bg-white/[0.02]"
+                      className="rounded-2xl border border-white/5 bg-white/[0.015] p-4 opacity-80"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-foreground truncate">{exercise.name}</p>
-                          <p className="text-xs text-white/50 mt-1">
-                            {exercise.sets} sets · {formatPrescription(exercise)}
+                          <p className="text-sm font-bold text-white/85 truncate">{exercise.name}</p>
+                          <p className="mt-1 text-xs text-white/45">
+                            Removed from today · {exercise.sets} sets · {formatPrescription(exercise)}
                           </p>
                         </div>
                         <Button
@@ -592,7 +619,7 @@ export function TodayEditor({
                           }}
                           variant="ghost"
                           size="sm"
-                          className="h-10 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white normal-case tracking-normal"
+                          className="h-10 rounded-xl border border-white/10 bg-white/[0.04] text-white/75 hover:text-white normal-case tracking-normal"
                         >
                           <Check size={16} className="mr-2" />
                           Restore

@@ -13,6 +13,7 @@ import {
   AuthState,
   WorkoutFocus,
 } from './social-types'
+import { captureException } from './monitoring'
 import type { SportType, Drill, Routine, LearningPath, ActivityLog, SessionLog, DrillDifficulty, Equipment, WeightUnit, Session, WeekDay, ExperienceLevel, PrimaryGoal } from './types'
 
 // Type aliases for database rows - used for return type annotations
@@ -27,6 +28,7 @@ type DbRoutine = Database['public']['Tables']['routines']['Row']
 type DbRoutineDrill = Database['public']['Tables']['routine_drills']['Row']
 type DbLearningPath = Database['public']['Tables']['learning_paths']['Row']
 type DbLearningPathDrill = Database['public']['Tables']['learning_path_drills']['Row']
+type DbUserLearningProgress = Database['public']['Tables']['user_learning_progress']['Row']
 type DbUserRecentlyViewed = Database['public']['Tables']['user_recently_viewed']['Row']
 type DbSubscription = Database['public']['Tables']['subscriptions']['Row']
 type DbSubscriptionPlan = Database['public']['Tables']['subscription_plans']['Row']
@@ -36,7 +38,6 @@ type DbTrainingProgramState = Database['public']['Tables']['training_program_sta
 type DbExerciseFavorite = Database['public']['Tables']['exercise_favorites']['Row']
 type DbExerciseCompletion = Database['public']['Tables']['exercise_completions']['Row']
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
 export interface TrainingProgramSnapshot {
@@ -184,7 +185,9 @@ export const supabaseService = {
     })
 
     if (authError) {
-      console.error('Auth signup error:', authError)
+      captureException('supabase-sign-up', authError, {
+        step: 'auth.signUp',
+      })
       throw new Error(authError.message)
     }
     if (!authData.user) throw new Error('Failed to create user')
@@ -199,10 +202,14 @@ export const supabaseService = {
         user_id: authData.user.id,
       })
       if (statsError) {
-        console.error('User stats insert error (non-critical):', statsError)
+        captureException('supabase-sign-up', statsError, {
+          step: 'user_stats.insert',
+        }, 'warning')
       }
     } catch (e) {
-      console.error('User stats insert exception (non-critical):', e)
+      captureException('supabase-sign-up', e, {
+        step: 'user_stats.insert.exception',
+      }, 'warning')
     }
 
     return {
@@ -224,7 +231,12 @@ export const supabaseService = {
       password,
     })
 
-    if (error) throw new Error(error.message)
+    if (error) {
+      captureException('supabase-sign-in', error, {
+        step: 'auth.signInWithPassword',
+      }, 'warning')
+      throw new Error(error.message)
+    }
     if (!data.user) throw new Error('Failed to sign in')
 
     const profile = await this.getProfile(data.user.id)
@@ -242,7 +254,12 @@ export const supabaseService = {
     const { error } = await db.auth.resetPasswordForEmail(email, {
       redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`,
     })
-    if (error) throw new Error(error.message)
+    if (error) {
+      captureException('supabase-reset-password', error, {
+        step: 'auth.resetPasswordForEmail',
+      }, 'warning')
+      throw new Error(error.message)
+    }
   },
 
   async resendVerificationEmail(email: string): Promise<void> {
@@ -250,7 +267,12 @@ export const supabaseService = {
       type: 'signup',
       email,
     })
-    if (error) throw new Error(error.message)
+    if (error) {
+      captureException('supabase-resend-verification', error, {
+        step: 'auth.resend',
+      }, 'warning')
+      throw new Error(error.message)
+    }
   },
 
   async checkUsernameAvailable(username: string): Promise<boolean> {
@@ -261,7 +283,9 @@ export const supabaseService = {
       .maybeSingle()
 
     if (error) {
-      console.error('Username check error:', error)
+      captureException('supabase-username-check', error, {
+        step: 'profiles.select',
+      }, 'warning')
       return false
     }
     return data === null
@@ -361,6 +385,95 @@ export const supabaseService = {
     const { data, error } = await db.rpc('set_first_active_if_missing')
     if (error) throw new Error(error.message)
     return typeof data === 'string' ? data : null
+  },
+
+  async getFeatureUsage(feature: string): Promise<number> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return 0
+
+    const { data, error } = await db.rpc('get_feature_usage', { p_feature: feature })
+    if (error) throw new Error(error.message)
+
+    if (typeof data === 'number') return data
+    if (typeof data === 'string') {
+      const parsed = parseInt(data, 10)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+
+    return 0
+  },
+
+  async getLearningPathUsage(): Promise<number> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return 0
+
+    const { count, error } = await db
+      .from('user_learning_progress')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', currentUser.id)
+
+    if (error) throw new Error(error.message)
+    return count ?? 0
+  },
+
+  async getLearningPathProgress(): Promise<Record<string, number>> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) return {}
+
+    const { data, error } = await db
+      .from('user_learning_progress')
+      .select('learning_path_id, current_drill_index')
+      .eq('user_id', currentUser.id)
+
+    if (error) throw new Error(error.message)
+
+    const progress: Record<string, number> = {}
+    ;((data ?? []) as Array<Pick<DbUserLearningProgress, 'learning_path_id' | 'current_drill_index'>>).forEach((row) => {
+      const pathId = row.learning_path_id
+      if (!pathId) return
+      const index = Number.isFinite(row.current_drill_index)
+        ? Math.max(0, Math.floor(row.current_drill_index ?? 0))
+        : 0
+      progress[pathId] = index
+    })
+
+    return progress
+  },
+
+  async upsertLearningPathProgress(
+    learningPathId: string,
+    currentDrillIndex: number,
+    completed = false
+  ): Promise<number> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) throw new Error('Must be logged in')
+
+    const safeIndex = Number.isFinite(currentDrillIndex)
+      ? Math.max(0, Math.floor(currentDrillIndex))
+      : 0
+    const completedAt = completed ? new Date().toISOString() : null
+
+    const { data, error } = await db
+      .from('user_learning_progress')
+      .upsert(
+        {
+          user_id: currentUser.id,
+          learning_path_id: learningPathId,
+          current_drill_index: safeIndex,
+          completed,
+          completed_at: completedAt,
+        },
+        { onConflict: 'user_id,learning_path_id' }
+      )
+      .select('current_drill_index')
+      .single()
+
+    if (error) throw new Error(error.message)
+
+    if (Number.isFinite(data?.current_drill_index)) {
+      return Math.max(0, Math.floor(data.current_drill_index))
+    }
+    return safeIndex
   },
 
   // ============================================
@@ -911,7 +1024,9 @@ export const supabaseService = {
       }
     } catch (error) {
       // Table may not exist yet (migration not applied) or network error.
-      console.debug('Failed to fetch workout day override:', error)
+      captureException('supabase-workout-day-override', error, {
+        step: 'fetch',
+      }, 'warning')
       return null
     }
   },
@@ -934,7 +1049,9 @@ export const supabaseService = {
           { onConflict: 'user_id,workout_date' }
         )
     } catch (error) {
-      console.debug('Failed to upsert workout day override:', error)
+      captureException('supabase-workout-day-override', error, {
+        step: 'upsert',
+      }, 'warning')
     }
   },
 
@@ -949,7 +1066,9 @@ export const supabaseService = {
         .eq('user_id', currentUser.id)
         .eq('workout_date', workoutDate)
     } catch (error) {
-      console.debug('Failed to delete workout day override:', error)
+      captureException('supabase-workout-day-override', error, {
+        step: 'delete',
+      }, 'warning')
     }
   },
 
@@ -1021,7 +1140,9 @@ export const supabaseService = {
       .insert(inserts)
 
     if (error) {
-      console.debug('Failed to log exercise completions:', error.message)
+      captureException('supabase-exercise-completions', error, {
+        step: 'insert',
+      }, 'warning')
     }
   },
 
@@ -1049,6 +1170,38 @@ export const supabaseService = {
       .single()
 
     if (error || !data) throw new Error(error?.message ?? 'Failed to log session')
+
+    return {
+      id: data.id,
+      date: data.date,
+      sessionId: data.session_id ?? '',
+      completed: data.completed ?? false,
+      effortRating: data.effort_rating ?? undefined,
+      totalTime: data.total_time ?? undefined,
+      notes: data.notes ?? undefined,
+      volume: data.total_volume ?? undefined,
+    }
+  },
+
+  async updateSessionLog(
+    sessionLogId: string,
+    updates: Pick<Partial<SessionLog>, 'effortRating' | 'notes'>
+  ): Promise<SessionLog> {
+    const currentUser = await this.getCurrentUser()
+    if (!currentUser) throw new Error('Must be logged in')
+
+    const { data, error } = await db
+      .from('session_logs')
+      .update({
+        effort_rating: updates.effortRating ?? null,
+        notes: updates.notes ?? null,
+      })
+      .eq('id', sessionLogId)
+      .eq('user_id', currentUser.id)
+      .select()
+      .single()
+
+    if (error || !data) throw new Error(error?.message ?? 'Failed to update session log')
 
     return {
       id: data.id,
@@ -1380,7 +1533,9 @@ export const supabaseService = {
       )
 
     if (error) {
-      console.debug('Failed to track recently viewed:', error.message)
+      captureException('supabase-recently-viewed', error, {
+        step: 'upsert',
+      }, 'warning')
     }
   },
 

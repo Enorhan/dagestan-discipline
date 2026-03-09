@@ -2,14 +2,29 @@
 
 import React from 'react'
 import { Card, CardHeader, CardContent } from './card'
-import { ExerciseWithGuidance, ExperienceLevel } from '@/lib/types'
-import { Trophy, Target, Info } from './icons'
+import { ExerciseWithGuidance, ExercisePerformanceTag, ExperienceLevel } from '@/lib/types'
+import { Trophy, Target, Info, Plus, Check } from './icons'
+import { Button } from './button'
+
+const TAG_LABELS: Record<ExercisePerformanceTag, string> = {
+  grip: 'Grip',
+  explosive: 'Explosive',
+  mobility: 'Mobility',
+  reaction: 'Reaction',
+  strength: 'Strength',
+  conditioning: 'Conditioning',
+  agility: 'Agility',
+  power: 'Power',
+}
 
 interface ExerciseCardProps {
   exercise: ExerciseWithGuidance
   userLevel: ExperienceLevel
   showAthleteData?: boolean
   showRecommendations?: boolean
+  showSportBenefits?: boolean
+  onAddToWorkout?: (exercise: ExerciseWithGuidance) => void
+  isInWorkout?: boolean
   onClick?: () => void
 }
 
@@ -18,21 +33,45 @@ export function ExerciseCardWithGuidance({
   userLevel,
   showAthleteData = true,
   showRecommendations = true,
+  showSportBenefits = true,
+  onAddToWorkout,
+  isInWorkout = false,
   onClick
 }: ExerciseCardProps) {
+  const tags = exercise.tags ?? exercise.eliteStandard?.tags ?? []
+
   return (
     <Card
       variant="elevated"
       padding="lg"
       interactive={!!onClick}
       onClick={onClick}
-      className="mb-4"
+      className="mb-4 border border-white/5 overflow-hidden"
     >
-      {/* Exercise Header */}
-      <CardHeader
-        title={exercise.name}
-        subtitle={exercise.muscleGroups.join(', ')}
-      />
+      {/* Exercise Header with Performance Tags */}
+      <div className="flex flex-col gap-2">
+        <CardHeader
+          title={exercise.name}
+          subtitle={exercise.muscleGroups?.length ? exercise.muscleGroups.join(', ') : exercise.category}
+        />
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/5 text-[10px] font-bold uppercase tracking-wider text-white/70 border border-white/5"
+              >
+                {TAG_LABELS[tag]}
+              </span>
+            ))}
+          </div>
+        )}
+        {exercise.difficultyLevel && (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+            {exercise.difficultyLevel}
+          </span>
+        )}
+      </div>
 
       <CardContent>
         {/* Description */}
@@ -101,7 +140,7 @@ export function ExerciseCardWithGuidance({
 
                 {athleteData.notes && (
                   <p className="text-xs text-muted-foreground italic mt-2 pl-2 border-l-2 border-amber-500/30">
-                    "{athleteData.notes}"
+                    “{athleteData.notes}”
                   </p>
                 )}
               </div>
@@ -114,6 +153,56 @@ export function ExerciseCardWithGuidance({
                 From verified training research
               </p>
             </div>
+          </div>
+        )}
+
+        {showSportBenefits && exercise.eliteStandard && (
+          <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-2">
+              Grappling Transfer
+            </h4>
+            <p className="text-xs text-foreground mb-1">
+              <span className="font-semibold">Judo:</span> {exercise.eliteStandard.benefits_judo}
+            </p>
+            <p className="text-xs text-foreground mb-1">
+              <span className="font-semibold">Wrestling:</span> {exercise.eliteStandard.benefits_wrestling}
+            </p>
+            <p className="text-xs text-foreground mb-2">
+              <span className="font-semibold">BJJ:</span> {exercise.eliteStandard.benefits_bjj}
+            </p>
+            <p className="text-xs text-emerald-300/90">
+              Loggable metrics: {exercise.eliteStandard.loggable_metrics.join(', ')}
+            </p>
+          </div>
+        )}
+
+        {onAddToWorkout && (
+          <div className="mb-4">
+            <Button
+              variant={isInWorkout ? 'secondary' : 'primary'}
+              size="sm"
+              fullWidth
+              disabled={isInWorkout}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                if (isInWorkout) return
+                onAddToWorkout(exercise)
+              }}
+              className="h-11 rounded-xl font-bold uppercase tracking-wide active:scale-[0.98] transition-transform"
+            >
+              {isInWorkout ? (
+                <>
+                  <Check size={16} className="mr-2" />
+                  Added to Workout
+                </>
+              ) : (
+                <>
+                  <Plus size={16} className="mr-2" />
+                  Add to Workout
+                </>
+              )}
+            </Button>
           </div>
         )}
 

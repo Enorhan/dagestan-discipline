@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState, useEffect, useRef } from 'react'
 import { Screen, SportType, DrillCategory, Drill, Routine, LearningPath, Athlete, ExerciseCounts } from '@/lib/types'
+import { PREMIUM_FEATURES } from '@/lib/premium-gate'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { categoryInfo } from '@/lib/drills-data'
@@ -14,7 +15,7 @@ import { usePullToRefresh } from '@/lib/hooks/use-pull-to-refresh'
 import { haptics } from '@/lib/haptics'
 import {
   Shield, Stretch, Target, Flame, Heart, Zap, Activity, Book,
-  ChevronRight, Refresh, Trophy, User, Clock
+  ChevronRight, Refresh, Trophy, User, Clock, Lock
 } from '@/components/ui/icons'
 
 // Breadcrumb component (matching sport-exercise-categories.tsx)
@@ -67,40 +68,6 @@ const categoryIcons: Record<DrillCategory, React.ReactNode> = {
   'recovery': <Heart size={20} className="text-pink-400" />
 }
 
-const EMPTY_DRILL_COUNTS: Record<DrillCategory, number> = {
-  'technique': 0,
-  'exercise': 0,
-  'injury-prevention': 0,
-  'mobility': 0,
-  'conditioning': 0,
-  'warmup': 0,
-  'recovery': 0
-}
-
-function shouldForceTrainingHubFailure(): boolean {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  // Keep debug forcing off in production unless explicitly enabled.
-  if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_ENABLE_QA_DEBUG !== 'true') {
-    return false
-  }
-
-  const search = new URLSearchParams(window.location.search)
-  return search.get('qaFailTrainingHub') === '1' || window.localStorage.getItem('qa.fail.trainingHub') === '1'
-}
-
-function calculateDrillCounts(drills: Drill[]): Record<DrillCategory, number> {
-  const counts = { ...EMPTY_DRILL_COUNTS }
-  drills.forEach((drill) => {
-    if (drill.category in counts) {
-      counts[drill.category as DrillCategory] += 1
-    }
-  })
-  return counts
-}
-
 interface TrainingHubProps {
   sport: SportType
   dataVersion?: number
@@ -114,6 +81,8 @@ interface TrainingHubProps {
   onSelectAthlete?: (athlete: Athlete) => void
   onSelectSport?: (sport: SportType) => void
   learningPathProgress?: Record<string, number>
+  isPremium?: boolean
+  learningPathUsage?: number
   backScreen?: Screen
   session?: any // Today's workout session
   onStartAction?: () => void
@@ -137,6 +106,8 @@ export function TrainingHub({
   onSelectAthlete,
   onSelectSport,
   learningPathProgress = {},
+  isPremium = false,
+  learningPathUsage = 0,
   backScreen = 'home',
   session,
   onStartAction,
@@ -146,15 +117,21 @@ export function TrainingHub({
 }: TrainingHubProps) {
   // Loading and data states
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [routinesData, setRoutinesData] = useState<Routine[]>([])
   const [learningPathsData, setLearningPathsData] = useState<LearningPath[]>([])
   const [drillsData, setDrillsData] = useState<Drill[]>([])
   const [recentDrills, setRecentDrills] = useState<Drill[]>([])
   const [athletesData, setAthletesData] = useState<Athlete[]>([])
-  const [drillCounts, setDrillCounts] = useState<Record<DrillCategory, number>>(() => ({ ...EMPTY_DRILL_COUNTS }))
+  const [drillCounts, setDrillCounts] = useState<Record<DrillCategory, number>>({
+    'technique': 0,
+    'exercise': 0,
+    'injury-prevention': 0,
+    'mobility': 0,
+    'conditioning': 0,
+    'warmup': 0,
+    'recovery': 0
+  })
   const [exerciseCounts, setExerciseCounts] = useState<ExerciseCounts | null>(null)
-  const isMountedRef = useRef(true)
 
   // Scroll container ref for position preservation
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -175,13 +152,6 @@ export function TrainingHub({
     }
   }, [isLoading, initialScrollTop])
 
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => {
-      isMountedRef.current = false
-    }
-  }, [])
-
   // Handle scroll to save position
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     if (onScrollChange) {
@@ -189,62 +159,97 @@ export function TrainingHub({
     }
   }, [onScrollChange])
 
-  const loadData = useCallback(async ({ showLoading = false, clearCache = false }: { showLoading?: boolean; clearCache?: boolean } = {}) => {
-    if (showLoading) {
-      setIsLoading(true)
-    }
-    setError(null)
-
-    if (clearCache) {
-      drillsService.clearCache()
-      athletesService.clearCache()
-    }
-
-    try {
-      if (shouldForceTrainingHubFailure()) {
-        throw new Error('QA forced training hub failure')
-      }
-
-      const [drills, routines, paths, recent, athletes, exCounts] = await Promise.all([
-        drillsService.getDrills(),
-        drillsService.getRoutines(),
-        drillsService.getLearningPaths(),
-        drillsService.getRecentlyViewedDrills(5),
-        athletesService.getAthletes(sport),
-        athletesService.getExerciseCounts()
-      ])
-
-      if (!isMountedRef.current) {
-        return
-      }
-
-      setDrillsData(drills)
-      setRoutinesData(routines)
-      setLearningPathsData(paths)
-      setRecentDrills(recent)
-      setAthletesData(athletes)
-      setExerciseCounts(exCounts)
-      setDrillCounts(calculateDrillCounts(drills))
-    } catch (fetchError) {
-      console.error('Error fetching training hub data:', fetchError)
-      if (isMountedRef.current) {
-        setError('Failed to load training content. Please try again.')
-      }
-    } finally {
-      if (showLoading && isMountedRef.current) {
-        setIsLoading(false)
-      }
-    }
-  }, [sport])
-
   // Fetch data on mount
   useEffect(() => {
-    loadData({ showLoading: true })
-  }, [loadData, dataVersion])
+    let isMounted = true
+
+    const fetchData = async () => {
+      setIsLoading(true)
+      try {
+        const [drills, routines, paths, recent, athletes, exCounts] = await Promise.all([
+          drillsService.getDrills(),
+          drillsService.getRoutines(),
+          drillsService.getLearningPaths(),
+          drillsService.getRecentlyViewedDrills(5),
+          athletesService.getAthletes(sport),
+          athletesService.getExerciseCounts()
+        ])
+
+        if (isMounted) {
+          setDrillsData(drills)
+          setRoutinesData(routines)
+          setLearningPathsData(paths)
+          setRecentDrills(recent)
+          setAthletesData(athletes)
+          setExerciseCounts(exCounts)
+
+          // Calculate drill counts per category
+          const counts: Record<DrillCategory, number> = {
+            'technique': 0,
+            'exercise': 0,
+            'injury-prevention': 0,
+            'mobility': 0,
+            'conditioning': 0,
+            'warmup': 0,
+            'recovery': 0
+          }
+          drills.forEach(d => {
+            if (d.category in counts) {
+              counts[d.category as DrillCategory]++
+            }
+          })
+          setDrillCounts(counts)
+        }
+      } catch (error) {
+        console.error('Error fetching training hub data:', error)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    fetchData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [sport, dataVersion])
 
   const handleRefresh = useCallback(async () => {
-    await loadData({ clearCache: true })
-  }, [loadData])
+    drillsService.clearCache()
+    athletesService.clearCache()
+    const [drills, routines, paths, recent, athletes] = await Promise.all([
+      drillsService.getDrills(),
+      drillsService.getRoutines(),
+      drillsService.getLearningPaths(),
+      drillsService.getRecentlyViewedDrills(5),
+      athletesService.getAthletes(sport)
+    ])
+    setDrillsData(drills)
+    setRoutinesData(routines)
+    setLearningPathsData(paths)
+    setRecentDrills(recent)
+    setAthletesData(athletes)
+    setExerciseCounts(await athletesService.getExerciseCounts())
+
+    // Recalculate drill counts
+    const counts: Record<DrillCategory, number> = {
+      'technique': 0,
+      'exercise': 0,
+      'injury-prevention': 0,
+      'mobility': 0,
+      'conditioning': 0,
+      'warmup': 0,
+      'recovery': 0
+    }
+    drills.forEach(d => {
+      if (d.category in counts) {
+        counts[d.category as DrillCategory]++
+      }
+    })
+    setDrillCounts(counts)
+  }, [sport])
 
   const { isRefreshing, handleTouchStart, handleTouchMove, handleTouchEnd } = usePullToRefresh({
     onRefresh: handleRefresh
@@ -267,8 +272,7 @@ export function TrainingHub({
 
   // Get learning paths for current sport
   const sportPaths = learningPathsData.filter(p => p.sport === sport)
-  const visibleLibraryCategories = (Object.entries(categoryInfo) as [DrillCategory, typeof categoryInfo[DrillCategory]][])
-    .filter(([category]) => drillCounts[category] > 0)
+  const learningPathFreeLimit = PREMIUM_FEATURES['learning-paths'].freeLimit ?? 0
 
   const handleCategoryClick = (category: DrillCategory) => {
     if (category === 'injury-prevention') {
@@ -316,28 +320,63 @@ export function TrainingHub({
 
         {/* Loading State */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Refresh size={24} className="animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground mt-2">Loading training content...</p>
+          <div className="px-6 py-4 space-y-6">
+            {/* Skeleton: For You section */}
+            <div>
+              <div className="h-3 w-24 bg-card/80 rounded animate-pulse mb-4" />
+              <div className="rounded-2xl border border-white/10 bg-card/30 p-5 animate-pulse">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-card/80" />
+                  <div className="flex-1">
+                    <div className="h-4 w-32 bg-card/80 rounded mb-2" />
+                    <div className="h-3 w-24 bg-card/80 rounded" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Skeleton: Athletes */}
+            <div>
+              <div className="h-3 w-20 bg-card/80 rounded animate-pulse mb-4" />
+              <div className="flex gap-3 overflow-hidden">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex-shrink-0 w-[180px] rounded-2xl border border-white/10 bg-card/30 p-5 animate-pulse">
+                    <div className="w-10 h-10 rounded-xl bg-card/80 mb-3" />
+                    <div className="h-4 w-24 bg-card/80 rounded mb-2" />
+                    <div className="h-3 w-32 bg-card/80 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Skeleton: Exercise Library */}
+            <div>
+              <div className="h-3 w-28 bg-card/80 rounded animate-pulse mb-4" />
+              {[1, 2, 3].map(i => (
+                <div key={i} className="rounded-2xl border border-white/10 bg-card/30 p-5 mb-3 animate-pulse">
+                  <div className="h-4 w-28 bg-card/80 rounded mb-2" />
+                  <div className="h-3 w-48 bg-card/80 rounded mb-3" />
+                  <div className="flex gap-2">
+                    <div className="h-5 w-20 bg-card/80 rounded-full" />
+                    <div className="h-5 w-24 bg-card/80 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Skeleton: Browse Library grid */}
+            <div>
+              <div className="h-3 w-24 bg-card/80 rounded animate-pulse mb-4" />
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="rounded-2xl border border-white/10 bg-card/30 p-5 min-h-[130px] animate-pulse">
+                    <div className="w-10 h-10 rounded-xl bg-card/80 mb-3" />
+                    <div className="h-4 w-20 bg-card/80 rounded mb-2" />
+                    <div className="h-3 w-16 bg-card/80 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <>
-        {error && (
-          <div className="px-6 py-2">
-            <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-4">
-              <p className="text-sm font-semibold text-destructive">Could not refresh Training Hub</p>
-              <p className="text-xs text-white/70 mt-1">{error}</p>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                onClick={() => loadData({ showLoading: true, clearCache: true })}
-              >
-                Retry
-              </Button>
-            </div>
-          </div>
-        )}
         {/* For You Today */}
         {(warmups.length > 0 || recoveries.length > 0) && (
           <div className="px-6 py-4 -mt-4 relative z-20">
@@ -351,17 +390,17 @@ export function TrainingHub({
                   onClick={() => onSelectRoutine(routine)}
                   variant="secondary"
                   size="sm"
-                  className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-emerald-500/20 via-black/80 to-black/95"
+                  className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-amber-500/15 via-black/80 to-black/95"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="relative z-10 flex flex-col gap-3 w-full">
                     <div className="flex items-start justify-between gap-3 w-full">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-                          <Shield size={20} className="text-emerald-400" />
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                          <Shield size={20} className="text-amber-400" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-base text-emerald-200">Pre-Workout Warmup</h3>
+                          <h3 className="font-bold text-base text-amber-200">Pre-Workout Warmup</h3>
                           <p className="text-xs text-white/65 mt-1 leading-relaxed">{routine.name} · {routine.duration} min</p>
                         </div>
                       </div>
@@ -379,17 +418,17 @@ export function TrainingHub({
                   onClick={() => onSelectRoutine(routine)}
                   variant="secondary"
                   size="sm"
-                  className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-rose-500/20 via-black/80 to-black/95"
+                  className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-slate-500/15 via-black/80 to-black/95"
                   style={{ animationDelay: `${(warmups.length + index) * 50}ms` }}
                 >
                   <div className="relative z-10 flex flex-col gap-3 w-full">
                     <div className="flex items-start justify-between gap-3 w-full">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
-                          <Heart size={20} className="text-rose-400" />
+                        <div className="w-10 h-10 rounded-xl bg-slate-500/15 flex items-center justify-center">
+                          <Heart size={20} className="text-slate-400" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-base text-rose-200">Post-Workout Recovery</h3>
+                          <h3 className="font-bold text-base text-slate-200">Post-Workout Recovery</h3>
                           <p className="text-xs text-white/65 mt-1 leading-relaxed">{routine.name} · {routine.duration} min</p>
                         </div>
                       </div>
@@ -417,15 +456,15 @@ export function TrainingHub({
                   key={athlete.id}
                   onClick={() => onSelectAthlete?.(athlete)}
                   variant="ghost"
-                  className="flex-shrink-0 rounded-2xl p-5 text-left transition-all card-interactive min-w-[180px] normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-amber-500/20 via-black/80 to-black/95"
+                  className="flex-shrink-0 rounded-2xl p-5 text-left transition-all card-interactive min-w-[180px] normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-primary/15 via-black/80 to-black/95"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="relative z-10 flex flex-col gap-3 w-full">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
-                      <Trophy size={20} className="text-amber-400" />
+                    <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+                      <Trophy size={20} className="text-primary/80" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-base text-amber-200">{athlete.name}</h3>
+                      <h3 className="font-bold text-base text-primary/90">{athlete.name}</h3>
                       <p className="text-xs text-white/65 mt-1 leading-relaxed line-clamp-2">
                         {athlete.achievements?.[0] || athlete.sport}
                       </p>
@@ -470,14 +509,14 @@ export function TrainingHub({
                         </p>
                       </>
                     ) : (
-                      <p className="text-xs text-white/65 mt-1 leading-relaxed">No workout built for today</p>
+                      <p className="text-xs text-white/65 mt-1 leading-relaxed">No workout scheduled for today</p>
                     )}
                   </div>
                 </div>
                 <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
               </div>
               <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                {session ? 'Edit Today' : 'Build Today'}
+                Edit Today
               </span>
             </div>
           </Button>
@@ -602,56 +641,51 @@ export function TrainingHub({
           <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
             Browse Library
           </h2>
-          {visibleLibraryCategories.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5">
-              <p className="text-sm text-white/70">No drill categories available yet.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {visibleLibraryCategories.map(([category, info], index) => {
-                const drillCount = drillCounts[category]
+          <div className="grid grid-cols-2 gap-3">
+            {(Object.entries(categoryInfo) as [DrillCategory, typeof categoryInfo[DrillCategory]][]).map(([category, info], index) => {
+              const drillCount = drillCounts[category]
+              if (drillCount === 0 && category !== 'injury-prevention' && category !== 'conditioning' && category !== 'recovery') return null
 
-                // Category-specific gradients matching sport page styling
-                const categoryGradients: Record<DrillCategory, { gradient: string; textColor: string; iconBg: string }> = {
-                  'technique': { gradient: 'from-orange-500/20 via-black/80 to-black/95', textColor: 'text-orange-200', iconBg: 'bg-orange-500/20' },
-                  'exercise': { gradient: 'from-blue-500/20 via-black/80 to-black/95', textColor: 'text-blue-200', iconBg: 'bg-blue-500/20' },
-                  'injury-prevention': { gradient: 'from-emerald-500/20 via-black/80 to-black/95', textColor: 'text-emerald-200', iconBg: 'bg-emerald-500/20' },
-                  'mobility': { gradient: 'from-purple-500/20 via-black/80 to-black/95', textColor: 'text-purple-200', iconBg: 'bg-purple-500/20' },
-                  'conditioning': { gradient: 'from-red-500/20 via-black/80 to-black/95', textColor: 'text-red-200', iconBg: 'bg-red-500/20' },
-                  'warmup': { gradient: 'from-yellow-500/20 via-black/80 to-black/95', textColor: 'text-yellow-200', iconBg: 'bg-yellow-500/20' },
-                  'recovery': { gradient: 'from-pink-500/20 via-black/80 to-black/95', textColor: 'text-pink-200', iconBg: 'bg-pink-500/20' }
-                }
-                const catStyle = categoryGradients[category]
+              // Simplified 3-color system: Primary (red), Success (green), Neutral (slate)
+              const categoryGradients: Record<DrillCategory, { gradient: string; textColor: string; iconBg: string }> = {
+                'technique': { gradient: 'from-primary/20 via-black/80 to-black/95', textColor: 'text-primary/90', iconBg: 'bg-primary/20' },
+                'exercise': { gradient: 'from-primary/15 via-black/80 to-black/95', textColor: 'text-primary/80', iconBg: 'bg-primary/15' },
+                'injury-prevention': { gradient: 'from-emerald-500/15 via-black/80 to-black/95', textColor: 'text-emerald-300', iconBg: 'bg-emerald-500/15' },
+                'mobility': { gradient: 'from-slate-500/20 via-black/80 to-black/95', textColor: 'text-slate-300', iconBg: 'bg-slate-500/20' },
+                'conditioning': { gradient: 'from-primary/25 via-black/80 to-black/95', textColor: 'text-primary', iconBg: 'bg-primary/25' },
+                'warmup': { gradient: 'from-amber-500/15 via-black/80 to-black/95', textColor: 'text-amber-300', iconBg: 'bg-amber-500/15' },
+                'recovery': { gradient: 'from-slate-500/15 via-black/80 to-black/95', textColor: 'text-slate-300', iconBg: 'bg-slate-500/15' }
+              }
+              const catStyle = categoryGradients[category]
 
-                return (
-                  <Button
-                    key={category}
-                    onClick={() => handleCategoryClick(category)}
-                    variant="secondary"
-                    size="sm"
-                    stacked
-                    className={`rounded-2xl p-5 text-left min-h-[130px] card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br ${catStyle.gradient}`}
-                    style={{ animationDelay: `${index * 40}ms` }}
-                  >
-                    <div className="relative z-10 flex flex-col gap-2 w-full h-full">
-                      <div className={`w-10 h-10 rounded-xl ${catStyle.iconBg} flex items-center justify-center`}>
-                        {categoryIcons[category]}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className={`font-bold text-sm ${catStyle.textColor}`}>{info.name}</h3>
-                        <p className="text-xs text-white/65 mt-1 leading-relaxed">
-                          {category === 'injury-prevention' ? 'By body part' : `${drillCount} drills`}
-                        </p>
-                      </div>
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                        Browse
-                      </span>
+              return (
+                <Button
+                  key={category}
+                  onClick={() => handleCategoryClick(category)}
+                  variant="secondary"
+                  size="sm"
+                  stacked
+                  className={`rounded-2xl p-5 text-left min-h-[130px] card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br ${catStyle.gradient}`}
+                  style={{ animationDelay: `${index * 40}ms` }}
+                >
+                  <div className="relative z-10 flex flex-col gap-2 w-full h-full">
+                    <div className={`w-10 h-10 rounded-xl ${catStyle.iconBg} flex items-center justify-center`}>
+                      {categoryIcons[category]}
                     </div>
-                  </Button>
-                )
-              })}
-            </div>
-          )}
+                    <div className="flex-1">
+                      <h3 className={`font-bold text-sm ${catStyle.textColor}`}>{info.name}</h3>
+                      <p className="text-xs text-white/65 mt-1 leading-relaxed">
+                        {category === 'injury-prevention' ? 'By body part' : `${drillCount} drills`}
+                      </p>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+                      Browse
+                    </span>
+                  </div>
+                </Button>
+              )
+            })}
+          </div>
         </div>
 
         {/* Learning Paths */}
@@ -664,6 +698,12 @@ export function TrainingHub({
               {sportPaths.map((path, index) => {
                 const progress = learningPathProgress[path.id] || 0
                 const progressPercent = Math.round((progress / path.drills.length) * 100)
+                const isLocked = (
+                  !isPremium &&
+                  learningPathFreeLimit > 0 &&
+                  learningPathUsage >= learningPathFreeLimit &&
+                  progress <= 0
+                )
 
                 return (
                   <Button
@@ -672,17 +712,28 @@ export function TrainingHub({
                     variant="ghost"
                     size="sm"
                     stacked
-                    className="w-full rounded-2xl p-5 text-left card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-indigo-500/20 via-black/80 to-black/95"
+                    className={[
+                      'w-full rounded-2xl p-5 text-left card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border',
+                      isLocked
+                        ? 'border-amber-500/25 bg-gradient-to-br from-amber-600/10 via-black/85 to-black/95'
+                        : 'border-white/10 bg-gradient-to-br from-indigo-500/20 via-black/80 to-black/95',
+                    ].join(' ')}
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <div className="relative z-10 flex flex-col gap-3 w-full">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-                            <Book size={18} className="text-indigo-400" />
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                            isLocked ? 'bg-amber-500/20' : 'bg-indigo-500/20'
+                          }`}>
+                            {isLocked
+                              ? <Lock size={18} className="text-amber-400" />
+                              : <Book size={18} className="text-indigo-400" />}
                           </div>
                           <div>
-                            <h3 className="font-bold text-base text-indigo-200">{path.name}</h3>
+                            <h3 className={`font-bold text-base ${isLocked ? 'text-amber-100' : 'text-indigo-200'}`}>
+                              {path.name}
+                            </h3>
                             <p className="text-xs text-white/65 mt-0.5">{path.estimatedWeeks} weeks · {path.difficulty}</p>
                           </div>
                         </div>
@@ -701,8 +752,10 @@ export function TrainingHub({
                         <span className="text-xs text-white/65">
                           {progress}/{path.drills.length} completed
                         </span>
-                        <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                          Continue
+                        <span className={`text-[10px] uppercase tracking-[0.2em] ${
+                          isLocked ? 'text-amber-400/90' : 'text-white/40'
+                        }`}>
+                          {isLocked ? 'Premium' : 'Continue'}
                         </span>
                       </div>
                     </div>

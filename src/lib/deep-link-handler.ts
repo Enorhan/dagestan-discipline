@@ -2,7 +2,9 @@
 
 import { App, URLOpenListenerEvent } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
+import { closeExternalBillingBrowser } from './stripe-service'
 import { supabase } from './supabase'
+import { normalizeSubscriptionReturnStatus, SubscriptionReturnStatus } from './subscription-return'
 
 // Deep link URL scheme
 const URL_SCHEME = 'dagestanidiscipline://'
@@ -67,7 +69,6 @@ async function handleAuthCallback(url: string): Promise<boolean> {
       return false
     }
     
-    console.log('Successfully authenticated via deep link, type:', tokens.type)
     return true
   } catch (error) {
     console.error('Error handling auth callback:', error)
@@ -83,7 +84,7 @@ export type DeepLinkAuthCallback = (type: 'email_verified' | 'password_reset' | 
 /**
  * Callback type for subscription events
  */
-export type DeepLinkSubscriptionCallback = (status: 'success' | 'canceled') => void
+export type DeepLinkSubscriptionCallback = (status: SubscriptionReturnStatus) => void
 
 /**
  * Initialize deep link listener for Capacitor
@@ -106,21 +107,23 @@ export function initDeepLinkHandler(
       return
     }
 
-    console.log('Deep link received:', url)
-
     // Handle subscription callbacks
-    if (url.includes('subscription=')) {
+    if (url.includes('subscription=') || url.includes('status=')) {
       const params = new URLSearchParams(url.split('?')[1] || '')
-      const subscriptionStatus = params.get('subscription')
+      const subscriptionStatus = normalizeSubscriptionReturnStatus(
+        params.get('subscription') ?? params.get('status')
+      )
 
       if (subscriptionStatus && onSubscription) {
-        onSubscription(subscriptionStatus as 'success' | 'canceled')
+        await closeExternalBillingBrowser()
+        onSubscription(subscriptionStatus)
       }
       return
     }
 
     // Handle auth callbacks
     if (url.includes('auth/callback') || url.includes('access_token')) {
+      await closeExternalBillingBrowser()
       const success = await handleAuthCallback(url)
 
       if (success && onAuthSuccess) {
@@ -138,11 +141,13 @@ export function initDeepLinkHandler(
   }
 
   // Listen for app URL open events
-  App.addListener('appUrlOpen', handleUrl)
+  const appUrlOpenListener = App.addListener('appUrlOpen', handleUrl)
 
   // Return cleanup function
   return () => {
-    App.removeAllListeners()
+    void appUrlOpenListener
+      .then((listener) => listener.remove())
+      .catch((error) => console.error('Failed to remove deep link listener:', error))
   }
 }
 

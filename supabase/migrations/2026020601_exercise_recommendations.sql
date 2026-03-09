@@ -25,28 +25,23 @@ CREATE TABLE IF NOT EXISTS exercise_recommendations (
   
   UNIQUE(exercise_id, experience_level)
 );
-
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_exercise_recommendations_exercise ON exercise_recommendations(exercise_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_recommendations_level ON exercise_recommendations(experience_level);
-
 -- Row Level Security
 ALTER TABLE exercise_recommendations ENABLE ROW LEVEL SECURITY;
-
 -- Allow all authenticated users to read recommendations
 DROP POLICY IF EXISTS "Exercise recommendations are viewable by authenticated users" ON exercise_recommendations;
 CREATE POLICY "Exercise recommendations are viewable by authenticated users" 
   ON exercise_recommendations FOR SELECT 
   TO authenticated 
   USING (true);
-
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS update_exercise_recommendations_updated_at ON exercise_recommendations;
 CREATE TRIGGER update_exercise_recommendations_updated_at 
   BEFORE UPDATE ON exercise_recommendations 
   FOR EACH ROW 
   EXECUTE FUNCTION update_updated_at_column();
-
 -- Comments for documentation
 COMMENT ON TABLE exercise_recommendations IS 'Science-based exercise recommendations by experience level';
 COMMENT ON COLUMN exercise_recommendations.tempo IS 'Tempo notation: eccentric-pause-concentric-pause (e.g., 3-1-1-0)';

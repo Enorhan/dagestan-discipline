@@ -15,6 +15,8 @@ interface Particle {
   delay: number
   size: number
   rotation: number
+  borderRadius: string
+  duration: number
 }
 
 const COLORS = [
@@ -26,36 +28,33 @@ const COLORS = [
 ]
 
 export function Confetti({ active, duration = 3000, particleCount = 50 }: ConfettiProps) {
-  const [particles, setParticles] = useState<Particle[]>([])
-  const [visible, setVisible] = useState(false)
+  if (!active) return null
 
-  useEffect(() => {
-    if (!active) {
-      setVisible(false)
-      setParticles([])
-      return
-    }
+  return <ActiveConfetti key={`${duration}-${particleCount}`} duration={duration} particleCount={particleCount} />
+}
 
-    // Generate particles
-    const newParticles: Particle[] = Array.from({ length: particleCount }, (_, i) => ({
+function ActiveConfetti({ duration = 3000, particleCount = 50 }: Omit<ConfettiProps, 'active'>) {
+  const [particles] = useState<Particle[]>(() =>
+    Array.from({ length: particleCount }, (_, i) => ({
       id: i,
       x: Math.random() * 100, // percentage across screen
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       delay: Math.random() * 0.5, // stagger start
       size: 6 + Math.random() * 8,
       rotation: Math.random() * 360,
+      borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+      duration: 1.5 + Math.random(),
     }))
+  )
+  const [visible, setVisible] = useState(true)
 
-    setParticles(newParticles)
-    setVisible(true)
-
-    // Hide after duration
-    const timeout = setTimeout(() => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
       setVisible(false)
     }, duration)
 
-    return () => clearTimeout(timeout)
-  }, [active, duration, particleCount])
+    return () => window.clearTimeout(timeout)
+  }, [duration])
 
   if (!visible || particles.length === 0) return null
 
@@ -70,9 +69,9 @@ export function Confetti({ active, duration = 3000, particleCount = 50 }: Confet
             width: particle.size,
             height: particle.size,
             backgroundColor: particle.color,
-            borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+            borderRadius: particle.borderRadius,
             transform: `rotate(${particle.rotation}deg)`,
-            animation: `confetti-fall ${1.5 + Math.random()}s linear ${particle.delay}s forwards`,
+            animation: `confetti-fall ${particle.duration}s linear ${particle.delay}s forwards`,
           }}
         />
       ))}

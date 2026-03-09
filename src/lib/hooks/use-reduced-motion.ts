@@ -2,21 +2,23 @@
 
 import { useState, useEffect } from 'react'
 
+function getReducedMotionPreference(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 /**
  * Hook to detect if the user prefers reduced motion.
  * Returns true if the user has enabled "Reduce Motion" in their system settings.
  */
 export function useReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(getReducedMotionPreference)
 
   useEffect(() => {
     // Check if window is available (SSR safety)
     if (typeof window === 'undefined') return
 
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    
-    // Set initial value
-    setPrefersReducedMotion(mediaQuery.matches)
 
     // Listen for changes
     const handleChange = (event: MediaQueryListEvent) => {
@@ -38,7 +40,6 @@ export function useReducedMotion(): boolean {
  * Useful for libraries that can't use hooks.
  */
 export function prefersReducedMotion(): boolean {
-  if (typeof window === 'undefined') return false
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return getReducedMotionPreference()
 }
 

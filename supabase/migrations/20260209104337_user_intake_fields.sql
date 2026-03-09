@@ -13,13 +13,11 @@ ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS session_minutes INTEGER NOT NULL DEFAULT 45
     CHECK (session_minutes >= 15 AND session_minutes <= 180),
   ADD COLUMN IF NOT EXISTS injury_notes TEXT;
-
 -- Defensive backfill in case these columns existed without constraints.
 UPDATE profiles
   SET experience_level = 'beginner'
   WHERE experience_level IS NULL
      OR experience_level NOT IN ('beginner', 'intermediate', 'advanced');
-
 UPDATE profiles
   SET primary_goal = 'balanced'
   WHERE primary_goal IS NULL

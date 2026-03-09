@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { haptics } from '@/lib/haptics'
 import { audio } from '@/lib/audio'
+import { getCountdownRemainingSeconds, getNextCountdownTickDelay } from '@/lib/countdown-timer'
+import { getRoundTimerAriaLabel, getRoundTimerLiveAnnouncement, getRoundTimerPhaseLabel } from '@/lib/round-timer-accessibility'
 import { ScreenShell } from '@/components/ui/screen-shell'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { Button } from '@/components/ui/button'
@@ -36,46 +38,22 @@ const TIMER_CONFIGS = {
   },
 }
 
-export function RoundTimer({ mode, onComplete, onClose }: RoundTimerProps) {
+function RoundTimerSession({ mode, onComplete, onClose }: RoundTimerProps) {
   const config = TIMER_CONFIGS[mode]
   const [currentRound, setCurrentRound] = useState(1)
   const [isWorking, setIsWorking] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState(config.workTime)
   const [isPaused, setIsPaused] = useState(false)
   const [pauseStartedAt, setPauseStartedAt] = useState<number | null>(null)
-  const [phaseEndsAt, setPhaseEndsAt] = useState(Date.now() + config.workTime * 1000)
+  const [phaseEndsAt, setPhaseEndsAt] = useState(() => Date.now() + config.workTime * 1000)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
 
-  const getRemainingTime = () => Math.max(0, Math.ceil((phaseEndsAt - Date.now()) / 1000))
-
-  useEffect(() => {
-    setCurrentRound(1)
-    setIsWorking(true)
-    setIsPaused(false)
-    setPauseStartedAt(null)
-    setTimeRemaining(config.workTime)
-    setPhaseEndsAt(Date.now() + config.workTime * 1000)
-  }, [mode])
-
-  useEffect(() => {
-    setTimeRemaining(getRemainingTime())
+  const getRemainingTime = useCallback(() => {
+    return getCountdownRemainingSeconds(phaseEndsAt)
   }, [phaseEndsAt])
 
-  useEffect(() => {
-    if (isPaused) return
-
-    const timer = setInterval(() => {
-      setTimeRemaining(getRemainingTime())
-    }, 250)
-
-    return () => clearInterval(timer)
-  }, [phaseEndsAt, isPaused])
-
-  useEffect(() => {
-    if (timeRemaining > 0) return
-
+  const advancePhase = useCallback(() => {
     if (isWorking) {
-      // Work period done, start rest
       haptics.heavy()
       audio.restComplete()
       setIsWorking(false)
@@ -83,23 +61,52 @@ export function RoundTimer({ mode, onComplete, onClose }: RoundTimerProps) {
       setPauseStartedAt(null)
       setPhaseEndsAt(Date.now() + config.restTime * 1000)
       setTimeRemaining(config.restTime)
-    } else {
-      // Rest period done
-      if (currentRound >= config.rounds) {
-        haptics.success()
-        audio.sessionComplete()
-        onComplete()
+      return
+    }
+
+    if (currentRound >= config.rounds) {
+      haptics.success()
+      setIsPaused(true)
+      audio.sessionComplete()
+      onComplete()
+      return
+    }
+
+    haptics.medium()
+    setCurrentRound(prev => prev + 1)
+    setIsWorking(true)
+    setIsPaused(false)
+    setPauseStartedAt(null)
+    setPhaseEndsAt(Date.now() + config.workTime * 1000)
+    setTimeRemaining(config.workTime)
+  }, [config.restTime, config.rounds, config.workTime, currentRound, isWorking, onComplete])
+
+  useEffect(() => {
+    if (isPaused) return
+
+    let timeoutId: number | null = null
+
+    const tick = () => {
+      const now = Date.now()
+      const remaining = getCountdownRemainingSeconds(phaseEndsAt, now)
+      setTimeRemaining((prev) => (prev === remaining ? prev : remaining))
+
+      if (remaining <= 0) {
+        advancePhase()
         return
       }
-      haptics.medium()
-      setCurrentRound(prev => prev + 1)
-      setIsWorking(true)
-      setIsPaused(false)
-      setPauseStartedAt(null)
-      setPhaseEndsAt(Date.now() + config.workTime * 1000)
-      setTimeRemaining(config.workTime)
+
+      timeoutId = window.setTimeout(tick, getNextCountdownTickDelay(phaseEndsAt, now))
     }
-  }, [timeRemaining, isWorking, currentRound, config, onComplete])
+
+    tick()
+
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [advancePhase, isPaused, phaseEndsAt])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -120,15 +127,31 @@ export function RoundTimer({ mode, onComplete, onClose }: RoundTimerProps) {
     }
 
     setPauseStartedAt(Date.now())
+    setTimeRemaining(getRemainingTime())
     setIsPaused(true)
   }
 
   const totalTime = isWorking ? config.workTime : config.restTime
   const progress = ((totalTime - timeRemaining) / totalTime) * 100
+  const phaseLabel = getRoundTimerPhaseLabel(isWorking)
+  const liveAnnouncement = getRoundTimerLiveAnnouncement({
+    isPaused,
+    isWorking,
+    currentRound,
+    totalRounds: config.rounds,
+  })
+  const timeAriaLabel = getRoundTimerAriaLabel({
+    isPaused,
+    isWorking,
+    currentRound,
+    totalRounds: config.rounds,
+    timeRemaining,
+  })
 
   return (
     <ScreenShell>
       <div className="flex-1 flex flex-col max-w-lg mx-auto w-full">
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{liveAnnouncement}</div>
       {/* Header */}
       <header className="px-6 safe-area-top pb-4 flex items-center justify-between">
         <div>
@@ -168,8 +191,11 @@ export function RoundTimer({ mode, onComplete, onClose }: RoundTimerProps) {
 
         {/* Time Display */}
         <div className="text-center mb-12">
-          <p className="text-6xl sm:text-8xl font-black text-foreground tabular-nums" aria-live="polite">
+          <p className="text-6xl sm:text-8xl font-black text-foreground tabular-nums" role="timer" aria-live="off" aria-atomic="true" aria-label={timeAriaLabel}>
             {formatTime(timeRemaining)}
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {isPaused ? `Paused with ${formatTime(timeRemaining)} left` : `${phaseLabel} phase · ${formatTime(timeRemaining)} remaining`}
           </p>
         </div>
 
@@ -186,10 +212,10 @@ export function RoundTimer({ mode, onComplete, onClose }: RoundTimerProps) {
           aria-valuenow={Math.round(progress)}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={`${isWorking ? 'Work' : 'Rest'} phase: ${Math.round(progress)}% complete`}
+          aria-label={`${phaseLabel} phase: ${Math.round(progress)}% complete`}
         >
           <div
-            className={`h-full transition-all duration-1000 rounded-full ${isWorking ? 'bg-primary' : 'bg-muted-foreground'}`}
+            className={`h-full rounded-full transition-all duration-1000 motion-reduce:transition-none ${isWorking ? 'bg-primary' : 'bg-muted-foreground'}`}
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -245,4 +271,8 @@ export function RoundTimer({ mode, onComplete, onClose }: RoundTimerProps) {
       />
     </ScreenShell>
   )
+}
+
+export function RoundTimer(props: RoundTimerProps) {
+  return <RoundTimerSession key={props.mode} {...props} />
 }

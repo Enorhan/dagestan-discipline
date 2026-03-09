@@ -4,7 +4,6 @@
 ALTER TABLE public.athletes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.athlete_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exercises ENABLE ROW LEVEL SECURITY;
-
 DO $$
 DECLARE
   policy_row RECORD;
@@ -39,19 +38,16 @@ BEGIN
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.exercises', policy_row.policyname);
   END LOOP;
 END $$;
-
 CREATE POLICY public_read_athletes
   ON public.athletes
   FOR SELECT
   TO anon, authenticated
   USING (TRUE);
-
 CREATE POLICY public_read_athlete_exercises
   ON public.athlete_exercises
   FOR SELECT
   TO anon, authenticated
   USING (TRUE);
-
 CREATE POLICY public_read_exercises
   ON public.exercises
   FOR SELECT

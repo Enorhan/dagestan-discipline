@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { haptics } from '@/lib/haptics'
 import { audio } from '@/lib/audio'
+import { getCountdownRemainingSeconds, getNextCountdownTickDelay } from '@/lib/countdown-timer'
 import { ScreenShell } from '@/components/ui/screen-shell'
 import { Button } from '@/components/ui/button'
 
@@ -44,15 +45,15 @@ export function RestTimer({
   ]
   const cueIndex = Math.abs((exerciseName.length + nextSetNumber + totalSets) % cues.length)
   const cue = cues[cueIndex]
-  const getRemainingTime = () => {
-    if (!endsAt) return 0
-    return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-  }
+  const getRemainingTime = useCallback(() => {
+    return getCountdownRemainingSeconds(endsAt)
+  }, [endsAt])
 
   const [displayTime, setDisplayTime] = useState(getRemainingTime())
   const [countdownPhase, setCountdownPhase] = useState<3 | 2 | 1 | 'GO' | null>(null)
   const hasCompletedRef = useRef(false)
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const timerTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     setDisplayTime(getRemainingTime())
@@ -60,11 +61,14 @@ export function RestTimer({
       hasCompletedRef.current = false
       setCountdownPhase(null)
     }
-  }, [endsAt])
+  }, [endsAt, getRemainingTime])
 
   // Cleanup countdown interval on unmount
   useEffect(() => {
     return () => {
+      if (timerTimeoutRef.current) {
+        clearTimeout(timerTimeoutRef.current)
+      }
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current)
       }
@@ -75,12 +79,27 @@ export function RestTimer({
   useEffect(() => {
     if (!endsAt || isPaused || countdownPhase !== null) return
 
-    const timer = setInterval(() => {
-      setDisplayTime(getRemainingTime())
-    }, 250)
+    const tick = () => {
+      const now = Date.now()
+      const remaining = getCountdownRemainingSeconds(endsAt, now)
 
-    return () => clearInterval(timer)
-  }, [endsAt, isPaused, countdownPhase])
+      setDisplayTime((prev) => (prev === remaining ? prev : remaining))
+
+      if (remaining <= 0) {
+        return
+      }
+
+      timerTimeoutRef.current = window.setTimeout(tick, getNextCountdownTickDelay(endsAt, now))
+    }
+
+    tick()
+
+    return () => {
+      if (timerTimeoutRef.current) {
+        clearTimeout(timerTimeoutRef.current)
+      }
+    }
+  }, [countdownPhase, endsAt, isPaused])
 
   // Completion effect - triggers 3-2-1 countdown when timer reaches 0
   useEffect(() => {

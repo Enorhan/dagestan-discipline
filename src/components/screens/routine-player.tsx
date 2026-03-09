@@ -24,7 +24,6 @@ export function RoutinePlayer({ routine, onComplete, onClose }: RoutinePlayerPro
   const [drillsCache, setDrillsCache] = useState<Record<string, Drill>>({})
   const [isLoadingDrills, setIsLoadingDrills] = useState(true)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const startTimeRef = useRef<number | null>(null)
 
   // Fetch all drills for the routine on mount
   useEffect(() => {
@@ -60,34 +59,49 @@ export function RoutinePlayer({ routine, onComplete, onClose }: RoutinePlayerPro
   const totalDrills = routine.drills.length
   const progress = ((currentDrillIndex) / totalDrills) * 100
 
-  useEffect(() => {
-    if (isPlaying && timeRemaining > 0) {
-      if (!startTimeRef.current) startTimeRef.current = Date.now()
-      intervalRef.current = setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev <= 1) {
-            haptics.success()
-            return 0
-          }
-          return prev - 1
-        })
-        setElapsedTime(prev => prev + 1)
-      }, 1000)
-    } else if (timeRemaining === 0 && isPlaying) {
-      if (currentDrillIndex < totalDrills - 1) {
-        const nextDrill = routine.drills[currentDrillIndex + 1]
-        setCurrentDrillIndex(prev => prev + 1)
-        setTimeRemaining(nextDrill.duration)
-      } else {
-        setIsComplete(true)
-        setIsPlaying(false)
-        haptics.success()
-      }
+  const advanceRoutine = useCallback(() => {
+    if (currentDrillIndex < totalDrills - 1) {
+      const nextDrill = routine.drills[currentDrillIndex + 1]
+      setCurrentDrillIndex(prev => prev + 1)
+      setTimeRemaining(nextDrill.duration)
+      return
     }
+
+    setIsComplete(true)
+    setIsPlaying(false)
+    haptics.success()
+  }, [currentDrillIndex, routine.drills, totalDrills])
+
+  useEffect(() => {
+    if (!isPlaying || timeRemaining <= 0) return
+
+    intervalRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          haptics.success()
+          return 0
+        }
+        return prev - 1
+      })
+      setElapsedTime(prev => prev + 1)
+    }, 1000)
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [isPlaying, timeRemaining, currentDrillIndex, totalDrills, routine.drills])
+  }, [isPlaying, timeRemaining])
+
+  useEffect(() => {
+    if (!isPlaying || timeRemaining !== 0) return
+
+    const transitionTimer = window.setTimeout(() => {
+      advanceRoutine()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(transitionTimer)
+    }
+  }, [advanceRoutine, isPlaying, timeRemaining])
 
   const handlePlayPause = useCallback(() => {
     haptics.medium()

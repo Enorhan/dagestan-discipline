@@ -9,6 +9,8 @@ import { Textarea } from '@/components/ui/input'
 interface MissedSessionAccountabilityProps {
   currentStreak: number
   longestStreak: number
+  carryOverSessionDayLabel: string | null
+  missedPlannedSessionCount: number
   onSubmit: (excuse: string) => void
   onDismiss: () => void
 }
@@ -16,6 +18,8 @@ interface MissedSessionAccountabilityProps {
 export function MissedSessionAccountability({
   currentStreak,
   longestStreak,
+  carryOverSessionDayLabel,
+  missedPlannedSessionCount,
   onSubmit,
   onDismiss
 }: MissedSessionAccountabilityProps) {
@@ -43,7 +47,7 @@ export function MissedSessionAccountability({
             Missed Session
           </h1>
           <p className="text-sm text-muted-foreground mt-2">
-            Record what happened. Move forward.
+            Record what happened. Then get back on track with a clear next step.
           </p>
         </header>
 
@@ -69,6 +73,22 @@ export function MissedSessionAccountability({
             </div>
           </div>
 
+          {carryOverSessionDayLabel && (
+            <div className="mb-8 p-5 rounded-lg border border-primary/15 bg-primary/5">
+              <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
+                Recovery plan
+              </p>
+              <p className="text-sm text-foreground mt-3 leading-relaxed">
+                We’ll keep <span className="font-semibold">{carryOverSessionDayLabel}</span> next so you can catch up without reshuffling the whole week.
+              </p>
+              <p className="text-xs text-muted-foreground mt-3">
+                {missedPlannedSessionCount > 1
+                  ? `${missedPlannedSessionCount} planned sessions are currently overdue. Clear the oldest one first.`
+                  : 'You only need to clear one overdue planned session to get back on schedule.'}
+              </p>
+            </div>
+          )}
+
           {/* Accountability Question */}
           <div className="mb-8">
             <label className="block text-sm font-semibold text-foreground uppercase tracking-wide mb-3">
@@ -90,7 +110,7 @@ export function MissedSessionAccountability({
           {/* Harsh Truth */}
           <div className="p-5 bg-card/50 rounded-lg">
             <p className="text-sm text-foreground italic leading-relaxed">
-              "Discipline is doing what you hate to do, but doing it like you love it."
+              “Discipline is doing what you hate to do, but doing it like you love it.”
             </p>
             <p className="text-xs text-muted-foreground mt-3">
               — Khabib Nurmagomedov

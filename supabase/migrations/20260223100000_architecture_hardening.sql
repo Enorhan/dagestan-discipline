@@ -12,7 +12,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 -- 1) Stripe webhook idempotency and observability
 CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -29,21 +28,16 @@ CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_status_received
   ON public.stripe_webhook_events(status, received_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_event_type_received
   ON public.stripe_webhook_events(event_type, received_at DESC);
-
 DROP TRIGGER IF EXISTS update_stripe_webhook_events_updated_at
   ON public.stripe_webhook_events;
-
 CREATE TRIGGER update_stripe_webhook_events_updated_at
   BEFORE UPDATE ON public.stripe_webhook_events
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 -- 2) Atomic helper: replace workout exercises in one DB transaction
 CREATE OR REPLACE FUNCTION public.replace_custom_workout_exercises(
   p_workout_id UUID,
@@ -101,9 +95,7 @@ BEGIN
   FROM jsonb_array_elements(p_exercises) WITH ORDINALITY AS t(item, ordinality);
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.replace_custom_workout_exercises(UUID, JSONB) TO authenticated;
-
 -- 3) Atomic helper: activate one training program while deactivating old ones
 CREATE OR REPLACE FUNCTION public.activate_training_program_for_user(
   p_program_id UUID
@@ -142,13 +134,10 @@ BEGIN
   WHERE id = p_program_id;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.activate_training_program_for_user(UUID) TO authenticated;
-
 -- 4) Moderation queue lock-down: only service role should mutate queue rows.
 DROP POLICY IF EXISTS "Moderation queue updatable by authenticated users"
   ON public.moderation_queue;
-
 -- 5) Scope realtime publication to tables actively subscribed by the app.
 DO $$
 DECLARE

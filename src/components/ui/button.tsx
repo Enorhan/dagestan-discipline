@@ -105,13 +105,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         onClick={handleClick}
         disabled={isDisabled}
+        aria-busy={loading}
         className={[
           // Base styles
           'inline-flex',
           'relative',
           stacked ? 'items-start justify-start' : 'items-center justify-center',
           'font-semibold normal-case tracking-normal',
-          'rounded-xl transition-all duration-normal',
+          'rounded-xl transition-all duration-normal motion-reduce:transition-none',
           'outline-none',
           // Variant & size
           variantStyles[variant],
@@ -129,9 +130,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {loading && (
           <span className="absolute inset-0 flex items-center justify-center">
             <svg
-              className="animate-spin h-5 w-5"
+              className="h-5 w-5 animate-spin motion-reduce:animate-none"
               viewBox="0 0 24 24"
               fill="none"
+              aria-hidden="true"
             >
               <circle
                 className="opacity-25"
@@ -147,6 +149,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
+            <span className="sr-only">Loading</span>
           </span>
         )}
 

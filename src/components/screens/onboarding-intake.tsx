@@ -76,7 +76,7 @@ export function OnboardingIntake({
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
         {/* Progress Indicator */}
         <div className="mb-6 onboarding-fade-up">
-          <OnboardingProgress currentStep={3} totalSteps={6} />
+          <OnboardingProgress currentStep={4} totalSteps={7} />
         </div>
 
         <div className="mb-10 onboarding-fade-up" style={{ animationDelay: '0.05s' }}>
@@ -187,6 +187,9 @@ export function OnboardingIntake({
               )
             })}
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Shifts exercise selection and rep ranges toward your main outcome.
+          </p>
         </div>
 
         {/* Combat load */}
@@ -249,6 +252,9 @@ export function OnboardingIntake({
               </button>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Your sessions will stay within this time cap.
+          </p>
         </div>
 
         {/* Injury notes */}

@@ -7,9 +7,7 @@ create table if not exists public.workout_day_overrides (
   updated_at timestamptz not null default now(),
   primary key (user_id, workout_date)
 );
-
 alter table public.workout_day_overrides enable row level security;
-
 do $$
 begin
   if not exists (
@@ -61,4 +59,3 @@ begin
       using (auth.uid() = user_id);
   end if;
 end $$;
-

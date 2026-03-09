@@ -403,7 +403,7 @@ export function SportCategoryExercises({
         className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
       >
         <div
-          className="pb-32"
+          className="pb-[calc(9rem+env(safe-area-inset-bottom))]"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -629,9 +629,12 @@ export function SportCategoryExercises({
                         <div className="relative">
                           <div className={`absolute -inset-1 bg-gradient-to-br ${theme.gradient} opacity-20 rounded-full blur-sm group-hover/card:opacity-40 transition-opacity`} />
                           {group.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- Small remote athlete avatars are user-provided and not LCP-critical.
                             <img
                               src={group.imageUrl}
                               alt={group.athleteName}
+                              loading="lazy"
+                              decoding="async"
                               className="relative w-14 h-14 rounded-full object-cover border-2 border-white/10"
                             />
                           ) : (

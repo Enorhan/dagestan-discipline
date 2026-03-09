@@ -132,7 +132,7 @@ export function OnboardingProgramExplainer({
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
         {/* Progress Indicator */}
         <div className="mb-6 onboarding-fade-up">
-          <OnboardingProgress currentStep={5} totalSteps={6} />
+          <OnboardingProgress currentStep={6} totalSteps={7} />
         </div>
 
         <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.05s' }}>
@@ -142,6 +142,9 @@ export function OnboardingProgramExplainer({
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-foreground mt-2">
             Why this works for you
           </h1>
+          <p className="text-sm text-muted-foreground mt-3 max-w-sm">
+            A quick walkthrough of how your plan fits your week and how to get the most from it.
+          </p>
         </div>
 
         <div

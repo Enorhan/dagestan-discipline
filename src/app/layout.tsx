@@ -5,6 +5,7 @@ import './globals.css'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { OfflineBanner } from '@/components/ui/offline-banner'
 import { AuthProvider } from '@/contexts/auth-context'
+import { RuntimeFlagsProvider } from '@/contexts/runtime-flags-context'
 import { ToastProvider } from '@/contexts/toast-context'
 
 export const metadata: Metadata = {
@@ -49,11 +50,13 @@ export default function RootLayout({
       <body className="antialiased bg-background text-foreground">
         <OfflineBanner />
         <ErrorBoundary>
-          <AuthProvider>
-            <ToastProvider>
-              {children}
-            </ToastProvider>
-          </AuthProvider>
+          <RuntimeFlagsProvider>
+            <AuthProvider>
+              <ToastProvider>
+                {children}
+              </ToastProvider>
+            </AuthProvider>
+          </RuntimeFlagsProvider>
         </ErrorBoundary>
         <Analytics />
       </body>

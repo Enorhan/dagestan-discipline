@@ -13,6 +13,81 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+const APP_URL_SCHEME = 'dagestanidiscipline://'
+const DEFAULT_REDIRECT_ORIGIN = 'https://enorhan.github.io'
+const DEFAULT_FALLBACK_PORTAL_RETURN_URL = 'https://enorhan.github.io/dagestan-discipline/redirect.html?status=portal'
+
+function trimEnv(value: string | undefined | null): string | null {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+function parseCsvEnv(name: string): string[] {
+  const raw = Deno.env.get(name)
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
+
+function withPortalStatus(rawUrl: string): string {
+  const url = new URL(rawUrl)
+  url.searchParams.set('status', 'portal')
+  return url.toString()
+}
+
+function getFallbackPortalReturnUrl(): string {
+  const appUrl = trimEnv(Deno.env.get('APP_URL'))
+  if (appUrl) {
+    return withPortalStatus(new URL('redirect.html', appUrl.endsWith('/') ? appUrl : `${appUrl}/`).toString())
+  }
+
+  return DEFAULT_FALLBACK_PORTAL_RETURN_URL
+}
+
+function validatePortalReturnUrl(rawUrl: string | undefined): string {
+  const candidateUrl = trimEnv(rawUrl) ?? getFallbackPortalReturnUrl()
+
+  if (candidateUrl.startsWith(APP_URL_SCHEME)) {
+    return candidateUrl
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(candidateUrl)
+  } catch {
+    throw new Error('Return URL is invalid')
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('Return URL must use http or https')
+  }
+
+  const allowedOrigins = new Set<string>([DEFAULT_REDIRECT_ORIGIN])
+  const appUrl = trimEnv(Deno.env.get('APP_URL'))
+  if (appUrl) {
+    try {
+      allowedOrigins.add(new URL(appUrl).origin)
+    } catch {
+      // Ignore malformed APP_URL values.
+    }
+  }
+  for (const origin of parseCsvEnv('CHECKOUT_ALLOWED_ORIGINS')) {
+    try {
+      allowedOrigins.add(new URL(origin).origin)
+    } catch {
+      // Ignore malformed allowlist entries.
+    }
+  }
+
+  if (!allowedOrigins.has(parsed.origin)) {
+    throw new Error('Return URL origin is not allowed')
+  }
+
+  return parsed.toString()
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -72,8 +147,8 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body for return URL
-    const body = await req.json().catch(() => ({}))
-    const returnUrl = body.returnUrl || 'https://enorhan.github.io/dagestan-discipline/redirect.html?status=portal'
+    const body = await req.json().catch(() => ({})) as { returnUrl?: string }
+    const returnUrl = validatePortalReturnUrl(body.returnUrl)
 
     // Create Customer Portal session
     const portalSession = await stripe.billingPortal.sessions.create({

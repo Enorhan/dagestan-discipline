@@ -9,7 +9,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TABLE IF NOT EXISTS video_ingests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id UUID NOT NULL UNIQUE REFERENCES source_documents(id) ON DELETE CASCADE,
@@ -33,7 +32,6 @@ CREATE TABLE IF NOT EXISTS video_ingests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE IF NOT EXISTS transcript_segments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ingest_id UUID NOT NULL REFERENCES video_ingests(id) ON DELETE CASCADE,
@@ -47,7 +45,6 @@ CREATE TABLE IF NOT EXISTS transcript_segments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(ingest_id, segment_index)
 );
-
 CREATE TABLE IF NOT EXISTS frame_detections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ingest_id UUID NOT NULL REFERENCES video_ingests(id) ON DELETE CASCADE,
@@ -62,7 +59,6 @@ CREATE TABLE IF NOT EXISTS frame_detections (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(ingest_id, frame_index)
 );
-
 CREATE TABLE IF NOT EXISTS exercise_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ingest_id UUID NOT NULL REFERENCES video_ingests(id) ON DELETE CASCADE,
@@ -80,7 +76,6 @@ CREATE TABLE IF NOT EXISTS exercise_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS idx_video_ingests_status ON video_ingests(ingest_status);
 CREATE INDEX IF NOT EXISTS idx_video_ingests_source ON video_ingests(source_id);
 CREATE INDEX IF NOT EXISTS idx_video_ingests_document ON video_ingests(document_id);
@@ -90,48 +85,40 @@ CREATE INDEX IF NOT EXISTS idx_frame_detections_ingest ON frame_detections(inges
 CREATE INDEX IF NOT EXISTS idx_exercise_events_ingest ON exercise_events(ingest_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_events_sport ON exercise_events(sport);
 CREATE INDEX IF NOT EXISTS idx_exercise_events_confidence ON exercise_events(confidence DESC);
-
 DROP TRIGGER IF EXISTS update_video_ingests_updated_at ON video_ingests;
 CREATE TRIGGER update_video_ingests_updated_at
   BEFORE UPDATE ON video_ingests
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 DROP TRIGGER IF EXISTS update_exercise_events_updated_at ON exercise_events;
 CREATE TRIGGER update_exercise_events_updated_at
   BEFORE UPDATE ON exercise_events
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 ALTER TABLE video_ingests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transcript_segments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE frame_detections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercise_events ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Video ingests readable by authenticated users" ON video_ingests;
 CREATE POLICY "Video ingests readable by authenticated users"
   ON video_ingests FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Transcript segments readable by authenticated users" ON transcript_segments;
 CREATE POLICY "Transcript segments readable by authenticated users"
   ON transcript_segments FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Frame detections readable by authenticated users" ON frame_detections;
 CREATE POLICY "Frame detections readable by authenticated users"
   ON frame_detections FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Exercise events readable by authenticated users" ON exercise_events;
 CREATE POLICY "Exercise events readable by authenticated users"
   ON exercise_events FOR SELECT
   TO authenticated
   USING (TRUE);
-
 COMMENT ON TABLE video_ingests IS 'Per-video ingestion state and fused extraction outputs from audio + frames';
 COMMENT ON TABLE transcript_segments IS 'Timestamped ASR transcript segments extracted from ingested videos';
 COMMENT ON TABLE frame_detections IS 'Per-frame OCR/vision detections from sampled video frames';

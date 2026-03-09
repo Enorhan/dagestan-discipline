@@ -255,7 +255,7 @@ export function DrillDetail({
       // Show the passed drill immediately, then refresh from Supabase in background (realtime-safe).
       if (drillProp) {
         setDrill(drillProp)
-      } else if (!drill) {
+      } else {
         setIsLoading(true)
       }
 

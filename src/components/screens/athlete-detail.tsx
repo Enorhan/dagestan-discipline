@@ -88,6 +88,9 @@ interface AthleteDetailProps {
   dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
+  onExerciseSelect?: (exercise: ExerciseWithGuidance) => void
+  onAddToWorkout?: (exercise: ExerciseWithGuidance) => void
+  workoutExerciseIds?: Set<string>
   onStartAction?: () => void
   hasWorkoutToday?: boolean
   /** Scroll position to restore when returning to this screen */
@@ -102,6 +105,9 @@ export function AthleteDetail({
   dataVersion = 0,
   onNavigate,
   onBack,
+  onExerciseSelect,
+  onAddToWorkout,
+  workoutExerciseIds,
   onStartAction,
   hasWorkoutToday = false,
   initialScrollTop,
@@ -201,9 +207,12 @@ export function AthleteDetail({
                 <div className="relative flex-shrink-0">
                   <div className={`absolute -inset-1 bg-gradient-to-br ${theme.gradient} opacity-40 rounded-full blur-md`} />
                   {athlete.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- Small remote athlete avatars are decorative/profile media and not LCP-critical.
                     <img
                       src={athlete.imageUrl}
                       alt={athlete.name}
+                      loading="lazy"
+                      decoding="async"
                       className="relative w-20 h-20 rounded-full object-cover border-2 border-white/20"
                     />
                   ) : (
@@ -255,11 +264,16 @@ export function AthleteDetail({
               </div>
             )}
 
-            {/* Bio */}
-            {athlete.bio && (
-              <p className="text-sm text-muted-foreground leading-relaxed mb-6 stagger-item" style={{ animationDelay: '100ms' }}>
-                {athlete.bio}
-              </p>
+            {/* Training Philosophy */}
+            {(athlete.trainingPhilosophy || athlete.bio) && (
+              <div className="mb-6 stagger-item" style={{ animationDelay: '100ms' }}>
+                <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/60 uppercase mb-2">
+                  Training Philosophy
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {athlete.trainingPhilosophy || athlete.bio}
+                </p>
+              </div>
             )}
 
             {/* Experience Level Selector - Sport Themed */}
@@ -293,8 +307,11 @@ export function AthleteDetail({
             {/* Exercises Section */}
             <div className="stagger-item" style={{ animationDelay: '200ms' }}>
               <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-                Training Program ({exercises.length} exercises)
+                Training Program
               </h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                {exercises.length} loggable exercises · Add any to your workout
+              </p>
 
               {/* Loading State */}
               {isLoading ? (
@@ -322,6 +339,14 @@ export function AthleteDetail({
                         userLevel={selectedLevel}
                         showAthleteData={true}
                         showRecommendations={true}
+                        showSportBenefits={true}
+                        onAddToWorkout={onAddToWorkout}
+                        isInWorkout={Boolean(workoutExerciseIds?.has(exercise.id))}
+                        onClick={() => {
+                          if (!onExerciseSelect) return
+                          haptics.light()
+                          onExerciseSelect(exercise)
+                        }}
                       />
                     </div>
                   ))}

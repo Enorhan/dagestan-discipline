@@ -6,20 +6,22 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       athlete: 'Aleksandr Karelin',
       sport: 'wrestling',
       exercises: [
-        'Rowing for hours',
-        'Running through forest with log on back',
+        'Barbell row (heavy, 5x5)',
+        'Sandbag carry run (200m intervals)',
         'Overhead press (190 kg)',
-        'Training with 32 kg kettlebells',
+        'Kettlebell clean and press (32 kg)',
         'Zercher deadlift (10 reps at 200 kg)',
         'Bench press (204 kg+)',
-        'Chin-ups (50 reps in 1 minute)',
-        'Pull-ups (up to 42 reps)',
-        'Backflips and splits',
-        'Carrying a refrigerator up stairs',
+        'Explosive chin-ups (max reps in 60s)',
+        'Pull-ups (max reps)',
+        'Box jumps',
+        'Depth jumps',
+        'Heavy sandbag stair carry',
         'Jump squats',
-        'Bear crawls uphill',
+        'Bear crawl uphill sprints',
         'Duck walks',
-        'Zercher carries and neck bridging'
+        'Zercher carry (loaded walk)',
+        'Wrestler neck bridge hold'
       ]
     },
     {
@@ -27,52 +29,53 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'wrestling',
       exercises: [
         'Air Dyne sprints (20s sprint/40s rest)',
-        'Pull-ups (weighted and bodyweight)',
-        'Band step and press',
+        'Weighted pull-ups',
+        'Resistance band step and press',
         'Chin-ups',
-        'Band snap downs',
-        'Battle rope (alternate steps and double slams)',
-        'Stance and movement drills',
-        'Wrestling drills',
-        'Weck Method Clubs training (plank drivers, low swipes, lateral mills)',
-        'Burpee jumping high pull',
+        'Resistance band snap downs',
+        'Battle rope alternating slams',
+        'Lateral shuffle level-change drill',
+        'Penetration step to sprawl reaction drill',
+        'Burpee to barbell high pull',
         'Dumbbell deadlift',
-        'Single arm coiled high pull',
-        'Bailer',
-        'Hinge curls',
+        'Single-arm dumbbell high pull',
         'Kneeling jumps with Bulgarian Bag',
         'Kneeling box jumps',
         'Sled drag lunges',
-        'Chest supported row',
-        'Leg complex (lunges and jumps)',
+        'Chest-supported dumbbell row',
+        'Walking lunges',
+        'Split jumps',
         'Medicine ball slams',
-        'Dumbbell pummel curls',
+        'Dumbbell hammer curls',
         'Slider side lunges with kettlebell',
         'L-sit pull-up',
-        'Split jumps',
         'Dumbbell clean and press',
         'Tuck crunches',
         'Dumbbell Romanian deadlift',
-        'Split hinge pulse',
-        'Renegade row and grip training with Captains of Crush'
+        'Bulgarian split squat (pulse reps)',
+        'Renegade row',
+        'Captains of Crush gripper (timed sets)'
       ]
     },
     {
       athlete: 'Abdulrashid Sadulaev',
       sport: 'wrestling',
       exercises: [
-        'Dopa-band training (shots, sprawl defense, hand-fighting)',
+        'Resistance band shot drill',
+        'Resistance band sprawl defense drill',
         'Burpee box jumps',
-        'Partner carries',
-        'Animal-inspired movements like bear crawls and army crawls',
-        'Penetration steps',
+        'Partner fireman carry (loaded walk)',
+        'Bear crawl sprints (20m)',
+        'Army crawl drags (20m)',
+        'Penetration step drill (continuous reps)',
         'Duck walks',
         'Jump squats',
-        'Sprints',
-        'Legless rope climbing',
-        'Push-ups',
+        '40-meter sprint intervals',
+        'Legless rope climb',
+        'Explosive push-ups',
         'Resistance band snap-downs',
-        'Neck bridging and movement drills'
+        'Wrestler neck bridge hold',
+        'Lateral shuffle drill'
       ]
     },
     {
@@ -83,84 +86,93 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
         'Seated strict shoulder press',
         'Push-press',
         'Weighted chin-ups',
-        'Pin squats and pin presses'
+        'Pin squat (partial ROM from pins)',
+        'Pin press (partial ROM from pins)'
       ]
     },
     {
       athlete: 'Zaurbek Sidakov',
       sport: 'wrestling',
       exercises: [
-        'Dynamic warm-up',
-        'Takedown drills (triple extension focus)',
-        'Squats',
+        'Deep squat pry hold (timed)',
+        'Double-leg takedown drill (triple extension focus)',
+        'Back squat',
         'Zercher deadlift',
         'Bench press',
         'Power cleans',
-        'Snatch',
-        'Weighted jumps',
-        'Outside step and split step'
+        'Barbell snatch',
+        'Weighted box jumps',
+        'Outside step to ankle pick drill',
+        'Split step to penetration drill'
       ]
     },
     {
       athlete: 'Cael Sanderson',
       sport: 'wrestling',
       exercises: [
-        '50 pull-ups every day',
+        'Pull-ups (50 reps daily)',
         'Power cleans',
-        'Wall sit',
+        'Wall sit hold (timed)',
         'Rope climbing',
-        'Sprints and shoulder press'
+        '40-meter sprint intervals',
+        'Standing barbell shoulder press'
       ]
     },
     {
       athlete: 'Dan Gable',
       sport: 'wrestling',
       exercises: [
-        'Running (18 laps with increasing tempo)',
+        'Tempo run (18 laps, progressive pace increase)',
         'Rope climbing',
         'Chin-ups',
         'Push-ups',
-        'Shadow wrestling',
-        'Reaction drills and knockouts (sprawl drills)'
+        'Solo stance and motion drill (shadow wrestling)',
+        'Sprawl reaction drill (partner cue)'
       ]
     },
     {
       athlete: 'Kyle Dake',
       sport: 'wrestling',
       exercises: [
-        'Functional Patterns (FP)',
-        'Cable machine work',
-        'Kettlebell exercises for thoracic mobility',
-        'Landmine rotations and face pulls'
+        'Single-leg cable anti-rotation press',
+        'Cable Pallof press (half-kneeling)',
+        'Kettlebell windmill (thoracic mobility)',
+        'Landmine rotations',
+        'Cable face pulls'
       ]
     },
     {
       athlete: 'David Taylor',
       sport: 'wrestling',
       exercises: [
-        'Movement prep',
-        'Isometric strength training',
-        'Grip training',
-        'Single-leg Romanian deadlift (RDL) and plank'
+        'Technical stand-up drill (continuous reps)',
+        'Isometric wall squat hold (timed)',
+        'Gi towel pull-up holds (timed)',
+        'Single-leg Romanian deadlift',
+        'Plank hold (weighted)'
       ]
     },
     {
       athlete: 'Mijain Lopez',
       sport: 'wrestling',
       exercises: [
-        'Hand-fighting (arm-drags, snap-downs)',
-        'Par terre defense and high-volume training'
+        'Arm drag drill (partner)',
+        'Snap-down to front headlock drill',
+        'Par terre defense hip-heist drill',
+        'Heavy sandbag carry (loaded walk)'
       ]
     },
     {
       athlete: 'Randy Couture',
       sport: 'wrestling',
       exercises: [
-        'Barbell complex',
+        'Barbell clean and press',
+        'Barbell front squat',
+        'Barbell bent-over row',
         'Explosive push-ups over box',
         'Box jumps',
-        'Jump rope',
-        'Pull-ups and visualization'
+        'Jump rope (timed rounds)',
+        'Weighted pull-ups'
       ]
     }
   ],
@@ -169,11 +181,12 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       athlete: 'Shohei Ono',
       sport: 'judo',
       exercises: [
-        'Clean & Jerk',
-        'Back/Front squats',
+        'Clean and jerk',
+        'Back squat',
+        'Front squat',
         'Jump squats',
         'Weighted step-ups',
-        'Band uchikomi',
+        'Resistance band uchikomi',
         'Rope climbing',
         'Farmer carries',
         'Bench press',
@@ -182,9 +195,10 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
         'Pull-ups',
         'Medicine ball slams',
         'Sled push',
-        'Bounding drills',
-        'Isometric uchikomi holds',
-        'Wrist roller and gi sleeve pulls'
+        'Continuous broad jumps',
+        'Isometric uchikomi holds (timed)',
+        'Wrist roller',
+        'Gi sleeve pull-ups'
       ]
     },
     {
@@ -192,28 +206,28 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'judo',
       exercises: [
         'Bench press (150–230 kg)',
-        'Single-arm deadlift (50–60 kg)',
-        'HIIT on stair machine',
+        'Single-arm dumbbell deadlift (50–60 kg)',
+        'Stair machine sprint intervals',
         'Pull-ups',
-        'Jump rope',
+        'Jump rope (timed rounds)',
         'Seated cable row',
         'Push-ups',
-        'Crunches with rotation and hamstring training'
+        'Rotational crunches',
+        'Nordic hamstring curls'
       ]
     },
     {
       athlete: 'Masahiko Kimura',
       sport: 'judo',
       exercises: [
-        '1,000 Hindu push-ups',
-        '1 km bunny hops',
-        'Headstand against wall',
+        'Hindu push-ups (1000 reps)',
+        'Bunny hops (1 km continuous)',
+        'Headstand hold against wall (timed)',
         'Single-arm barbell press',
         'Bench press',
-        '200 sit-ups from partner\'s back',
-        '200 partner-weighted squats',
-        '500 Shuto (strikes)',
-        'Osoto Gari against a tree for one hour daily and randori'
+        'Partner-weighted sit-ups (200 reps)',
+        'Partner-weighted squats (200 reps)',
+        'Osoto gari uchikomi (high-volume single technique)'
       ]
     },
     {
@@ -223,41 +237,47 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
         'Power cleans',
         'Front squats',
         'Push jerks',
-        'Rope climbing (with pull-ups)',
-        'Sled push/pull',
+        'Rope climbing',
+        'Pull-ups',
+        'Sled push',
+        'Sled pull',
         'Medicine ball push-ups',
         'V-ups',
         'Medicine ball V-sit twists',
-        'Band uchikomi and triangle turtle turnovers'
+        'Resistance band uchikomi',
+        'Triangle turtle turnover drill'
       ]
     },
     {
       athlete: 'Uta Abe',
       sport: 'judo',
       exercises: [
-        'Footwork speed drills',
+        'Tsugi-ashi footwork drill (timed rounds)',
         'Resistance band uchikomi',
-        'Assault Bike',
-        'Advanced plank variations',
-        'Box jumps and jump squats'
+        'Assault Bike sprint intervals',
+        'Plank to shoulder tap (alternating)',
+        'Box jumps',
+        'Jump squats'
       ]
     },
     {
       athlete: 'An Changrim',
       sport: 'judo',
       exercises: [
-        'Back Squat (215 kg)',
-        'Bench press (150 kg) and power cleans (130 kg)'
+        'Back squat (215 kg)',
+        'Bench press (150 kg)',
+        'Power cleans (130 kg)'
       ]
     },
     {
       athlete: 'An Baul',
       sport: 'judo',
       exercises: [
-        'Squats',
+        'Back squat',
         'Deadlift',
         'Power cleans',
-        'Pulling exercises and bench press'
+        'Barbell bent-over row',
+        'Bench press'
       ]
     },
     {
@@ -265,44 +285,51 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       sport: 'judo',
       exercises: [
         'Deadlift',
-        'Squats',
-        'Rope climbing and pull-ups with gi grip'
+        'Back squat',
+        'Rope climbing',
+        'Gi-grip pull-ups'
       ]
     },
     {
       athlete: 'Cho Guham',
       sport: 'judo',
       exercises: [
-        'Squats and power cleans'
+        'Back squat',
+        'Power cleans'
       ]
     },
     {
       athlete: 'Satoshi Ishii',
       sport: 'judo',
       exercises: [
-        'Chest-to-chest pulling exercises (cable or partner) and kettlebell swings'
+        'Seated cable row (close grip)',
+        'Kettlebell swings'
       ]
     },
     {
       athlete: 'Shintaro Higashi',
       sport: 'judo',
       exercises: [
-        'Circuit training for ne-waza (guard passes, triangle attacks)'
+        'Guard pass to side control drill (timed rounds)',
+        'Triangle attack drill from closed guard',
+        'Turtle turnover drill (timed rounds)'
       ]
     },
     {
       athlete: 'Travis Stevens',
       sport: 'judo',
       exercises: [
-        'Foot sweep drills (solo)',
-        'Timing drills with hand pulls and gi sweep drills'
+        'Foot sweep drill (solo, timed reps)',
+        'Hand-pull timing drill (partner reaction)',
+        'Gi sweep entry drill (partner, timed sets)'
       ]
     },
     {
       athlete: 'Hifumi Abe',
       sport: 'judo',
       exercises: [
-        'Solo technical drills and mobility training for hip and ankle'
+        'Solo uchikomi drill (timed sets)',
+        '90/90 hip switch (controlled reps)'
       ]
     }
   ],
@@ -311,10 +338,8 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
       athlete: 'Gordon Ryan',
       sport: 'bjj',
       exercises: [
-        'Hypertrophy training (4x20 reps)',
-        'Drop-set',
-        'Superset',
-        'Bench press (flat/incline)',
+        'Flat bench press',
+        'Incline bench press',
         'Floor press',
         'Trap bar deadlift',
         'T-bar rows',
@@ -324,18 +349,22 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
         'Arnold press',
         'Shoulder press',
         'Lateral raises',
-        'Front/rear delt raises',
-        'Bicep/hammer/concentration curls',
+        'Front delt raises',
+        'Rear delt raises',
+        'Bicep curls',
+        'Hammer curls',
+        'Concentration curls',
         'Skull crushers',
-        'Kickbacks',
+        'Tricep kickbacks',
         'Diamond push-ups',
         'Triceps pushdowns',
         'Walking lunges',
-        'Squats',
+        'Back squat',
         'GHD sit-ups',
         'Hanging leg raises',
         'Windshield wipers',
-        'Gymnastics and position drills'
+        'Closed guard pass to mount drill (timed)',
+        'Back control escape drill (timed)'
       ]
     },
     {
@@ -349,7 +378,8 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
         'Medicine ball burpees',
         'Medicine ball Russian twists',
         'Medicine ball lunge to rotation',
-        'Donkey kicks and prisoner jacks'
+        'Donkey kicks',
+        'Jumping jacks'
       ]
     },
     {
@@ -359,59 +389,76 @@ const athleteExerciseLibrary: Record<SportType, AthleteExerciseGroup[]> = {
         'Olympic clean and press',
         'Hill sprints (interval training)',
         'Overhead squat',
-        'Position sparring (5 minute scenarios) and bench press'
+        'Mount escape to guard recovery drill (timed)',
+        'Bench press'
       ]
     },
     {
       athlete: 'Andre Galvao',
       sport: 'bjj',
       exercises: [
-        'Plyometric circuit (cone jumps, lateral jumps, gorilla jumps) and kettlebell swings'
+        'Cone jump (plyometric)',
+        'Lateral jump (plyometric)',
+        'Broad jumps (plyometric)',
+        'Kettlebell swings'
       ]
     },
     {
       athlete: 'Tomoyuki Hashimoto',
       sport: 'bjj',
       exercises: [
-        'Berimbolo drills',
-        'Inverted guard drills',
-        'Spider guard repetitions and core training for passing'
+        'Berimbolo drill (solo repetitions)',
+        'Inverted guard drill (shoulder roll entries)',
+        'Spider guard lasso repetitions',
+        'Dead bug (anti-extension core)'
       ]
     },
     {
       athlete: 'Shinya Aoki',
       sport: 'bjj',
       exercises: [
-        'Flying armbar repetitions',
-        'Triangle leg-smothering and drills for heel hooks/ankle locks'
+        'Flying armbar entry drill',
+        'Triangle choke leg-smothering drill',
+        'Heel hook entry drill (inside/outside)',
+        'Straight ankle lock finish drill'
       ]
     },
     {
       athlete: 'Mikey Musumeci',
       sport: 'bjj',
       exercises: [
-        'Extreme technical drilling (up to 12h/day) and Muay Thai training'
+        'Guard retention drill (timed rounds)',
+        'Leg entanglement entry drill (repetitions)',
+        'Single-leg X-guard sweep drill',
+        'Assault Bike sprint intervals'
       ]
     },
     {
       athlete: 'Marcelo Garcia',
       sport: 'bjj',
       exercises: [
-        'High-volume sparring and focus on scramble sequences'
+        'Arm drag to back take drill (partner)',
+        'X-guard sweep drill (repetitions)',
+        'Guillotine finish drill (arm-in/no-arm)',
+        'Butterfly guard sweep drill (repetitions)'
       ]
     },
     {
       athlete: 'Yuki Nakai',
       sport: 'bjj',
       exercises: [
-        'Nanatei Kosen Judo and Shooto wrestling drills'
+        'Ground newaza guard pass drill (timed rounds)',
+        'Sprawl to front headlock drill',
+        'Single-leg takedown drill'
       ]
     },
     {
       athlete: 'Rikako Yuasa',
       sport: 'bjj',
       exercises: [
-        'Dynamic and offensive guard training'
+        'Open guard hip-escape drill (timed)',
+        'Lasso guard sweep drill (repetitions)',
+        'De la Riva to berimbolo entry drill'
       ]
     }
   ]

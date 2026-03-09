@@ -7,7 +7,6 @@ DO $$ BEGIN
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
-
 -- Shared updated_at helper (idempotent)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -16,7 +15,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 -- 1) Configured collection sources (YouTube/web/social)
 CREATE TABLE IF NOT EXISTS content_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -31,7 +29,6 @@ CREATE TABLE IF NOT EXISTS content_sources (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- 2) Raw collected source documents
 CREATE TABLE IF NOT EXISTS source_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,7 +53,6 @@ CREATE TABLE IF NOT EXISTS source_documents (
   UNIQUE(source_id, external_id),
   UNIQUE(content_fingerprint)
 );
-
 -- 3) Extraction output per document
 CREATE TABLE IF NOT EXISTS extracted_signals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -74,7 +70,6 @@ CREATE TABLE IF NOT EXISTS extracted_signals (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(document_id, extraction_version)
 );
-
 -- 4) Moderation queue for proposed records
 CREATE TABLE IF NOT EXISTS moderation_queue (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,7 +88,6 @@ CREATE TABLE IF NOT EXISTS moderation_queue (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(document_id, queue_type, proposal_key)
 );
-
 -- 5) Publish audit log
 CREATE TABLE IF NOT EXISTS published_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -105,7 +99,6 @@ CREATE TABLE IF NOT EXISTS published_records (
   published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   published_by TEXT NOT NULL DEFAULT 'pipeline'
 );
-
 -- 6) Published routine library for auto-ingested routines
 CREATE TABLE IF NOT EXISTS ingested_workout_routines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -118,20 +111,16 @@ CREATE TABLE IF NOT EXISTS ingested_workout_routines (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- Add source attribution + confidence fields to existing core entities
 ALTER TABLE athletes
   ADD COLUMN IF NOT EXISTS source_attribution JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(4,3) CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1));
-
 ALTER TABLE exercises
   ADD COLUMN IF NOT EXISTS source_attribution JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(4,3) CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1));
-
 ALTER TABLE athlete_exercises
   ADD COLUMN IF NOT EXISTS source_attribution JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(4,3) CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1));
-
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_content_sources_active ON content_sources(is_active);
 CREATE INDEX IF NOT EXISTS idx_source_documents_state ON source_documents(processing_state);
@@ -141,38 +130,32 @@ CREATE INDEX IF NOT EXISTS idx_extracted_signals_document ON extracted_signals(d
 CREATE INDEX IF NOT EXISTS idx_moderation_queue_status ON moderation_queue(status);
 CREATE INDEX IF NOT EXISTS idx_moderation_queue_type_status ON moderation_queue(queue_type, status);
 CREATE INDEX IF NOT EXISTS idx_published_records_type ON published_records(record_type);
-
 -- Updated_at triggers
 DROP TRIGGER IF EXISTS update_content_sources_updated_at ON content_sources;
 CREATE TRIGGER update_content_sources_updated_at
   BEFORE UPDATE ON content_sources
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 DROP TRIGGER IF EXISTS update_source_documents_updated_at ON source_documents;
 CREATE TRIGGER update_source_documents_updated_at
   BEFORE UPDATE ON source_documents
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 DROP TRIGGER IF EXISTS update_extracted_signals_updated_at ON extracted_signals;
 CREATE TRIGGER update_extracted_signals_updated_at
   BEFORE UPDATE ON extracted_signals
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 DROP TRIGGER IF EXISTS update_moderation_queue_updated_at ON moderation_queue;
 CREATE TRIGGER update_moderation_queue_updated_at
   BEFORE UPDATE ON moderation_queue
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 DROP TRIGGER IF EXISTS update_ingested_workout_routines_updated_at ON ingested_workout_routines;
 CREATE TRIGGER update_ingested_workout_routines_updated_at
   BEFORE UPDATE ON ingested_workout_routines
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
-
 -- RLS
 ALTER TABLE content_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE source_documents ENABLE ROW LEVEL SECURITY;
@@ -180,50 +163,42 @@ ALTER TABLE extracted_signals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE moderation_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE published_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ingested_workout_routines ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Content sources readable by authenticated users" ON content_sources;
 CREATE POLICY "Content sources readable by authenticated users"
   ON content_sources FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Source documents readable by authenticated users" ON source_documents;
 CREATE POLICY "Source documents readable by authenticated users"
   ON source_documents FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Extracted signals readable by authenticated users" ON extracted_signals;
 CREATE POLICY "Extracted signals readable by authenticated users"
   ON extracted_signals FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Moderation queue readable by authenticated users" ON moderation_queue;
 CREATE POLICY "Moderation queue readable by authenticated users"
   ON moderation_queue FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Moderation queue updatable by authenticated users" ON moderation_queue;
 CREATE POLICY "Moderation queue updatable by authenticated users"
   ON moderation_queue FOR UPDATE
   TO authenticated
   USING (auth.uid() IS NOT NULL)
   WITH CHECK (auth.uid() IS NOT NULL);
-
 DROP POLICY IF EXISTS "Published records readable by authenticated users" ON published_records;
 CREATE POLICY "Published records readable by authenticated users"
   ON published_records FOR SELECT
   TO authenticated
   USING (TRUE);
-
 DROP POLICY IF EXISTS "Ingested routines readable by authenticated users" ON ingested_workout_routines;
 CREATE POLICY "Ingested routines readable by authenticated users"
   ON ingested_workout_routines FOR SELECT
   TO authenticated
   USING (TRUE);
-
 COMMENT ON TABLE content_sources IS 'Configured sources for athlete/exercise expansion collection';
 COMMENT ON TABLE source_documents IS 'Raw collected source content with attribution and processing state';
 COMMENT ON TABLE extracted_signals IS 'Structured extraction output and confidence per source document';

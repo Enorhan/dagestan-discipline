@@ -54,6 +54,37 @@ export type ExerciseCategory =
   | 'core'
   | 'neck'
 
+export type ExerciseDifficultyLevel = 'beginner' | 'intermediate' | 'advanced'
+export type ExerciseLoggableMetric = 'reps' | 'time' | 'weight' | 'distance'
+
+/** Performance tags for exercise cards (Grip, Explosive, Mobility, Reaction, Strength) */
+export type ExercisePerformanceTag =
+  | 'grip'
+  | 'explosive'
+  | 'mobility'
+  | 'reaction'
+  | 'strength'
+  | 'conditioning'
+  | 'agility'
+  | 'power'
+
+export interface EliteExerciseStandard {
+  exercise_id: string
+  exercise_name: string
+  category: string
+  sub_category?: string
+  description: string
+  benefits_judo: string
+  benefits_wrestling: string
+  benefits_bjj: string
+  difficulty_level: ExerciseDifficultyLevel
+  equipment_required: string[]
+  loggable_metrics: ExerciseLoggableMetric[]
+  recommended_sets?: string
+  recommended_reps_or_time?: string
+  tags?: ExercisePerformanceTag[]
+}
+
 // Activity types for external training logging
 export type ActivityType =
   | 'bjj-session'
@@ -81,6 +112,7 @@ export type Equipment = 'bodyweight' | 'gym'
 
 export type SportType = 'wrestling' | 'judo' | 'bjj'
 export type WeightUnit = 'lbs' | 'kg'
+export type SessionAdjustmentMode = 'full' | 'short' | 'recovery' | 'technique'
 
 // Template for generating sessions based on training days
 export interface SessionTemplate {
@@ -140,6 +172,12 @@ export interface EnhancedExerciseData {
   frequency?: string
   priority: number
   notes?: string
+  eliteStandard?: EliteExerciseStandard
+  benefitsJudo?: string
+  benefitsWrestling?: string
+  benefitsBjj?: string
+  difficultyLevel?: ExerciseDifficultyLevel
+  loggableMetrics?: ExerciseLoggableMetric[]
 }
 
 // Enhanced athlete group with full exercise data
@@ -232,6 +270,14 @@ export interface ExerciseWithGuidance {
 
   // Elite athlete data (if available) - can have multiple athletes
   athleteData?: AthleteExerciseData[]
+  eliteStandard?: EliteExerciseStandard
+  benefitsJudo?: string
+  benefitsWrestling?: string
+  benefitsBjj?: string
+  difficultyLevel?: ExerciseDifficultyLevel
+  loggableMetrics?: ExerciseLoggableMetric[]
+  /** Performance tags: Grip, Explosive, Mobility, Reaction, Strength */
+  tags?: ExercisePerformanceTag[]
 
   // User recommendations (based on their level)
   recommendations?: ExerciseRecommendation
@@ -246,6 +292,10 @@ export interface Athlete {
   achievements?: string[]
   bio?: string
   imageUrl?: string
+  /** Training philosophy snippet for profile header */
+  trainingPhilosophy?: string
+  weightClass?: string
+  region?: string
 }
 
 export interface Session {
@@ -273,6 +323,17 @@ export interface SessionLog {
   notes?: string
   weight?: Record<string, number[]> // exerciseId -> array of weights per set
   volume?: number // total volume (sets × reps × weight)
+  prs?: PersonalRecord[] // Personal records achieved in this session
+}
+
+export interface PersonalRecord {
+  exerciseId: string
+  exerciseName: string
+  type: 'weight' | 'reps' | 'volume'
+  value: number
+  previousBest: number
+  improvement: number // percentage or absolute
+  unit: string
 }
 
 export interface AppState {

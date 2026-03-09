@@ -28,16 +28,16 @@ export function EliteInsightsPanel({
   if (insights.length === 0) return null
 
   return (
-    <div className={`rounded-2xl border border-white/10 bg-gradient-to-br from-amber-500/12 via-black/80 to-black/95 p-4 ${className}`}>
+    <div className={`rounded-2xl border border-border/30 bg-gradient-to-br from-gold-muted via-background/80 to-background/95 p-4 ${className}`}>
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
-          <Trophy size={16} className="text-amber-300" />
+        <div className="w-8 h-8 rounded-lg bg-gold-muted flex items-center justify-center">
+          <Trophy size={16} className="text-gold" />
         </div>
         <div>
-          <p className="text-xs font-bold tracking-[0.2em] text-amber-200/80 uppercase">
+          <p className="text-xs font-bold tracking-[0.2em] text-gold/80 uppercase">
             Why These Exercises Matter
           </p>
-          <p className="text-[11px] text-white/55 uppercase tracking-[0.16em] mt-0.5">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em] mt-0.5">
             Elite Athlete Perspective
           </p>
         </div>
@@ -47,15 +47,15 @@ export function EliteInsightsPanel({
         {insights.map((insight) => (
           <div
             key={insight.id}
-            className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
+            className="rounded-xl border border-border/30 bg-card/30 px-3 py-2.5"
           >
-            <p className="text-[11px] font-bold tracking-[0.16em] uppercase text-amber-100/80">
+            <p className="text-[11px] font-bold tracking-[0.16em] uppercase text-gold/80">
               {insight.athlete}
             </p>
             <p className="text-sm font-bold text-foreground mt-1">
               {insight.title}
             </p>
-            <p className="text-xs text-white/70 mt-1 leading-relaxed">
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               {insight.detail}
             </p>
           </div>

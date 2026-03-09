@@ -21,6 +21,7 @@ import type {
   SportType
 } from './types'
 import { getAthleteExercisesBySport, getExerciseCategory } from './athlete-exercises'
+import { buildEliteExerciseStandard } from './elite-exercise-standard'
 
 // Cache configuration
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
@@ -41,7 +42,6 @@ const cache: AthletesCache = {
   latestDataAt: null,
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 const FALLBACK_ATHLETE_NAME_PATTERN = /^Source Coach\s*\(/i
 
@@ -256,16 +256,31 @@ export class AthletesService {
     const exercisesWithGuidance = await Promise.all(
       data.map(async (ae: any) => {
         const recommendations = await this.getRecommendations(ae.exercise.id, userLevel)
+        const sport = (ae.exercise.sport || ae.athlete.sport) as SportType
+        const standardized = buildEliteExerciseStandard({
+          exerciseId: ae.exercise.id,
+          exerciseName: ae.exercise.name,
+          category: ae.exercise.category,
+          description: ae.exercise.description,
+          equipment: ae.exercise.equipment || [],
+          sport,
+          isWeighted: ae.exercise.is_weighted || false,
+          reps: ae.reps,
+          sets: ae.sets,
+          weight: ae.weight,
+          duration: ae.duration,
+          priority: ae.priority,
+        })
 
         return {
           id: ae.exercise.id,
-          name: ae.exercise.name,
-          category: ae.exercise.category,
+          name: standardized.canonicalName,
+          category: standardized.canonicalCategory,
           muscleGroups: ae.exercise.muscle_groups || [],
-          description: ae.exercise.description,
-          equipment: ae.exercise.equipment || [],
+          description: standardized.canonicalDescription,
+          equipment: standardized.equipmentRequired,
           isWeighted: ae.exercise.is_weighted || false,
-          sport: ae.exercise.sport as SportType | undefined,
+          sport,
           athleteSpecific: ae.exercise.athlete_specific || false,
           videoUrl: ae.exercise.video_url,
           athleteData: [{
@@ -283,6 +298,13 @@ export class AthletesService {
             source: 'research' as const,
             verified: true
           }],
+          eliteStandard: standardized.profile,
+          benefitsJudo: standardized.benefits.judo,
+          benefitsWrestling: standardized.benefits.wrestling,
+          benefitsBjj: standardized.benefits.bjj,
+          difficultyLevel: standardized.difficultyLevel,
+          loggableMetrics: standardized.loggableMetrics,
+          tags: standardized.tags,
           recommendations
         }
       })
@@ -314,22 +336,46 @@ export class AthletesService {
 
     // 2. Get athlete data
     const athleteData = await this.getAthleteDataForExercise(exerciseId)
+    const primaryAthleteData = athleteData[0]
+    const normalizedCategory = normalizeExerciseCategory(ex.category, ex.name)
+    const sport = (ex.sport || primaryAthleteData?.athleteSport || null) as SportType | null
+    const standardized = buildEliteExerciseStandard({
+      exerciseId: ex.id,
+      exerciseName: ex.name,
+      category: normalizedCategory,
+      description: ex.description,
+      equipment: ex.equipment || [],
+      sport,
+      isWeighted: ex.is_weighted || false,
+      reps: primaryAthleteData?.reps,
+      sets: primaryAthleteData?.sets,
+      weight: primaryAthleteData?.weight,
+      duration: primaryAthleteData?.duration,
+      priority: primaryAthleteData?.priority,
+    })
 
     // 3. Get recommendations
     const recommendations = await this.getRecommendations(exerciseId, userLevel)
 
     return {
       id: ex.id,
-      name: ex.name,
-      category: ex.category,
+      name: standardized.canonicalName,
+      category: standardized.canonicalCategory,
       muscleGroups: ex.muscle_groups || [],
-      description: ex.description,
-      equipment: ex.equipment || [],
+      description: standardized.canonicalDescription,
+      equipment: standardized.equipmentRequired,
       isWeighted: ex.is_weighted || false,
-      sport: ex.sport as SportType | undefined,
+      sport: (sport || undefined) as SportType | undefined,
       athleteSpecific: ex.athlete_specific || false,
       videoUrl: ex.video_url,
       athleteData,
+      eliteStandard: standardized.profile,
+      benefitsJudo: standardized.benefits.judo,
+      benefitsWrestling: standardized.benefits.wrestling,
+      benefitsBjj: standardized.benefits.bjj,
+      difficultyLevel: standardized.difficultyLevel,
+      loggableMetrics: standardized.loggableMetrics,
+      tags: standardized.tags,
       recommendations
     }
   }
@@ -389,9 +435,18 @@ export class AthletesService {
       .select('*')
       .eq('exercise_id', exerciseId)
       .eq('experience_level', userLevel)
-      .single()
+      .maybeSingle()
 
-    if (error || !data) {
+    if (error) {
+      console.warn('[AthletesService] Recommendation lookup failed:', {
+        exerciseId,
+        userLevel,
+        error
+      })
+      return undefined
+    }
+
+    if (!data) {
       return undefined
     }
 
@@ -638,6 +693,7 @@ export class AthletesService {
         description?: string
         video_url?: string
         is_weighted: boolean
+        sport?: string | null
       }
       athlete: {
         id: string
@@ -674,7 +730,22 @@ export class AthletesService {
       for (const item of typedData) {
         const exercise = item.exercise
         const athlete = item.athlete
-        const normalizedCategory = normalizeExerciseCategory(exercise.category, exercise.name)
+        const sportValue = (exercise.sport || athlete.sport) as SportType
+        const standardized = buildEliteExerciseStandard({
+          exerciseId: exercise.id,
+          exerciseName: exercise.name,
+          category: exercise.category,
+          description: exercise.description,
+          equipment: exercise.equipment || [],
+          sport: sportValue,
+          isWeighted: exercise.is_weighted || false,
+          reps: item.reps,
+          sets: item.sets,
+          weight: item.weight,
+          duration: item.duration,
+          priority: item.priority,
+        })
+        const normalizedCategory = standardized.canonicalCategory as ExerciseCategory
 
         if (normalizedCategory !== category) {
           continue
@@ -698,14 +769,14 @@ export class AthletesService {
         const group = athleteMap.get(athlete.id)!
         group.exercises.push({
           id: exercise.id,
-          name: exercise.name,
+          name: standardized.canonicalName,
           category: normalizedCategory,
           muscleGroups: exercise.muscle_groups || [],
-          equipment: exercise.equipment || [],
-          description: exercise.description,
+          equipment: standardized.equipmentRequired,
+          description: standardized.canonicalDescription,
           videoUrl: exercise.video_url,
           isWeighted: exercise.is_weighted || false,
-          sport: athlete.sport as SportType,
+          sport: sportValue,
           athleteId: athlete.id,
           athleteName: athlete.name,
           athleteAchievements: athlete.achievements || [],
@@ -715,7 +786,13 @@ export class AthletesService {
           duration: item.duration,
           frequency: item.frequency,
           priority: item.priority || 5,
-          notes: item.notes
+          notes: item.notes,
+          eliteStandard: standardized.profile,
+          benefitsJudo: standardized.benefits.judo,
+          benefitsWrestling: standardized.benefits.wrestling,
+          benefitsBjj: standardized.benefits.bjj,
+          difficultyLevel: standardized.difficultyLevel,
+          loggableMetrics: standardized.loggableMetrics,
         })
       }
 

@@ -1,14 +1,17 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Screen } from '@/lib/types'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import Image from 'next/image'
+import { Screen, SessionLog, ActivityLog } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { haptics } from '@/lib/haptics'
 import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile as UserProfileType, CustomWorkout, focusAreaInfo } from '@/lib/social-types'
+import { ACHIEVEMENTS, AchievementType, getAchievementProgress, getAchievementState, isUnlocked } from '@/lib/achievements'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
+import { AchievementProgressCard } from '@/components/ui/achievement-celebration'
 import { Settings, Plus, ChevronRight, Edit, BarChart } from '@/components/ui/icons'
 
 interface UserProfileProps {
@@ -20,6 +23,10 @@ interface UserProfileProps {
   onBack?: () => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
+  currentStreak?: number
+  longestStreak?: number
+  sessionHistory?: SessionLog[]
+  activityLogs?: ActivityLog[]
 }
 
 export function UserProfileScreen({
@@ -30,16 +37,16 @@ export function UserProfileScreen({
   onSelectWorkout,
   onBack,
   onStartAction,
-  hasWorkoutToday = false
+  hasWorkoutToday = false,
+  currentStreak = 0,
+  longestStreak = 0,
+  sessionHistory = [],
+  activityLogs = []
 }: UserProfileProps) {
   const [workouts, setWorkouts] = useState<CustomWorkout[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    loadData()
-  }, [user.id])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true)
     try {
       const userWorkouts = await supabaseService.getUserWorkouts(user.id)
@@ -53,7 +60,33 @@ export function UserProfileScreen({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user.id, isOwnProfile])
+
+  useEffect(() => {
+    void loadData()
+  }, [loadData])
+
+  const achievementState = useMemo(() => getAchievementState(), [])
+  const unlockedCount = achievementState.unlocked.length
+  const totalAchievements = Object.keys(ACHIEVEMENTS).length
+  const totalSessionLogs = sessionHistory.length
+  const totalActivityLogs = activityLogs.length
+  const totalPRs = sessionHistory.reduce((sum, log) => sum + (log.prs?.length ?? 0), 0)
+
+  const featuredAchievementTypes: AchievementType[] = ['workouts-50', 'streak-30', 'prs-25']
+  const featuredAchievements = featuredAchievementTypes.map((type) => {
+    const definition = ACHIEVEMENTS[type]
+    const progress = getAchievementProgress(type)
+    return {
+      type,
+      title: definition.title,
+      description: definition.description,
+      progress: progress.current,
+      target: progress.target,
+      tier: definition.tier,
+      unlocked: isUnlocked(type),
+    }
+  })
 
 
   return (
@@ -70,7 +103,14 @@ export function UserProfileScreen({
             {/* Avatar */}
             <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
               {user.avatarUrl ? (
-                <img src={user.avatarUrl} alt={user.displayName} className="w-full h-full rounded-full object-cover" />
+                <Image
+                  src={user.avatarUrl}
+                  alt={user.displayName}
+                  width={80}
+                  height={80}
+                  unoptimized
+                  className="w-full h-full rounded-full object-cover"
+                />
               ) : (
                 <span className="text-primary font-black text-2xl">
                   {user.displayName.charAt(0).toUpperCase()}
@@ -106,11 +146,51 @@ export function UserProfileScreen({
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 gap-1.5 sm:gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
             <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
-              <p className="text-2xl font-black text-foreground">{user.workoutCount}</p>
+              <p className="text-2xl font-black text-foreground tabular-nums">{user.workoutCount}</p>
               <p className="text-xs text-muted-foreground uppercase">Workouts</p>
             </div>
+            <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
+              <p className="text-2xl font-black text-primary tabular-nums">{currentStreak}</p>
+              <p className="text-xs text-muted-foreground uppercase">Streak</p>
+            </div>
+            <div className="card-elevated rounded-xl p-3 sm:p-4 text-center">
+              <p className="text-2xl font-black text-amber-400 tabular-nums">{unlockedCount}</p>
+              <p className="text-xs text-muted-foreground uppercase">Badges</p>
+            </div>
+          </div>
+
+          {/* Progress Snapshot */}
+          <div className="mb-4 rounded-xl border border-border/60 bg-card/50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-[0.2em]">
+                Progress Snapshot
+              </p>
+              {!currentUser?.isPremium && (
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-400">
+                  Pro stats in analytics
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 text-center">
+                <p className="text-lg font-black text-foreground tabular-nums">{totalSessionLogs}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Gym Logs</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 text-center">
+                <p className="text-lg font-black text-foreground tabular-nums">{totalActivityLogs}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Combat Logs</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 text-center">
+                <p className="text-lg font-black text-primary tabular-nums">{totalPRs}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Total PRs</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-3">
+              Best streak: <span className="font-bold text-foreground">{longestStreak}</span> days.
+              Achievements unlocked: <span className="font-bold text-foreground">{unlockedCount}/{totalAchievements}</span>.
+            </p>
           </div>
 
           {/* View Statistics - Own Profile Only */}
@@ -133,12 +213,44 @@ export function UserProfileScreen({
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-foreground">Training Statistics</p>
-                    <p className="text-xs text-muted-foreground">View your progress & insights</p>
+                    <p className="text-xs text-muted-foreground">
+                      {currentUser?.isPremium
+                        ? 'View your full analytics and insights'
+                        : 'Open analytics preview and unlock full insights'}
+                    </p>
                   </div>
                 </div>
                 <ChevronRight size={20} className="text-muted-foreground" />
               </div>
             </Button>
+          )}
+
+          {/* Achievement Progress */}
+          {isOwnProfile && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-[0.2em]">
+                  Achievement Progress
+                </p>
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  {unlockedCount}/{totalAchievements} unlocked
+                </span>
+              </div>
+              <div className="space-y-3">
+                {featuredAchievements.map((achievement) => (
+                  <AchievementProgressCard
+                    key={achievement.type}
+                    type={achievement.type}
+                    title={achievement.title}
+                    description={achievement.description}
+                    progress={achievement.progress}
+                    target={achievement.target}
+                    tier={achievement.tier}
+                    isUnlocked={achievement.unlocked}
+                  />
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Edit Button */}
@@ -305,7 +417,7 @@ function EmptyWorkouts({
       </div>
       <h3 className="text-lg font-bold text-foreground mb-2">No public workouts</h3>
       <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-        This user hasn't shared any workouts yet
+        This user has not shared any workouts yet
       </p>
     </div>
   )

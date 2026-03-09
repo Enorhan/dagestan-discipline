@@ -12,6 +12,7 @@ interface HttpResult {
 const CHECKOUT_PATH = '/functions/v1/stripe-checkout'
 const WEBHOOK_PATH = '/functions/v1/stripe-webhook'
 const HTTP_TIMEOUT_MS = Number(process.env.PAYMENT_SMOKE_TIMEOUT_MS ?? '45000')
+const DEFAULT_FALLBACK_CHECKOUT_REDIRECT_URL = 'https://enorhan.github.io/dagestan-discipline/redirect.html'
 
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -19,6 +20,35 @@ function requireEnv(name: string): string {
     throw new Error(`Missing required env var: ${name}`)
   }
   return value.trim()
+}
+
+function trimEnv(value: string | undefined): string | null {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+function getCheckoutRedirectPageUrl(): string {
+  const explicitRedirectUrl = trimEnv(process.env.NEXT_PUBLIC_CHECKOUT_REDIRECT_URL)
+  if (explicitRedirectUrl) return explicitRedirectUrl
+
+  const appUrl = trimEnv(process.env.NEXT_PUBLIC_APP_URL)
+  if (appUrl) {
+    return new URL('redirect.html', appUrl.endsWith('/') ? appUrl : `${appUrl}/`).toString()
+  }
+
+  return DEFAULT_FALLBACK_CHECKOUT_REDIRECT_URL
+}
+
+function buildCheckoutRedirectUrl(params: Record<string, string | null | undefined>): string {
+  const url = new URL(getCheckoutRedirectPageUrl())
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value.length > 0) {
+      url.searchParams.set(key, value)
+    }
+  })
+
+  return url.toString()
 }
 
 function logStep(step: string): void {
@@ -283,10 +313,10 @@ async function run(): Promise<void> {
   const serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY')
   const webhookSecret = requireEnv('STRIPE_WEBHOOK_SECRET')
 
-  const successUrl = process.env.PAYMENT_SMOKE_SUCCESS_URL?.trim()
-    || 'https://enorhan.github.io/dagestan-discipline/?checkout=success'
-  const cancelUrl = process.env.PAYMENT_SMOKE_CANCEL_URL?.trim()
-    || 'https://enorhan.github.io/dagestan-discipline/?checkout=cancel'
+  const successUrl = trimEnv(process.env.PAYMENT_SMOKE_SUCCESS_URL)
+    ?? buildCheckoutRedirectUrl({ status: 'success' })
+  const cancelUrl = trimEnv(process.env.PAYMENT_SMOKE_CANCEL_URL)
+    ?? buildCheckoutRedirectUrl({ status: 'canceled' })
 
   const checkoutUrl = `${supabaseUrl}${CHECKOUT_PATH}`
   const webhookUrl = `${supabaseUrl}${WEBHOOK_PATH}`

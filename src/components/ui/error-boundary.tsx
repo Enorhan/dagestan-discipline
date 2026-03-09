@@ -2,6 +2,7 @@
 
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { haptics } from '@/lib/haptics'
+import { captureException } from '@/lib/monitoring'
 import { Button } from './button'
 
 interface ErrorBoundaryProps {
@@ -25,7 +26,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo)
+    captureException('error-boundary', error, {
+      componentStack: errorInfo.componentStack ?? null,
+    })
     // Trigger error haptic
     haptics.error()
   }

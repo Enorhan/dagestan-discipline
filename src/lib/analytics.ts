@@ -1,5 +1,25 @@
-type AnalyticsEvent =
+import { track as trackVercelEvent } from '@vercel/analytics'
+
+type AnalyticsPropertyValue = string | number | boolean | null
+
+export type AnalyticsEvent =
+  | 'app_opened'
+  | 'app_error_captured'
+  | 'onboarding_started'
+  | 'onboarding_program_generated'
+  | 'onboarding_generation_failed'
+  | 'onboarding_completed'
+  | 'subscription_checkout_started'
+  | 'subscription_checkout_returned'
+  | 'subscription_checkout_completed'
+  | 'subscription_checkout_canceled'
+  | 'subscription_checkout_failed'
+  | 'subscription_portal_opened'
+  | 'subscription_portal_returned'
+  | 'subscription_portal_failed'
+  | 'subscription_status_refresh_failed'
   | 'workout_started'
+  | 'session_adjustment_selected'
   | 'set_confirmed'
   | 'session_paused'
   | 'session_resumed'
@@ -12,29 +32,70 @@ type AnalyticsEvent =
   | 'activity_logged'
   | 'activity_updated'
   | 'activity_deleted'
+  | 'navigation_blocked'
+  | 'analytics_preview_opened'
+  | 'premium_upsell_viewed'
+  | 'premium_upsell_clicked'
+  | 'support_contact_opened'
+  | 'billing_help_opened'
+  | 'legal_document_opened'
+  | 'account_deletion_requested'
 
-interface AnalyticsPayload {
-  [key: string]: string | number | boolean | null | undefined
+export interface AnalyticsPayload {
+  [key: string]: AnalyticsPropertyValue | undefined
+}
+
+export interface AnalyticsEntry {
+  event: AnalyticsEvent
+  payload: Record<string, AnalyticsPropertyValue>
+  ts: string
 }
 
 const STORAGE_KEY = 'dagestaniDiscipline.analytics'
+const MAX_BUFFERED_ENTRIES = 200
+
+function readBufferedAnalyticsEntries(): AnalyticsEntry[] {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    return Array.isArray(stored) ? stored as AnalyticsEntry[] : []
+  } catch (error) {
+    console.debug('Analytics storage unavailable:', error)
+    return []
+  }
+}
+
+function sanitizePayload(payload: AnalyticsPayload): Record<string, AnalyticsPropertyValue> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  ) as Record<string, AnalyticsPropertyValue>
+}
+
+export function getBufferedAnalyticsEntries() {
+  return readBufferedAnalyticsEntries()
+}
 
 export const analytics = {
   track: (event: AnalyticsEvent, payload: AnalyticsPayload = {}) => {
-    const entry = {
+    const sanitizedPayload = sanitizePayload(payload)
+    const entry: AnalyticsEntry = {
       event,
-      payload,
+      payload: sanitizedPayload,
       ts: new Date().toISOString()
     }
 
     try {
       if (typeof window !== 'undefined') {
-        const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+        const existing = readBufferedAnalyticsEntries()
         existing.push(entry)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(existing.slice(-200)))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(existing.slice(-MAX_BUFFERED_ENTRIES)))
+        trackVercelEvent(event, sanitizedPayload)
       }
     } catch (error) {
-      console.debug('Analytics storage unavailable:', error)
+      console.debug('Analytics tracking unavailable:', error)
     }
 
     if (process.env.NODE_ENV !== 'production') {

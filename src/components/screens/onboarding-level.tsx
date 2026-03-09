@@ -53,7 +53,7 @@ export function OnboardingLevel({
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
         {/* Progress Indicator */}
         <div className="mb-6 onboarding-fade-up">
-          <OnboardingProgress currentStep={2} totalSteps={6} />
+          <OnboardingProgress currentStep={3} totalSteps={7} />
         </div>
 
         <div className="mb-10 onboarding-fade-up" style={{ animationDelay: '0.05s' }}>

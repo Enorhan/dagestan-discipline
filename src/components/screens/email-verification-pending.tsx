@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react'
 import { Mail, RefreshCw, ArrowLeft, CheckCircle } from 'lucide-react'
+import { analytics } from '@/lib/analytics'
+import { SUPPORT_EMAIL, buildSupportMailtoLink, openSupportLink } from '@/lib/app-support'
+import { captureException } from '@/lib/monitoring'
 import { supabaseService } from '@/lib/supabase-service'
 
 interface EmailVerificationPendingProps {
@@ -19,6 +22,7 @@ export function EmailVerificationPending({
   const [isResending, setIsResending] = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [supportError, setSupportError] = useState<string | null>(null)
 
   const handleCheckVerification = async () => {
     setIsChecking(true)
@@ -31,6 +35,9 @@ export function EmailVerificationPending({
         setError('Email not yet verified. Please check your inbox.')
       }
     } catch (err) {
+      captureException('email-verification-pending', err, {
+        step: 'check-verification',
+      }, 'warning')
       setError('Failed to check verification status. Please try again.')
     } finally {
       setIsChecking(false)
@@ -45,9 +52,40 @@ export function EmailVerificationPending({
       await supabaseService.resendVerificationEmail(email)
       setResendSuccess(true)
     } catch (err) {
+      captureException('email-verification-pending', err, {
+        step: 'resend-verification',
+      }, 'warning')
       setError('Failed to resend verification email. Please try again.')
     } finally {
       setIsResending(false)
+    }
+  }
+
+  const handleSupport = async () => {
+    setSupportError(null)
+    analytics.track('support_contact_opened', {
+      source: 'email-verification',
+      channel: 'email',
+    })
+
+    const body = [
+      'Hi Dagestani Disciple support,',
+      '',
+      'I need help verifying my email address.',
+      '',
+      `Email: ${email}`,
+      '',
+      'What happened:',
+      '[add a short description here]',
+    ].join('\n')
+
+    try {
+      await openSupportLink(buildSupportMailtoLink(SUPPORT_EMAIL, 'Dagestani Disciple email verification help', body))
+    } catch (error) {
+      captureException('email-verification-pending-support', error, {
+        step: 'open-support',
+      }, 'warning')
+      setSupportError(`Unable to open support right now. Please email ${SUPPORT_EMAIL}.`)
     }
   }
 
@@ -137,9 +175,16 @@ export function EmailVerificationPending({
 
       {/* Footer */}
       <div className="px-6 pb-8 safe-area-bottom">
-        <p className="text-white/40 text-xs text-center">
-          Having trouble? Contact support@dagestanidisciple.com
-        </p>
+        {supportError && (
+          <p className="mb-3 text-center text-xs text-red-400">{supportError}</p>
+        )}
+        <button
+          type="button"
+          className="w-full text-white/40 text-xs text-center underline underline-offset-4"
+          onClick={() => void handleSupport()}
+        >
+          Having trouble? Contact {SUPPORT_EMAIL}
+        </button>
       </div>
     </div>
   )

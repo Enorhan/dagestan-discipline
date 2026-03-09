@@ -113,7 +113,7 @@ export function ConditionalScroll({
         clearTimeout(resizeTimeoutRef.current)
       }
     }
-  }, [isScrollable, resizeDebounce, onScrollStateChange])
+  }, [containerRef, isScrollable, resizeDebounce, onScrollStateChange])
 
   // When scrollable: scroll container - content flows from top naturally
   // When not scrollable: flex container that allows children to use flex-1, justify-between, etc.

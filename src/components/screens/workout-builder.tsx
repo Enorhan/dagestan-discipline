@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
@@ -24,6 +24,8 @@ interface WorkoutBuilderProps {
   onSave: (workout: CustomWorkout) => void
   onClose: () => void
   editingWorkout?: CustomWorkout
+  prefillExercise?: { id: string; name: string; videoUrl?: string | null } | null
+  onPrefillExerciseHandled?: () => void
   onNavigate: (screen: Screen) => void
   onStartAction?: () => void
   hasWorkoutToday?: boolean
@@ -46,7 +48,16 @@ const SPORT_OPTIONS: { value: SportType; label: string }[] = [
   { value: 'judo', label: 'Judo' }
 ]
 
-export function WorkoutBuilder({ onSave, onClose, editingWorkout, onNavigate, onStartAction, hasWorkoutToday = false }: WorkoutBuilderProps) {
+export function WorkoutBuilder({
+  onSave,
+  onClose,
+  editingWorkout,
+  prefillExercise = null,
+  onPrefillExerciseHandled,
+  onNavigate,
+  onStartAction,
+  hasWorkoutToday = false
+}: WorkoutBuilderProps) {
   const [step, setStep] = useState<'metadata' | 'exercises' | 'review'>('metadata')
   const [state, setState] = useState<WorkoutBuilderState>(() => {
     if (editingWorkout) {
@@ -139,6 +150,39 @@ export function WorkoutBuilder({ onSave, onClose, editingWorkout, onNavigate, on
     setShowLibraryModal(false)
     haptics.medium()
   }
+
+  useEffect(() => {
+    if (!prefillExercise) return
+
+    setState((prev) => {
+      const alreadyIncluded = prev.exercises.some((exercise) => exercise.name.toLowerCase() === prefillExercise.name.toLowerCase())
+      if (alreadyIncluded) {
+        return prev
+      }
+
+      const newExercise: CustomWorkoutExercise = {
+        id: `ex-${Date.now()}`,
+        name: prefillExercise.name,
+        sets: 3,
+        reps: 8,
+        restTime: 75,
+        notes: '',
+        videoUrl: prefillExercise.videoUrl ?? undefined,
+        order: prev.exercises.length,
+      }
+
+      return {
+        ...prev,
+        exercises: [...prev.exercises, newExercise],
+      }
+    })
+
+    if (step === 'metadata') {
+      setStep('exercises')
+    }
+
+    onPrefillExerciseHandled?.()
+  }, [prefillExercise, onPrefillExerciseHandled, step])
 
   const removeExercise = (exercise: CustomWorkoutExercise) => {
     setExerciseToDelete(exercise)

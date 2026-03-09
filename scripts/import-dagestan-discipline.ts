@@ -1,8 +1,16 @@
 #!/usr/bin/env tsx
 
+import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
-import * as XLSX from 'xlsx'
+import {
+  generateExerciseDescription,
+  isLikelyExerciseName,
+  shouldReplaceExerciseDescription,
+} from './exercise-quality'
+
+type XlsxModule = typeof import('xlsx')
+type XlsxWorkbook = import('xlsx').WorkBook
 
 type SportType = 'wrestling' | 'judo' | 'bjj'
 type DrillCategory = 'technique' | 'exercise' | 'injury-prevention' | 'mobility' | 'conditioning' | 'warmup' | 'recovery'
@@ -72,6 +80,7 @@ interface ExistingExercise {
   category: string
   is_weighted: boolean | null
   muscle_groups: string[] | null
+  description: string | null
 }
 
 interface AthleteLink {
@@ -81,8 +90,6 @@ interface AthleteLink {
   priority: number
   note: string | null
 }
-
-const DEFAULT_XLSX_PATH = '/Users/enesorhan/Downloads/Dagestan discipline.xlsx'
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim()
@@ -224,10 +231,50 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-function toSheetRows(workbook: XLSX.WorkBook, sheetName: string): Record<string, unknown>[] {
+async function loadXlsx(): Promise<XlsxModule> {
+  try {
+    return await import('xlsx')
+  } catch {
+    throw new Error(
+      'The optional admin dependency "xlsx" is unavailable. Reinstall dependencies before running this admin import.'
+    )
+  }
+}
+
+function toSheetRows(workbook: XlsxWorkbook, sheetName: string, xlsx: XlsxModule): Record<string, unknown>[] {
   const sheet = workbook.Sheets[sheetName]
   if (!sheet) return []
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+  return xlsx.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+}
+
+function printUsage(): void {
+  console.log([
+    'Dagestan discipline admin import',
+    '',
+    'Admin-only usage:',
+    '  npm run admin:import:dagestan -- /absolute/path/to/Dagestan discipline.xlsx',
+    '  DAGESTAN_DISCIPLINE_XLSX_PATH=/absolute/path/to/Dagestan discipline.xlsx npm run admin:import:dagestan',
+    '',
+    'Required environment variables:',
+    '  NEXT_PUBLIC_SUPABASE_URL',
+    '  SUPABASE_SERVICE_ROLE_KEY',
+  ].join('\n'))
+}
+
+function resolveWorkbookPath(cliValue?: string, envValue?: string): string {
+  const candidate = cliValue?.trim() || envValue?.trim()
+  if (!candidate) {
+    throw new Error(
+      'Missing workbook path. Pass the .xlsx path as the first argument or set DAGESTAN_DISCIPLINE_XLSX_PATH.'
+    )
+  }
+
+  const resolved = path.resolve(candidate)
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Workbook file not found: ${resolved}`)
+  }
+
+  return resolved
 }
 
 function stableDrillId(name: string): string {
@@ -240,21 +287,22 @@ function stableDrillId(name: string): string {
   return `dagestan-${slug}-${suffix}`
 }
 
-function parseWorkbook(
+async function parseWorkbook(
   xlsxPath: string
-): {
+): Promise<{
   athletes: ParsedAthlete[]
   exerciseCandidates: Map<string, ExerciseCandidate>
   athleteLinks: AthleteLink[]
   drillCandidates: DrillCandidate[]
-} {
-  const workbook = XLSX.readFile(xlsxPath)
+}> {
+  const xlsx = await loadXlsx()
+  const workbook = xlsx.readFile(xlsxPath)
 
-  const athletesRows = toSheetRows(workbook, 'Athletes')
-  const weightedRows = toSheetRows(workbook, 'Weighted Exercises')
-  const bodyweightRows = toSheetRows(workbook, 'Bodyweight Exercises')
-  const drillRows = toSheetRows(workbook, 'Drills')
-  const categoriesRows = toSheetRows(workbook, 'Exercise Categories')
+  const athletesRows = toSheetRows(workbook, 'Athletes', xlsx)
+  const weightedRows = toSheetRows(workbook, 'Weighted Exercises', xlsx)
+  const bodyweightRows = toSheetRows(workbook, 'Bodyweight Exercises', xlsx)
+  const drillRows = toSheetRows(workbook, 'Drills', xlsx)
+  const categoriesRows = toSheetRows(workbook, 'Exercise Categories', xlsx)
 
   const muscleGroupByExercise = new Map<string, string>()
   const weightedNames = new Set<string>()
@@ -331,6 +379,7 @@ function parseWorkbook(
     name: string,
     isWeighted: boolean
   ) => {
+    if (!isLikelyExerciseName(name)) return
     const normalized = normalizeKey(name)
     if (!normalized) return
     const key = `${sport}::${normalized}`
@@ -397,6 +446,7 @@ function parseWorkbook(
     athletes.push(athlete)
 
     for (const exerciseName of allExercises) {
+      if (!isLikelyExerciseName(exerciseName)) continue
       const normalized = normalizeKey(exerciseName)
       if (!normalized) continue
       const isWeighted = weighted.has(exerciseName) || weightedNames.has(exerciseName)
@@ -426,6 +476,7 @@ function parseWorkbook(
   // Ensure sheet-level entries not explicitly linked to athletes are still present in the library.
   const registerSheetEntries = (names: Set<string>, weightedFlag: boolean) => {
     for (const name of names) {
+      if (!isLikelyExerciseName(name)) continue
       if (!name.trim()) continue
       const normalized = normalizeKey(name)
       if (!normalized) continue
@@ -465,14 +516,21 @@ function parseWorkbook(
 }
 
 async function main(): Promise<void> {
-  const workbookPath = path.resolve(process.argv[2] ?? DEFAULT_XLSX_PATH)
+  const workbookArg = process.argv[2]?.trim()
+  if (workbookArg === '--help' || workbookArg === '-h') {
+    printUsage()
+    return
+  }
+
+  const workbookPath = resolveWorkbookPath(workbookArg, process.env.DAGESTAN_DISCIPLINE_XLSX_PATH)
   const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL')
   const serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY')
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const parsed = parseWorkbook(workbookPath)
+  const parsed = await parseWorkbook(workbookPath)
+  console.log('[Import] Admin-only workflow. Not used by app runtime or CI.')
   console.log(`[Import] Workbook: ${workbookPath}`)
   console.log(`[Import] Athletes parsed: ${parsed.athletes.length}`)
   console.log(`[Import] Exercise candidates parsed: ${parsed.exerciseCandidates.size}`)
@@ -537,7 +595,7 @@ async function main(): Promise<void> {
 
   const { data: existingExercisesRaw, error: existingExercisesError } = await supabase
     .from('exercises')
-    .select('id, name, sport, category, is_weighted, muscle_groups')
+    .select('id, name, sport, category, is_weighted, muscle_groups, description')
 
   if (existingExercisesError) {
     throw new Error(`Failed to load existing exercises: ${existingExercisesError.message}`)
@@ -565,9 +623,20 @@ async function main(): Promise<void> {
     const fallback = existingExercisesByName.get(nameKey)?.[0]
     const existing = byExactSport ?? fallback
     const muscleGroups = Array.from(candidate.muscleGroups)
+    const generatedDescription = generateExerciseDescription({
+      name: candidate.name,
+      category: candidate.category,
+      muscleGroups,
+      isWeighted: candidate.isWeighted,
+      equipment: candidate.isWeighted ? ['weights'] : ['bodyweight'],
+      sport: candidate.sport,
+    })
 
     if (existing) {
       const mergedMuscles = unique([...(existing.muscle_groups ?? []), ...muscleGroups])
+      const nextDescription = shouldReplaceExerciseDescription(existing.description)
+        ? generatedDescription
+        : existing.description
       const { error } = await supabase
         .from('exercises')
         .update({
@@ -577,6 +646,7 @@ async function main(): Promise<void> {
           muscle_groups: mergedMuscles,
           athlete_specific: true,
           equipment: ((existing.is_weighted ?? false) || candidate.isWeighted) ? ['weights'] : ['bodyweight'],
+          description: nextDescription,
         })
         .eq('id', existing.id)
       if (error) {
@@ -597,7 +667,7 @@ async function main(): Promise<void> {
         muscle_groups: muscleGroups,
         athlete_specific: true,
         equipment: candidate.isWeighted ? ['weights'] : ['bodyweight'],
-        description: 'Imported from Dagestan discipline workbook',
+        description: generatedDescription,
       })
       .select('id')
       .single()

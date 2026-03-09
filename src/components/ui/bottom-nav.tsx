@@ -41,6 +41,7 @@ function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProp
     // Prominent center action button (Instagram/TikTok style)
     return (
       <button
+        type="button"
         onClick={onClick}
         className={[
           // Base styles
@@ -48,7 +49,7 @@ function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProp
           'flex items-center justify-center',
           // Touch feedback
           'active:scale-95',
-          'transition-all duration-normal',
+          'transition-all duration-normal motion-reduce:transition-none',
         ].join(' ')}
         aria-label={label}
       >
@@ -72,6 +73,7 @@ function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProp
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className={[
         // Base styles - meets 44pt touch target
@@ -80,7 +82,7 @@ function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProp
         // Typography (screen reader only)
         'text-xs font-semibold',
         // Transitions
-        'transition-all duration-normal',
+        'transition-all duration-normal motion-reduce:transition-none',
         // Active/inactive states
         active
           ? 'text-foreground'
@@ -88,21 +90,20 @@ function NavItem({ label, active, onClick, icon, isCenter = false }: NavItemProp
         // Touch feedback
         'active:scale-95',
       ].join(' ')}
-      aria-pressed={active}
-      role="tab"
       aria-label={label}
+      aria-current={active ? 'page' : undefined}
     >
       {/* Icon with active indicator */}
       <span className="flex flex-col items-center gap-1">
         <span className={[
-          'relative transition-colors duration-normal',
+          'relative transition-colors duration-normal motion-reduce:transition-none',
           active ? 'text-primary' : 'text-muted-foreground/60',
         ].join(' ')}>
           {icon}
         </span>
         {/* Label - visible for non-center items */}
         <span className={[
-          'text-[10px] font-medium transition-colors duration-normal',
+          'text-[10px] font-medium transition-colors duration-normal motion-reduce:transition-none',
           active ? 'text-primary' : 'text-muted-foreground/60',
         ].join(' ')}>
           {label}
@@ -141,7 +142,6 @@ export function BottomNav({
   return (
     <nav
       className={containerStyles}
-      role="tablist"
       aria-label="Main navigation"
     >
       <div className="mx-auto flex max-w-lg items-center justify-around">

@@ -1,9 +1,11 @@
 'use client'
 
-import React, { useRef, useEffect, useCallback } from 'react'
-import { Screen, Session, WeekDay, Equipment, TimerMode } from '@/lib/types'
+import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+import { Screen, Session, SessionAdjustmentMode, WeekDay, Equipment, TimerMode, SessionLog, ActivityLog, SportType } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
-import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
+import { buildHomeHeroSummary } from '@/lib/home-hero'
+import { SESSION_ADJUSTMENT_MODES, SessionReadinessEnergy, SessionReadinessTime, getSessionAdjustmentDescription, getSessionAdjustmentLabel, recommendSessionAdjustmentMode } from '@/lib/session-adjustment'
+import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import {
   ChevronRight, Dumbbell, Flame, Play, Zap,
@@ -18,6 +20,9 @@ import { Button } from '@/components/ui/button'
 interface HomeProps {
   session: Session | null
   weekProgress: WeekDay[]
+  sessionHistory?: SessionLog[]
+  activityLogs?: ActivityLog[]
+  selectedSport?: SportType | null
   currentStreak: number
   longestStreak: number
   equipment: Equipment | null
@@ -29,11 +34,29 @@ interface HomeProps {
   hasWorkoutToday?: boolean
   userName?: string
   onStartRoundTimer?: (mode: TimerMode) => void
+  onQuickWarmup?: () => void
+  onQuickRecovery?: () => void
+  sessionAdjustmentMode?: SessionAdjustmentMode | null
+  onSetSessionAdjustmentMode?: (mode: SessionAdjustmentMode) => void
+  carryOverSessionDayLabel?: string | null
+  missedPlannedSessionCount?: number
   /** Scroll position to restore when returning to this screen */
   initialScrollTop?: number
   /** Callback to save scroll position when navigating away */
   onScrollChange?: (scrollTop: number) => void
 }
+
+const READINESS_ENERGY_OPTIONS: { value: SessionReadinessEnergy; label: string }[] = [
+  { value: 'ready', label: 'Ready' },
+  { value: 'okay', label: 'Okay' },
+  { value: 'low', label: 'Low' },
+]
+
+const READINESS_TIME_OPTIONS: { value: SessionReadinessTime; label: string }[] = [
+  { value: 'full', label: 'Full time' },
+  { value: '30', label: '30 min' },
+  { value: '20', label: '20 min' },
+]
 
 // Focus-based theming for session cards
 const focusThemes: Record<string, { gradient: string; textColor: string; iconBg: string; accentColor: string; borderColor: string }> = {
@@ -168,17 +191,44 @@ function GreetingHeader({
         <p className="text-white/50 text-sm">{greeting}</p>
         <h1 className="text-2xl font-black text-foreground">{displayName}</h1>
       </div>
-      <button
-        onClick={() => {
-          haptics.light()
-          onNavigate('user-profile')
-        }}
-        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full px-3 py-1.5 transition-all"
-        aria-label="View profile and streak"
-      >
-        <Flame size={16} className="text-orange-400" />
-        <span className="text-sm font-bold text-orange-300">{currentStreak}</span>
-      </button>
+          <button
+            onClick={() => {
+              haptics.light()
+              onNavigate('user-profile')
+            }}
+            className={[
+              'flex items-center gap-2 rounded-full px-3 py-1.5 transition-all border',
+              currentStreak >= 30
+                ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'
+                : currentStreak >= 7
+                  ? 'bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10',
+            ].join(' ')}
+            aria-label="View profile and streak"
+          >
+            <Flame
+              size={16}
+              className={[
+                currentStreak >= 30
+                  ? 'text-amber-400'
+                  : currentStreak >= 7
+                    ? 'text-orange-400'
+                    : 'text-white/60',
+              ].join(' ')}
+            />
+            <span
+              className={[
+                'text-sm font-bold',
+                currentStreak >= 30
+                  ? 'text-amber-400'
+                  : currentStreak >= 7
+                    ? 'text-orange-300'
+                    : 'text-white/70',
+              ].join(' ')}
+            >
+              {currentStreak}
+            </span>
+          </button>
     </div>
   )
 }
@@ -259,21 +309,45 @@ function QuickActions({
   onNavigate,
   onStartSession,
   hasSession,
-  onStartRoundTimer
+  onStartRoundTimer,
+  onQuickWarmup,
+  onQuickRecovery,
 }: {
   onNavigate: (screen: Screen) => void
   onStartSession: () => void
   hasSession: boolean
   onStartRoundTimer?: (mode: TimerMode) => void
+  onQuickWarmup?: () => void
+  onQuickRecovery?: () => void
 }) {
   const actions = [
     {
+      icon: hasSession ? Play : Target,
+      label: hasSession ? 'Start Today' : 'Build Plan',
+      color: hasSession ? 'text-primary' : 'text-primary',
+      bg: hasSession ? 'bg-primary/15' : 'bg-primary/10',
+      onClick: () => {
+        if (hasSession) {
+          haptics.medium()
+          onStartSession()
+          return
+        }
+
+        haptics.light()
+        onNavigate('onboarding-sport')
+      }
+    },
+    {
       icon: Zap,
-      label: 'Quick Warmup',
+      label: 'Warmup',
       color: 'text-orange-400',
       bg: 'bg-orange-500/10',
       onClick: () => {
         haptics.light()
+        if (onQuickWarmup) {
+          onQuickWarmup()
+          return
+        }
         if (onStartRoundTimer) {
           onStartRoundTimer('hiit')
           return
@@ -288,6 +362,10 @@ function QuickActions({
       bg: 'bg-pink-500/10',
       onClick: () => {
         haptics.light()
+        if (onQuickRecovery) {
+          onQuickRecovery()
+          return
+        }
         onNavigate('training-hub')
       }
     },
@@ -299,16 +377,6 @@ function QuickActions({
       onClick: () => {
         haptics.light()
         onNavigate('log-activity')
-      }
-    },
-    {
-      icon: Target,
-      label: 'Drills',
-      color: 'text-purple-400',
-      bg: 'bg-purple-500/10',
-      onClick: () => {
-        haptics.light()
-        onNavigate('training-hub')
       }
     }
   ]
@@ -339,6 +407,197 @@ function QuickActions({
   )
 }
 
+function ProgressPulse({
+  sessionHistory,
+  activityLogs,
+  now,
+  onNavigate,
+}: {
+  sessionHistory: SessionLog[]
+  activityLogs: ActivityLog[]
+  now: number
+  onNavigate: (screen: Screen) => void
+}) {
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const windowStart = now - 28 * DAY_MS
+  const previousWindowStart = now - 56 * DAY_MS
+
+  const inWindow = (dateString: string, start: number, end: number) => {
+    const timestamp = new Date(dateString).getTime()
+    return timestamp >= start && timestamp < end
+  }
+
+  const recentSessions = sessionHistory.filter((log) => inWindow(log.date, windowStart, now))
+  const previousSessions = sessionHistory.filter((log) => inWindow(log.date, previousWindowStart, windowStart))
+  const recentVolume = recentSessions.reduce((sum, log) => sum + (log.volume ?? 0), 0)
+  const previousVolume = previousSessions.reduce((sum, log) => sum + (log.volume ?? 0), 0)
+  const recentPRs = recentSessions.reduce((sum, log) => sum + (log.prs?.length ?? 0), 0)
+  const recentCombatMinutes = activityLogs
+    .filter((log) => new Date(log.date).getTime() >= now - (14 * DAY_MS))
+    .reduce((sum, log) => sum + log.duration, 0)
+
+  const volumeDeltaPercent = previousVolume > 0
+    ? Math.round(((recentVolume - previousVolume) / previousVolume) * 100)
+    : (recentVolume > 0 ? 100 : 0)
+
+  if (sessionHistory.length === 0 && activityLogs.length === 0) {
+    return (
+      <div className="px-6 mb-6">
+        <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-3">
+          Progress Pulse
+        </h2>
+        <button
+          onClick={() => {
+            haptics.light()
+            onNavigate('training-stats')
+          }}
+          className="w-full rounded-2xl p-4 border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition-all text-left"
+        >
+          <p className="text-sm font-bold text-foreground">No performance baseline yet</p>
+          <p className="text-xs text-white/60 mt-1">
+            Complete your first session or log activity to unlock trend tracking.
+          </p>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-6 mb-6">
+      <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-3">
+        Progress Pulse
+      </h2>
+      <button
+        onClick={() => {
+          haptics.light()
+          onNavigate('training-stats')
+        }}
+        className="w-full rounded-2xl p-4 border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition-all"
+      >
+        <div className="grid grid-cols-3 gap-2 text-left">
+          <div>
+            <p className="text-2xl font-black text-foreground tabular-nums">{recentSessions.length}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">28d sessions</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-primary tabular-nums">{recentPRs}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">PRs</p>
+          </div>
+          <div>
+            <p className={`text-2xl font-black tabular-nums ${volumeDeltaPercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {volumeDeltaPercent >= 0 ? '+' : ''}{volumeDeltaPercent}%
+            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">Load trend</p>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+          <p className="text-xs text-white/60">
+            Last 14d combat work: <span className="font-bold text-white/80">{recentCombatMinutes} min</span>
+          </p>
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+            Details
+          </span>
+        </div>
+      </button>
+    </div>
+  )
+}
+
+function ForYou({
+  sessionHistory,
+  currentStreak,
+  selectedSport,
+  now,
+  onNavigate,
+}: {
+  sessionHistory: SessionLog[]
+  currentStreak: number
+  selectedSport: SportType | null
+  now: number
+  onNavigate: (screen: Screen) => void
+}) {
+  const lastSessionAt = sessionHistory
+    .map((log) => new Date(log.date).getTime())
+    .sort((a, b) => b - a)[0]
+
+  const daysSinceLastSession = typeof lastSessionAt === 'number'
+    ? Math.max(0, Math.floor((now - lastSessionAt) / (24 * 60 * 60 * 1000)))
+    : null
+
+  const sportLabel = selectedSport === 'wrestling'
+    ? 'Wrestling'
+    : selectedSport === 'judo'
+      ? 'Judo'
+      : selectedSport === 'bjj'
+        ? 'BJJ'
+        : 'Combat'
+
+  const cards = [
+    {
+      key: 'stats',
+      title: 'Review performance trend',
+      subtitle: currentStreak > 0
+        ? `${currentStreak}-day streak active. Keep momentum visible.`
+        : 'No streak active. Rebuild consistency with measurable wins.',
+      icon: Flame,
+      iconColor: 'text-orange-400',
+      bg: 'from-orange-500/15 via-black/80 to-black/95',
+      onClick: () => onNavigate('training-stats'),
+    },
+    {
+      key: 'prehab',
+      title: `${sportLabel} injury prevention`,
+      subtitle: 'Neck, shoulders, knees, hips. Build durability before fatigue hits.',
+      icon: Heart,
+      iconColor: 'text-red-400',
+      bg: 'from-red-500/15 via-black/80 to-black/95',
+      onClick: () => onNavigate('body-part-selector'),
+    },
+    {
+      key: 'learn',
+      title: 'Load technical content',
+      subtitle: daysSinceLastSession !== null && daysSinceLastSession > 2
+        ? `You have been off ${daysSinceLastSession} days. Start with targeted drills.`
+        : 'Use Training Hub to sharpen technique between strength sessions.',
+      icon: Target,
+      iconColor: 'text-primary',
+      bg: 'from-primary/20 via-black/80 to-black/95',
+      onClick: () => onNavigate('training-hub'),
+    },
+  ]
+
+  return (
+    <div className="px-6 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase">
+          For You
+        </h2>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-1">
+        {cards.map((card) => (
+          <button
+            key={card.key}
+            onClick={() => {
+              haptics.light()
+              card.onClick()
+            }}
+            className={`min-w-[240px] text-left rounded-2xl p-4 border border-white/10 bg-gradient-to-br ${card.bg} hover:border-white/20 transition-all`}
+          >
+            <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center mb-3">
+              <card.icon size={18} className={card.iconColor} />
+            </div>
+            <p className="text-sm font-black text-foreground">{card.title}</p>
+            <p className="text-xs text-white/60 mt-1 leading-relaxed">{card.subtitle}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 mt-3">
+              Open
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -346,6 +605,9 @@ function QuickActions({
 export function Home({
   session,
   weekProgress,
+  sessionHistory = [],
+  activityLogs = [],
+  selectedSport = null,
   currentStreak,
   longestStreak,
   equipment,
@@ -357,6 +619,12 @@ export function Home({
   hasWorkoutToday,
   userName,
   onStartRoundTimer,
+  onQuickWarmup,
+  onQuickRecovery,
+  sessionAdjustmentMode = null,
+  onSetSessionAdjustmentMode,
+  carryOverSessionDayLabel = null,
+  missedPlannedSessionCount = 0,
   initialScrollTop,
   onScrollChange
 }: HomeProps) {
@@ -385,6 +653,11 @@ export function Home({
     }
   }, [onScrollChange])
 
+  // eslint-disable-next-line react-hooks/purity -- snapshot current time once per screen mount for relative trend messaging
+  const statsReferenceNow = useMemo(() => Date.now(), [])
+  const [readinessEnergy, setReadinessEnergy] = useState<SessionReadinessEnergy>('ready')
+  const [readinessTime, setReadinessTime] = useState<SessionReadinessTime>('full')
+
   const equipmentLabel = equipment === 'bodyweight'
     ? 'Bodyweight'
     : equipment === 'gym'
@@ -398,6 +671,33 @@ export function Home({
 
   // Smart contextual message
   const smartMessage = getSmartMessage(session, currentStreak, weekProgress)
+  const recommendedAdjustmentMode = useMemo(
+    () => recommendSessionAdjustmentMode(readinessEnergy, readinessTime),
+    [readinessEnergy, readinessTime]
+  )
+  const activeAdjustmentMode = sessionAdjustmentMode ?? 'full'
+  const carryOverSummary = carryOverSessionDayLabel
+    ? missedPlannedSessionCount > 1
+      ? `You have ${missedPlannedSessionCount} missed planned sessions. Start with ${carryOverSessionDayLabel} to get back in order.`
+      : `You missed ${carryOverSessionDayLabel}. Do it today and the rest of the week stays in order.`
+    : null
+  const homeHeroSummary = useMemo(() => buildHomeHeroSummary({
+    session,
+    weekProgress,
+    currentStreak,
+    longestStreak,
+    sessionAdjustmentMode,
+    carryOverSessionDayLabel,
+    missedPlannedSessionCount,
+  }), [
+    session,
+    weekProgress,
+    currentStreak,
+    longestStreak,
+    sessionAdjustmentMode,
+    carryOverSessionDayLabel,
+    missedPlannedSessionCount,
+  ])
 
   return (
     <ScreenShell>
@@ -451,7 +751,7 @@ export function Home({
                       </div>
                     </div>
                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${sessionTheme.iconBg} ${sessionTheme.textColor}`}>
-                      Ready
+                      {homeHeroSummary.badge}
                     </span>
                   </div>
 
@@ -464,10 +764,149 @@ export function Home({
                     <span>{equipmentLabel}</span>
                   </div>
 
-                  {/* Smart Message */}
-                  <p className="text-xs text-white/40 mb-4">
-                    {smartMessage}
-                  </p>
+                  <div className="mb-4 rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-sm space-y-3">
+                    <div>
+                      <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/45">
+                        Coach note
+                      </p>
+                      <p className="mt-1 text-xs text-white/50">
+                        {smartMessage}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className={`text-xl font-black ${sessionTheme.textColor}`}>
+                        {homeHeroSummary.headline}
+                      </h4>
+                      <p className="text-xs leading-relaxed text-white/70">
+                        {homeHeroSummary.body}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {homeHeroSummary.highlights.map((highlight) => (
+                        <div key={highlight.label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40">
+                            {highlight.label}
+                          </p>
+                          <p className="text-sm font-semibold text-foreground mt-1">
+                            {highlight.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {carryOverSummary && (
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 mb-4">
+                      <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-amber-200">
+                        Catch-up session
+                      </p>
+                      <p className="text-xs text-amber-50/85 mt-1 leading-relaxed">
+                        {carryOverSummary}
+                      </p>
+                    </div>
+                  )}
+
+                  {onSetSessionAdjustmentMode && (
+                    <div className="rounded-2xl border border-white/10 bg-black/25 p-4 mb-4 backdrop-blur-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/50">
+                            Readiness check
+                          </p>
+                          <p className="text-xs text-white/60 mt-1">
+                            Adjust today based on energy and the time you actually have.
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.15em] rounded-full px-2 py-1 bg-white/10 text-white/70">
+                          {getSessionAdjustmentLabel(activeAdjustmentMode)}
+                        </span>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40">Energy</p>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          {READINESS_ENERGY_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => {
+                                haptics.light()
+                                setReadinessEnergy(option.value)
+                              }}
+                              className={`h-10 rounded-xl border text-xs font-semibold transition-all ${
+                                readinessEnergy === option.value
+                                  ? 'border-primary bg-primary/15 text-primary'
+                                  : 'border-white/10 bg-white/[0.03] text-white/70 hover:text-white'
+                              }`}
+                              aria-pressed={readinessEnergy === option.value}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40">Time today</p>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          {READINESS_TIME_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => {
+                                haptics.light()
+                                setReadinessTime(option.value)
+                              }}
+                              className={`h-10 rounded-xl border text-xs font-semibold transition-all ${
+                                readinessTime === option.value
+                                  ? 'border-primary bg-primary/15 text-primary'
+                                  : 'border-white/10 bg-white/[0.03] text-white/70 hover:text-white'
+                              }`}
+                              aria-pressed={readinessTime === option.value}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40">Recommended</p>
+                        <p className="text-sm font-semibold text-foreground mt-1">
+                          {getSessionAdjustmentLabel(recommendedAdjustmentMode)}
+                        </p>
+                        <p className="text-xs text-white/50 mt-1">
+                          {getSessionAdjustmentDescription(recommendedAdjustmentMode)}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        {SESSION_ADJUSTMENT_MODES.map((mode) => {
+                          const isActive = activeAdjustmentMode === mode
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => {
+                                haptics.light()
+                                onSetSessionAdjustmentMode?.(mode)
+                              }}
+                              className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                                isActive
+                                  ? 'border-primary bg-primary/15 text-primary'
+                                  : 'border-white/10 bg-white/[0.03] text-white/70 hover:text-white'
+                              }`}
+                              aria-pressed={isActive}
+                            >
+                              <span className="block text-sm font-semibold">
+                                {getSessionAdjustmentLabel(mode)}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Start Button - Embedded */}
                   <Button
@@ -482,7 +921,7 @@ export function Home({
                     className="h-14 font-black text-base tracking-wide uppercase rounded-xl glow-primary-subtle"
                   >
                     <Play size={20} className="mr-2 fill-current" />
-                    Start Workout
+                    {homeHeroSummary.primaryActionLabel}
                   </Button>
 
                   <Button
@@ -501,34 +940,46 @@ export function Home({
               </div>
             ) : (
               /* No Program State */
-              <div className="rounded-2xl p-5 border border-white/10 bg-gradient-to-br from-white/5 via-black/70 to-black/90 backdrop-blur-sm">
+              <div className="rounded-2xl p-5 border border-primary/20 bg-gradient-to-br from-primary/10 via-black/70 to-black/90 backdrop-blur-sm">
                 <div className="flex items-start gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center">
-                    <Dumbbell size={24} className="text-white/30" />
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Dumbbell size={24} className="text-primary" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">
-                      No Program
+                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-primary/70">
+                      {homeHeroSummary.badge}
                     </p>
-                    <h3 className="text-2xl font-black text-white/50">
-                      Get Started
+                    <h3 className="text-2xl font-black text-foreground">
+                      {homeHeroSummary.headline}
                     </h3>
                   </div>
                 </div>
-                <p className="text-sm text-white/40 mb-4">
-                  Generate a personalized workout program to begin your training journey
+                <p className="text-sm text-muted-foreground mb-4">
+                  {homeHeroSummary.body}
                 </p>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {homeHeroSummary.highlights.map((highlight) => (
+                    <div key={highlight.label} className="rounded-xl border border-primary/15 bg-black/20 px-3 py-2">
+                      <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-primary/50">
+                        {highlight.label}
+                      </p>
+                      <p className="text-sm font-semibold text-foreground mt-1">
+                        {highlight.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
                 <Button
                   onClick={() => {
                     haptics.medium()
                     onNavigate('onboarding-sport')
                   }}
-                  variant="secondary"
+                  variant="primary"
                   size="lg"
                   fullWidth
                   className="h-14 font-bold"
                 >
-                  Create Program
+                  {homeHeroSummary.primaryActionLabel}
                 </Button>
               </div>
             )}
@@ -542,6 +993,26 @@ export function Home({
             onStartSession={onStartSession}
             hasSession={!!session}
             onStartRoundTimer={onStartRoundTimer}
+            onQuickWarmup={onQuickWarmup}
+            onQuickRecovery={onQuickRecovery}
+          />
+
+          {/* ================================================================
+              RETENTION: PROGRESS + RECOMMENDATIONS
+          ================================================================ */}
+          <ProgressPulse
+            sessionHistory={sessionHistory}
+            activityLogs={activityLogs}
+            now={statsReferenceNow}
+            onNavigate={onNavigate}
+          />
+
+          <ForYou
+            sessionHistory={sessionHistory}
+            currentStreak={currentStreak}
+            selectedSport={selectedSport}
+            now={statsReferenceNow}
+            onNavigate={onNavigate}
           />
 
         </div>

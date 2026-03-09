@@ -1,21 +1,31 @@
 'use client'
 
-import { useEffect } from 'react'
-import { WeightUnit } from '@/lib/types'
+import { useEffect, useState } from 'react'
+import { WeightUnit, PersonalRecord } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { audio } from '@/lib/audio'
 import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { Button } from '@/components/ui/button'
+import { Achievement, recordWorkout } from '@/lib/achievements'
+import { AchievementCelebration } from '@/components/ui/achievement-celebration'
+import { Trophy, Flame } from '@/components/ui/icons'
+import { getEffortRatingLabel } from '@/lib/session-reflection'
 
 interface SessionCompleteProps {
   totalTime: number // in seconds
   completedSessions: number
   plannedSessions: number
   totalVolume?: number
+  currentSessionWeights?: Record<string, number[]>
+  lastSessionWeights?: Record<string, number[]>
   weightUnit: WeightUnit
   bestSet?: { weight: number; exerciseName: string } | null
   currentStreak: number
   longestStreak: number
+  prs?: PersonalRecord[]
+  reflectionEffortRating?: number
+  reflectionNotes?: string
+  onEditReflection?: () => void
   onClose: () => void
   onViewWeek: () => void
 }
@@ -29,14 +39,28 @@ export function SessionComplete({
   bestSet,
   currentStreak,
   longestStreak,
+  prs = [],
+  reflectionEffortRating,
+  reflectionNotes,
+  onEditReflection,
   onClose,
   onViewWeek
 }: SessionCompleteProps) {
-  // Trigger success haptic and audio on mount
+  const [newAchievements, setNewAchievements] = useState<Achievement[]>([])
+
+  // Trigger success haptic and check achievements on mount
   useEffect(() => {
     haptics.success()
     audio.sessionComplete()
-  }, [])
+
+    // Check for new achievements
+    const volumeKg = totalVolume ? (weightUnit === 'lbs' ? totalVolume / 2.20462 : totalVolume) : 0
+    const unlocked = recordWorkout(volumeKg, currentStreak, prs)
+    if (unlocked.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time session completion side effect
+      setNewAchievements(unlocked)
+    }
+  }, [totalVolume, weightUnit, currentStreak, prs])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -147,6 +171,67 @@ export function SessionComplete({
                 </span>
               </div>
             )}
+
+            {/* PRs Section */}
+            {prs.length > 0 && (
+              <div className="py-3 border-t border-border/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy size={14} className="text-amber-400" />
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                    {prs.length} PR{prs.length > 1 ? 's' : ''} Achieved
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {prs.slice(0, 3).map((pr, i) => (
+                    <p key={i} className="text-xs text-white/70">
+                      {pr.exerciseName}: {pr.value} {pr.unit}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 w-full max-w-sm rounded-2xl border border-white/10 bg-card/50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Session log
+                </p>
+                <p className="mt-2 text-sm text-foreground">
+                  {reflectionEffortRating !== undefined
+                    ? `${reflectionEffortRating}/10 · ${getEffortRatingLabel(reflectionEffortRating)}`
+                    : 'No reflection added yet'}
+                </p>
+              </div>
+              {onEditReflection && (
+                <Button
+                  type="button"
+                  onClick={onEditReflection}
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full border border-white/10 px-3 text-xs text-foreground"
+                >
+                  {reflectionEffortRating !== undefined || reflectionNotes ? 'Edit' : 'Add'}
+                </Button>
+              )}
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              {reflectionNotes?.trim()
+                ? `“${reflectionNotes.trim()}”`
+                : 'Add a quick note about pain, energy, or what clicked so the next session starts smarter.'}
+            </p>
+          </div>
+
+          {/* Motivational Message */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-muted-foreground italic">
+              {currentStreak >= 7
+                ? `🔥 ${currentStreak}-day streak! You're on fire!`
+                : prs.length > 0
+                  ? 'New records set! Keep pushing your limits.'
+                  : 'Consistency is the key to greatness.'}
+            </p>
           </div>
         </div>
       </div>
@@ -172,6 +257,14 @@ export function SessionComplete({
           View Week
         </Button>
       </ScreenShellFooter>
+
+      {/* Achievement Celebration */}
+      {newAchievements.length > 0 && (
+        <AchievementCelebration
+          achievements={newAchievements}
+          onComplete={() => setNewAchievements([])}
+        />
+      )}
     </ScreenShell>
   )
 }

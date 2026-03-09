@@ -2,15 +2,21 @@
 
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { haptics } from '@/lib/haptics'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/input'
+import { SessionLog } from '@/lib/types'
+import { buildReflectionPrompts, getEffortRatingLabel, mergeReflectionNote, REFLECTION_QUICK_PICKS } from '@/lib/session-reflection'
 
 interface PostWorkoutReflectionProps {
   totalTime: number
   onComplete: (effortRating: number, notes: string) => void
   onSkip?: () => void
+  mode?: 'create' | 'edit'
+  initialEffortRating?: number | null
+  initialNotes?: string
+  previousSession?: Pick<SessionLog, 'effortRating' | 'notes'> | null
   undoLabel?: string | null
   onUndo: () => void
 }
@@ -19,11 +25,15 @@ export function PostWorkoutReflection({
   totalTime,
   onComplete,
   onSkip,
+  mode = 'create',
+  initialEffortRating = null,
+  initialNotes = '',
+  previousSession = null,
   undoLabel,
   onUndo
 }: PostWorkoutReflectionProps) {
-  const [effortRating, setEffortRating] = useState<number | null>(null)
-  const [notes, setNotes] = useState('')
+  const [effortRating, setEffortRating] = useState<number | null>(initialEffortRating)
+  const [notes, setNotes] = useState(initialNotes)
   const [showSkipConfirm, setShowSkipConfirm] = useState(false)
 
   const formatTime = (seconds: number) => {
@@ -32,22 +42,13 @@ export function PostWorkoutReflection({
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleRatingSelect = (rating: number) => {
-    setEffortRating(rating)
-  }
+  const handleRatingSelect = (rating: number) => setEffortRating(rating)
+  const promptSuggestions = useMemo(() => buildReflectionPrompts(previousSession), [previousSession])
 
   const handleSubmit = () => {
     if (effortRating === null) return
     haptics.medium()
-    onComplete(effortRating, notes)
-  }
-
-  const getRatingLabel = (rating: number) => {
-    if (rating <= 3) return 'Weak'
-    if (rating <= 5) return 'Acceptable'
-    if (rating <= 7) return 'Good'
-    if (rating <= 9) return 'Strong'
-    return 'Warrior'
+    onComplete(effortRating, notes.trim())
   }
 
   return (
@@ -57,10 +58,10 @@ export function PostWorkoutReflection({
         <header className="px-6 safe-area-top pb-4 flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
-              Session Complete
+              {mode === 'edit' ? 'Update session log' : 'Session Complete'}
             </p>
             <h1 className="type-title text-foreground mt-2">
-              Reflect on your work
+              {mode === 'edit' ? 'Edit your reflection' : 'Reflect on your work'}
             </h1>
             <p className="text-sm text-muted-foreground mt-2">
               Total time: {formatTime(totalTime)}
@@ -74,9 +75,9 @@ export function PostWorkoutReflection({
               variant="ghost"
               size="sm"
               className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground hover:bg-card/40"
-              aria-label="Skip reflection"
+              aria-label={mode === 'edit' ? 'Cancel editing reflection' : 'Skip reflection'}
             >
-              Skip
+              {mode === 'edit' ? 'Cancel' : 'Skip'}
             </Button>
           )}
         </header>
@@ -86,16 +87,38 @@ export function PostWorkoutReflection({
           {/* Effort Rating */}
           <div className="mb-8">
             <label className="block text-sm font-semibold text-foreground uppercase tracking-wide mb-3">
-              How hard did you push?
+              How hard did it feel? (RPE)
             </label>
             <p className="text-xs text-muted-foreground mb-4">
-              Be honest. Your mind quits before your body.
+              Be honest. This helps keep your progress and recovery honest.
             </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {REFLECTION_QUICK_PICKS.map((pick) => (
+                <Button
+                  key={pick.label}
+                  type="button"
+                  onClick={() => handleRatingSelect(pick.rating)}
+                  variant="ghost"
+                  size="sm"
+                  stacked
+                  className={`rounded-xl border px-3 py-3 min-h-[72px] ${
+                    effortRating === pick.rating
+                      ? 'border-primary bg-primary/15 text-foreground'
+                      : 'border-white/10 bg-card/40 text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <span className="text-sm font-bold text-foreground">{pick.label} · {pick.rating}</span>
+                  <span className="text-[11px] leading-relaxed">{pick.description}</span>
+                </Button>
+              ))}
+            </div>
 
             <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
                 <Button
                   key={rating}
+                  type="button"
                   onClick={() => handleRatingSelect(rating)}
                   variant="ghost"
                   size="sm"
@@ -115,23 +138,55 @@ export function PostWorkoutReflection({
             {effortRating !== null && (
               <div className="mt-4 p-3 bg-card/50 rounded-lg">
                 <p className="text-sm font-semibold text-foreground">
-                  {getRatingLabel(effortRating)}
+                  {getEffortRatingLabel(effortRating)}
                 </p>
               </div>
             )}
           </div>
+
+          {(previousSession?.effortRating !== undefined || previousSession?.notes) && (
+            <div className="mb-6 rounded-2xl border border-white/10 bg-card/40 p-4">
+              <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-muted-foreground">
+                Carry forward
+              </p>
+              {previousSession?.effortRating !== undefined && (
+                <p className="mt-3 text-sm text-foreground">
+                  Last logged effort: <span className="font-semibold">{previousSession.effortRating}/10 · {getEffortRatingLabel(previousSession.effortRating)}</span>
+                </p>
+              )}
+              {previousSession?.notes && (
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  “{previousSession.notes}”
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div className="mb-8">
             <label className="block text-sm font-semibold text-foreground uppercase tracking-wide mb-3">
               What did you learn?
             </label>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {promptSuggestions.map((prompt) => (
+                <Button
+                  key={prompt.label}
+                  type="button"
+                  onClick={() => setNotes((prev) => mergeReflectionNote(prev, prompt.text))}
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full border border-white/10 bg-card/40 px-3 text-xs text-foreground hover:bg-card/70"
+                >
+                  {prompt.label}
+                </Button>
+              ))}
+            </div>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Did you quit early? Did you push through pain? What would your coach say?"
+              placeholder="What felt strong, what felt off, and what should you remember next time?"
               className="bg-card/50 text-sm min-h-[128px]"
-              maxLength={200}
+              maxLength={280}
               showCount
             />
           </div>
@@ -149,7 +204,7 @@ export function PostWorkoutReflection({
           withHaptic={false}
           className={effortRating === null ? 'bg-border text-muted-foreground' : 'bg-foreground text-background'}
         >
-          Complete
+          {mode === 'edit' ? 'Save changes' : 'Save reflection'}
         </Button>
       </ScreenShellFooter>
 
@@ -180,10 +235,12 @@ export function PostWorkoutReflection({
           setShowSkipConfirm(false)
           if (onSkip) onSkip()
         }}
-        title="Skip Reflection?"
-        message="Your choice. The work is done either way."
-        confirmText="Skip"
-        cancelText="Reflect"
+        title={mode === 'edit' ? 'Discard changes?' : 'Skip reflection?'}
+        message={mode === 'edit'
+          ? 'Go back to the completion screen without changing this session log.'
+          : 'Your session will still be logged. You can add the reflection afterward from the completion screen.'}
+        confirmText={mode === 'edit' ? 'Discard changes' : 'Skip'}
+        cancelText={mode === 'edit' ? 'Keep editing' : 'Reflect'}
         variant="default"
       />
     </ScreenShell>

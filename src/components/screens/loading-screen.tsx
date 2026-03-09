@@ -50,7 +50,6 @@ export function LoadingScreen({
 }: LoadingScreenProps) {
   const isSignupVariant = variant === 'signup'
   const [progress, setProgress] = useState(0)
-  const [loadingText, setLoadingText] = useState('')
   const [highlightIndex, setHighlightIndex] = useState(0)
 
   const loadingMessages = useMemo(() => {
@@ -70,9 +69,12 @@ export function LoadingScreen({
     ]
   }, [isSignupVariant])
 
-  useEffect(() => {
-    setLoadingText(loadingMessages[0] ?? 'Preparing your training...')
-  }, [loadingMessages])
+  const loadingText = loadingMessages[
+    Math.min(
+      Math.floor((progress / 100) * loadingMessages.length),
+      Math.max(loadingMessages.length - 1, 0)
+    )
+  ] ?? 'Preparing your training...'
 
   useEffect(() => {
     const startTime = Date.now()
@@ -80,13 +82,6 @@ export function LoadingScreen({
       const elapsed = Date.now() - startTime
       const newProgress = Math.min((elapsed / loadingDuration) * 100, 100)
       setProgress(newProgress)
-
-      // Update loading text based on progress
-      const messageIndex = Math.min(
-        Math.floor((newProgress / 100) * loadingMessages.length),
-        loadingMessages.length - 1
-      )
-      setLoadingText(loadingMessages[messageIndex])
 
       if (newProgress >= 100) {
         clearInterval(interval)
@@ -100,10 +95,7 @@ export function LoadingScreen({
   }, [loadingDuration, onLoadComplete, loadingMessages])
 
   useEffect(() => {
-    if (!isSignupVariant) {
-      setHighlightIndex(0)
-      return
-    }
+    if (!isSignupVariant) return
 
     const interval = setInterval(() => {
       setHighlightIndex((prev) => (prev + 1) % SIGNUP_HIGHLIGHTS.length)
@@ -112,7 +104,7 @@ export function LoadingScreen({
     return () => clearInterval(interval)
   }, [isSignupVariant])
 
-  const activeHighlight = SIGNUP_HIGHLIGHTS[highlightIndex]
+  const activeHighlight = SIGNUP_HIGHLIGHTS[highlightIndex % SIGNUP_HIGHLIGHTS.length]
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -155,7 +147,9 @@ export function LoadingScreen({
               </p>
               {activeHighlight.quote ? (
                 <blockquote className="mt-3 border-l-2 border-amber-300/60 pl-3 text-[13px] text-amber-100/90 italic leading-relaxed">
-                  "{activeHighlight.quote.text}"
+                  <span aria-hidden="true">“</span>
+                  {activeHighlight.quote.text}
+                  <span aria-hidden="true">”</span>
                   <span className="not-italic block text-[11px] tracking-wide text-amber-100/70 mt-1">
                     {activeHighlight.quote.author}
                   </span>

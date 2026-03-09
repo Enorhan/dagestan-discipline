@@ -11,6 +11,7 @@ interface OnboardingScheduleProps {
   onDaysChange: (days: number) => void
   onContinue: () => void
   onBack?: () => void
+  onGenerate?: () => void // Direct generation without additional screens
 }
 
 const DAY_DESCRIPTIONS: Record<number, string> = {
@@ -41,7 +42,7 @@ export function OnboardingSchedule({
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
         {/* Progress Indicator */}
         <div className="mb-6 onboarding-fade-up">
-          <OnboardingProgress currentStep={1} totalSteps={6} />
+          <OnboardingProgress currentStep={2} totalSteps={7} />
         </div>
 
         {/* Logo / Brand */}
@@ -57,10 +58,10 @@ export function OnboardingSchedule({
         {/* Question */}
         <div className="mb-8 onboarding-fade-up" style={{ animationDelay: '0.1s' }}>
           <p className="text-lg font-medium text-foreground mb-2">
-            Training days per week
+            How many days per week?
           </p>
           <p className="text-sm text-muted-foreground">
-            Select your commitment level
+            Choose your training frequency. You can customize everything later in Settings.
           </p>
         </div>
 

@@ -49,7 +49,7 @@ export function OnboardingEquipment({
       <ScreenShellContent className="flex flex-col max-w-md mx-auto w-full justify-start pt-8 sm:justify-center sm:pt-0" alwaysScroll>
         {/* Progress Indicator */}
         <div className="mb-6 onboarding-fade-up">
-          <OnboardingProgress currentStep={4} totalSteps={6} />
+          <OnboardingProgress currentStep={5} totalSteps={7} />
         </div>
 
         {/* Logo / Brand */}
@@ -156,8 +156,11 @@ export function OnboardingEquipment({
             withHaptic={false}
             className={`rounded-xl transition-all duration-200 ${!equipment ? 'bg-muted text-muted-foreground' : ''}`}
           >
-            Generate Program
+            Generate My Program
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            We&apos;ll build your first plan in a few seconds.
+          </p>
           <Button
             onClick={onBack}
             disabled={isStarting}

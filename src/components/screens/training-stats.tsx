@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Screen, ActivityType, ActivityLog, SessionLog } from '@/lib/types'
+import { analytics } from '@/lib/analytics'
+import { PREMIUM_FEATURES } from '@/lib/premium-gate'
+import { buildProgressStory } from '@/lib/progress-storytelling'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { Button } from '@/components/ui/button'
-import { Gi, Wrestling, Trophy, Boxing, Drill, Flame, Stretch } from '@/components/ui/icons'
+import { Gi, Wrestling, Trophy, Boxing, Drill, Flame, Stretch, Lock, Sparkles } from '@/components/ui/icons'
 
 interface TrainingStatsProps {
   sessionHistory: SessionLog[]
@@ -14,8 +17,10 @@ interface TrainingStatsProps {
   currentStreak: number
   longestStreak: number
   weightUnit: 'lbs' | 'kg'
+  isPremium?: boolean
   onClose: () => void
   onNavigate: (screen: Screen) => void
+  onUpgrade?: () => void
   isLoading?: boolean
   onStartAction?: () => void
   hasWorkoutToday?: boolean
@@ -42,14 +47,17 @@ export function TrainingStats({
   currentStreak,
   longestStreak,
   weightUnit,
+  isPremium = false,
   onClose,
   onNavigate,
+  onUpgrade,
   isLoading = false,
   onStartAction,
   hasWorkoutToday = false
 }: TrainingStatsProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const hasTrackedPreviewRef = useRef(false)
 
   // Use real data only - no sample data fallback
   const activities = isLoading ? [] : activityLogs
@@ -71,6 +79,7 @@ export function TrainingStats({
 
   const filteredActivities = filterByPeriod(activities)
   const filteredSessions = filterByPeriod(sessions)
+  const filteredPRs = filteredSessions.flatMap((session) => session.prs ?? [])
 
   // Calculate statistics
   const totalSessions = filteredSessions.length + filteredActivities.length
@@ -78,6 +87,8 @@ export function TrainingStats({
     filteredSessions.reduce((sum, s) => sum + (s.totalTime || 0), 0) / 3600 +
     filteredActivities.reduce((sum, a) => sum + a.duration, 0) / 60
   )
+  const totalPRs = filteredPRs.length
+  const bestPRImprovement = filteredPRs.reduce((max, pr) => Math.max(max, pr.improvement), 0)
 
   // Activity breakdown by type
   const activityBreakdown = Object.entries(ACTIVITY_META).map(([type, { label, icon }]) => ({
@@ -114,6 +125,46 @@ export function TrainingStats({
   const periodLabel = viewMode === 'month'
     ? selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : selectedDate.getFullYear().toString()
+  const progressStory = buildProgressStory({
+    sessionHistory: sessions,
+    activityLogs: activities,
+    currentStreak,
+    longestStreak,
+    selectedDate,
+    viewMode,
+  })
+
+  const isAdvancedAnalyticsLocked = !isPremium
+  const analyticsFeatureHighlights = PREMIUM_FEATURES.analytics.highlights.slice(0, 2)
+  const insightToneClassName = {
+    positive: 'text-emerald-400',
+    neutral: 'text-foreground',
+    attention: 'text-amber-300',
+  } as const
+
+  const handleUpgrade = () => {
+    analytics.track('premium_upsell_clicked', {
+      source: 'training-stats',
+      feature: 'analytics',
+    })
+    if (onUpgrade) {
+      onUpgrade()
+      return
+    }
+    onNavigate('settings')
+  }
+
+  useEffect(() => {
+    if (!isAdvancedAnalyticsLocked || hasTrackedPreviewRef.current) return
+    hasTrackedPreviewRef.current = true
+    analytics.track('analytics_preview_opened', {
+      source: 'training-stats',
+    })
+    analytics.track('premium_upsell_viewed', {
+      source: 'training-stats',
+      feature: 'analytics',
+    })
+  }, [isAdvancedAnalyticsLocked])
 
   return (
     <ScreenShell>
@@ -126,6 +177,11 @@ export function TrainingStats({
                 Training
               </p>
               <h1 className="type-title text-foreground mt-1">Statistics</h1>
+              {!isPremium && (
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400 mt-1">
+                  Analytics preview
+                </p>
+              )}
             </div>
             <Button
               onClick={onClose}
@@ -176,14 +232,21 @@ export function TrainingStats({
                   Month
                 </Button>
                 <Button
-                  onClick={() => setViewMode('year')}
+                  onClick={() => {
+                    if (isAdvancedAnalyticsLocked) {
+                      handleUpgrade()
+                      return
+                    }
+                    setViewMode('year')
+                  }}
                   variant="ghost"
                   size="sm"
-                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide rounded-md transition-all normal-case tracking-normal ${
+                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide rounded-md transition-all normal-case tracking-normal flex items-center gap-1 ${
                     viewMode === 'year' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
                   }`}
                 >
                   Year
+                  {isAdvancedAnalyticsLocked && <Lock size={11} />}
                 </Button>
               </div>
 
@@ -218,12 +281,54 @@ export function TrainingStats({
             </div>
           </div>
 
+          {!isLoading && !hasNoData && (
+            <div className="px-6 pb-3">
+              <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/15 via-card to-card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/80">
+                      Progress Story
+                    </p>
+                    <h2 className="text-lg font-black text-foreground mt-2">
+                      {progressStory.headline}
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                      {progressStory.summary}
+                    </p>
+                  </div>
+                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center text-primary">
+                    <Sparkles size={18} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                  {progressStory.insights.map((insight) => (
+                    <div
+                      key={insight.label}
+                      className="rounded-xl border border-border/60 bg-background/70 px-3 py-3"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {insight.label}
+                      </p>
+                      <p className={`text-lg font-black mt-1 ${insightToneClassName[insight.tone]}`}>
+                        {insight.value}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        {insight.detail}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Training Summary */}
           <div className="px-6 py-5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
               Training Summary
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <div className="card-elevated rounded-xl p-5 text-center stagger-item">
                 <p className="text-4xl font-black text-foreground tabular-nums">{totalSessions}</p>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mt-2">Sessions</p>
@@ -236,8 +341,52 @@ export function TrainingStats({
                 <p className="text-4xl font-black text-foreground tabular-nums">{completedExerciseCount}</p>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mt-2">Exercises</p>
               </div>
+              <div className="card-elevated rounded-xl p-5 text-center stagger-item" style={{ animationDelay: '150ms' }}>
+                <p className="text-4xl font-black text-primary tabular-nums">{totalPRs}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mt-2">PRs</p>
+              </div>
             </div>
+            {totalPRs > 0 && (
+              <div className="mt-3 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-primary uppercase tracking-wide">Best PR Jump</p>
+                <p className="text-sm font-black text-primary tabular-nums">
+                  +{bestPRImprovement.toFixed(0)}%
+                </p>
+              </div>
+            )}
           </div>
+
+          {isAdvancedAnalyticsLocked && (
+            <div className="px-6 pb-2">
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-400">
+                    Premium analytics
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Month totals are available now. Premium turns analytics into a clearer coaching layer with:
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {analyticsFeatureHighlights.map((highlight) => (
+                      <div key={highlight} className="flex items-start gap-2 text-[11px] text-muted-foreground leading-relaxed">
+                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                        <span>{highlight}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  onClick={handleUpgrade}
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 font-bold normal-case tracking-normal flex items-center gap-1"
+                >
+                  <Sparkles size={14} />
+                  Upgrade
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Streak Info */}
           <div className="px-6 py-4">
@@ -259,11 +408,12 @@ export function TrainingStats({
           </div>
 
           {/* Activity Breakdown */}
-          <div className="px-6 py-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-              Activity Breakdown
-            </p>
-            <div className="card-elevated rounded-xl overflow-hidden">
+          <div className="px-6 py-5 relative">
+            <div className={isAdvancedAnalyticsLocked ? 'opacity-45 select-none pointer-events-none' : ''}>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+                Activity Breakdown
+              </p>
+              <div className="card-elevated rounded-xl overflow-hidden">
               {/* Gym Workouts */}
               {gymWorkoutCount > 0 && (
                 <div className="flex items-center justify-between p-4 border-b border-border/50 stagger-item">
@@ -302,15 +452,30 @@ export function TrainingStats({
                   <p className="text-sm">No activities logged for this period</p>
                 </div>
               )}
+              </div>
             </div>
+            {isAdvancedAnalyticsLocked && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Button
+                  onClick={handleUpgrade}
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 px-4 rounded-lg border border-amber-500/30 bg-black/70 text-amber-400 font-bold normal-case tracking-normal flex items-center gap-2"
+                >
+                  <Lock size={14} />
+                  Unlock full breakdown
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Intensity & Volume */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Performance
-            </p>
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <div className="px-6 py-4 relative">
+            <div className={isAdvancedAnalyticsLocked ? 'opacity-45 select-none pointer-events-none' : ''}>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Performance
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {/* Average Intensity */}
               <div className="bg-card/50 rounded-lg p-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Avg Intensity</p>
@@ -345,6 +510,20 @@ export function TrainingStats({
                 </div>
               </div>
             </div>
+            </div>
+            {isAdvancedAnalyticsLocked && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Button
+                  onClick={handleUpgrade}
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 px-4 rounded-lg border border-amber-500/30 bg-black/70 text-amber-400 font-bold normal-case tracking-normal flex items-center gap-2"
+                >
+                  <Lock size={14} />
+                  Unlock full analytics
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Spacer for bottom nav */}

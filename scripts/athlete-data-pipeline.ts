@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { isLikelyExerciseName as isLikelyExerciseNameQuality } from './exercise-quality'
 
 type SportType = 'wrestling' | 'judo' | 'bjj'
 type QueueType = 'athlete' | 'exercise' | 'athlete_exercise' | 'routine'
@@ -405,81 +406,7 @@ function isPlaceholderValue(value: string): boolean {
 }
 
 function isLikelyExerciseName(value: string): boolean {
-  const normalized = normalizeText(value)
-  if (!normalized || normalized.length < 3 || normalized.length > 90) {
-    return false
-  }
-
-  const lowered = normalized.toLowerCase()
-  if (isPlaceholderValue(lowered)) {
-    return false
-  }
-
-  if (/(https?:\/\/|www\.)/i.test(lowered)) {
-    return false
-  }
-
-  if (/[<>{}[\]|]/.test(lowered)) {
-    return false
-  }
-
-  const blockedFragments = [
-    'svg',
-    'thumbnail',
-    'subscribe',
-    'follow',
-    'click',
-    'link in bio',
-    'resolve',
-  ]
-  if (blockedFragments.some((fragment) => lowered.includes(fragment))) {
-    return false
-  }
-
-  const alphaCount = (lowered.match(/[a-z]/g) ?? []).length
-  if (alphaCount < 3) {
-    return false
-  }
-
-  const validChars = (lowered.match(/[a-z0-9\s\-()'’,.&/+]/g) ?? []).length
-  if (validChars / lowered.length < 0.85) {
-    return false
-  }
-
-  const exerciseTokens = [
-    'squat',
-    'deadlift',
-    'press',
-    'pull',
-    'row',
-    'jump',
-    'clean',
-    'jerk',
-    'snatch',
-    'curl',
-    'carry',
-    'plank',
-    'push-up',
-    'push up',
-    'pull-up',
-    'pull up',
-    'lunge',
-    'sprint',
-    'rope',
-    'slam',
-    'twist',
-    'crunch',
-    'bridge',
-    'crawl',
-    'drill',
-    'uchikomi',
-    'randori',
-    'sparring',
-    'windmill',
-    'v-up',
-  ]
-
-  return exerciseTokens.some((token) => lowered.includes(token))
+  return isLikelyExerciseNameQuality(value)
 }
 
 function toFingerprint(value: string): string {

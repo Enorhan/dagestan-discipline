@@ -15,11 +15,9 @@ SET status = 'inactive',
 FROM ranked_active ra
 WHERE tp.id = ra.id
   AND ra.rn > 1;
-
 CREATE UNIQUE INDEX IF NOT EXISTS idx_training_programs_one_active_per_user
   ON training_programs(user_id)
   WHERE status = 'active';
-
 -- 2) Remove remaining non-needed social scope tables (safe idempotent cleanup)
 DROP TABLE IF EXISTS follows CASCADE;
 DROP TABLE IF EXISTS saved_workouts CASCADE;
@@ -29,7 +27,6 @@ DROP TABLE IF EXISTS saves CASCADE;
 DROP TABLE IF EXISTS likes CASCADE;
 DROP TABLE IF EXISTS post_media CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
-
 -- 3) Keep custom workout library private-first for this release
 DO $$
 BEGIN

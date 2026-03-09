@@ -249,7 +249,7 @@ export function SportExerciseCategories({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden overscroll-contain"
       >
-        <div className="pb-32">
+        <div className="pb-[calc(9rem+env(safe-area-inset-bottom))]">
           {/* Hero Header */}
           <div className={`relative safe-area-top pb-8 px-6 overflow-hidden`}>
             {/* Background Gradient */}
@@ -287,6 +287,9 @@ export function SportExerciseCategories({
                 Targeted Training
               </h2>
             </div>
+            <p className="text-xs text-muted-foreground/80 mb-4">
+              Choose a body area to view athlete-recommended exercises.
+            </p>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {visibleCategories.map((category, index) => {
@@ -315,13 +318,10 @@ export function SportExerciseCategories({
                           <Skeleton className="h-5 w-8 rounded-full opacity-40" />
                         ) : count !== null && count > 0 ? (
                           <span className="text-[11px] font-semibold text-white/70 border border-white/15 rounded-full px-2.5 py-1">
-                            {count}
+                            {count.toLocaleString()} ex
                           </span>
                         ) : null}
                       </div>
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                        Targeted Training
-                      </span>
                     </div>
                   </Button>
                 )

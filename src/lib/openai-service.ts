@@ -68,7 +68,6 @@ export class OpenAIService {
       }
 
       this.isInitialized = true
-      console.log('OpenAI service initialized')
     } catch (error) {
       console.error('Failed to initialize OpenAI service:', error)
       this.isInitialized = false

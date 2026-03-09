@@ -8,6 +8,13 @@ interface SuccessCheckmarkProps {
   color?: 'primary' | 'gold' | 'success'
 }
 
+const CONFETTI_BURST_PARTICLES = Array.from({ length: 12 }, (_, i) => ({
+  id: i,
+  angle: (i / 12) * 360,
+  delay: (i % 4) * 50,
+  color: ['#8b0000', '#d4af37', '#22c55e', '#fafafa'][i % 4],
+}))
+
 export function SuccessCheckmark({ 
   size = 80, 
   delay = 0,
@@ -101,16 +108,9 @@ export function SuccessCheckmark({
 export function ConfettiBurst({ active }: { active: boolean }) {
   if (!active) return null
 
-  const particles = Array.from({ length: 12 }, (_, i) => ({
-    id: i,
-    angle: (i / 12) * 360,
-    delay: Math.random() * 200,
-    color: ['#8b0000', '#d4af37', '#22c55e', '#fafafa'][i % 4]
-  }))
-
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {particles.map(p => (
+      {CONFETTI_BURST_PARTICLES.map(p => (
         <div
           key={p.id}
           className="absolute left-1/2 top-1/2 w-2 h-2 rounded-full"

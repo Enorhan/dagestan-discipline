@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
 import { supabaseService } from '@/lib/supabase-service'
@@ -30,14 +30,9 @@ export function WorkoutDetail({
 
   const isOwnWorkout = currentUser?.id === workout.creatorId
 
-  useEffect(() => {
-    loadData()
-  }, [workout.id])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true)
     try {
-      // Get creator info
       const creatorProfile = await supabaseService.getProfile(workout.creatorId)
       setCreator(creatorProfile)
     } catch (e) {
@@ -45,7 +40,11 @@ export function WorkoutDetail({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [workout.creatorId])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleCopy = () => {
     haptics.success()
@@ -76,7 +75,8 @@ export function WorkoutDetail({
             <div className="w-full card-elevated rounded-xl p-4 flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
                 {creator.avatarUrl ? (
-                  <img src={creator.avatarUrl} alt={creator.displayName} className="w-full h-full rounded-full object-cover" />
+                  // eslint-disable-next-line @next/next/no-img-element -- Small remote profile avatars are user-provided and not LCP-critical.
+                  <img src={creator.avatarUrl} alt={creator.displayName} className="w-full h-full rounded-full object-cover" loading="lazy" decoding="async" />
                 ) : (
                   <span className="text-primary font-bold text-sm">
                     {creator.displayName.charAt(0).toUpperCase()}

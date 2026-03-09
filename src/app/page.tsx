@@ -1,53 +1,22 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory, Athlete, ExperienceLevel, EnhancedExerciseData, PrimaryGoal, Exercise } from '@/lib/types'
+import { Screen, Equipment, WeekDay, SessionLog, TimerMode, SportType, Session, SessionAdjustmentMode, WeightUnit, ActivityLog, Drill, DrillCategory, DrillSubcategory, Routine, LearningPath, ExerciseCategory, Athlete, ExperienceLevel, EnhancedExerciseData, ExerciseWithGuidance, PrimaryGoal, Exercise, PersonalRecord } from '@/lib/types'
 import { generateWeeklyProgram } from '@/lib/data'
 import { allDrills, routines, learningPaths } from '@/lib/drills-data'
 import { analytics } from '@/lib/analytics'
-import { OnboardingSport } from '@/components/screens/onboarding-sport'
-import { OnboardingSchedule } from '@/components/screens/onboarding-schedule'
-import { OnboardingLevel } from '@/components/screens/onboarding-level'
-import { OnboardingIntake } from '@/components/screens/onboarding-intake'
-import { OnboardingEquipment } from '@/components/screens/onboarding-equipment'
-import { OnboardingGenerating } from '@/components/screens/onboarding-generating'
-import { OnboardingProgramExplainer } from '@/components/screens/onboarding-program-explainer'
-import { OnboardingAppTour } from '@/components/screens/onboarding-app-tour'
-import { Home } from '@/components/screens/home'
-import { WeekView } from '@/components/screens/week-view'
-import { WorkoutSession } from '@/components/screens/workout-session'
-import { RestTimer } from '@/components/screens/rest-timer'
-import { SessionComplete } from '@/components/screens/session-complete'
-import { ExerciseList } from '@/components/screens/exercise-list'
-import { PostWorkoutReflection } from '@/components/screens/post-workout-reflection'
-import { MissedSessionAccountability } from '@/components/screens/missed-session-accountability'
-import { RoundTimer } from '@/components/screens/round-timer'
-import { Settings } from '@/components/screens/settings'
-import { LogActivity } from '@/components/screens/log-activity'
-import { TrainingStats } from '@/components/screens/training-stats'
-import { TrainingHub } from '@/components/screens/training-hub'
-import { DrillDetail } from '@/components/screens/drill-detail'
-import { CategoryList } from '@/components/screens/category-list'
-import { RoutinePlayer } from '@/components/screens/routine-player'
-import { LearningPathScreen } from '@/components/screens/learning-path'
-import { BodyPartSelector } from '@/components/screens/body-part-selector'
-import { AthleteDetail } from '@/components/screens/athlete-detail'
-import { SportExerciseCategories } from '@/components/screens/sport-exercise-categories'
-import { SportCategoryExercises } from '@/components/screens/sport-category-exercises'
-import { ExerciseDetail } from '@/components/screens/exercise-detail'
-import { ProgramSessionEditor } from '@/components/screens/program-session-editor'
+import { ActiveSessionRoutes } from '@/components/app/active-session-routes'
+import { CoreAppRoutes } from '@/components/app/core-app-routes'
+import { OnboardingRoutes } from '@/components/app/onboarding-routes'
+import { PlanningRoutes } from '@/components/app/planning-routes'
+import { SettingsRoutes } from '@/components/app/settings-routes'
+import { StatusRoutes } from '@/components/app/status-routes'
+import { AuthRoutes } from '@/components/app/auth-routes'
+import { TrainingLibraryRoutes } from '@/components/app/training-library-routes'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 // Social screens
-import { AuthLogin } from '@/components/screens/auth-login'
-import { AuthSignup } from '@/components/screens/auth-signup'
-import { EmailVerificationPending } from '@/components/screens/email-verification-pending'
-import { WorkoutBuilder } from '@/components/screens/workout-builder'
-import { UserProfileScreen } from '@/components/screens/user-profile'
-import { EditProfile } from '@/components/screens/edit-profile'
-import { WorkoutDetail } from '@/components/screens/workout-detail'
-import { LoadingScreen } from '@/components/screens/loading-screen'
+import { ProfileWorkoutRoutes } from '@/components/app/profile-workout-routes'
 import { NavigationNotSet } from '@/components/screens/navigation-not-set'
-import { TodayEditor } from '@/components/screens/today-editor'
 import { supabaseService } from '@/lib/supabase-service'
 import { supabase } from '@/lib/supabase'
 import { initDeepLinkHandler } from '@/lib/deep-link-handler'
@@ -55,67 +24,34 @@ import stripeService from '@/lib/stripe-service'
 import { UserProfile, CustomWorkout } from '@/lib/social-types'
 import { drillsService } from '@/lib/drills-service'
 import { athletesService } from '@/lib/athletes-service'
+import { resolveHydratedScreenWithoutStorage, resolvePersistedHydratedScreen } from '@/lib/hydration-restore'
+import { getMissedSessionRecoveryState } from '@/lib/missed-session-recovery'
+import { resolveNavigation } from '@/lib/navigation-machine'
+import { adjustSessionForReadiness, estimateDurationMinutes, normalizeSessionAdjustmentMode } from '@/lib/session-adjustment'
+import { normalizeSessionRuntimeState } from '@/lib/session-runtime'
+import { shouldPollSubscriptionStatusAfterReturn, SubscriptionReturnStatus } from '@/lib/subscription-return'
+import { useToast } from '@/contexts/toast-context'
+import {
+  getActivitySaveFeedback,
+  getActivitySyncFallbackFeedback,
+  getProgramDraftSaveFeedback,
+  getProgramSessionSaveFeedback,
+  getSettingsSaveFeedback,
+  getWorkoutSaveFeedback,
+} from '@/lib/action-feedback'
+import { canAccessFeature, PREMIUM_CORE_HIGHLIGHTS, PREMIUM_FEATURES, PREMIUM_POSITIONING_COPY } from '@/lib/premium-gate'
+import {
+  PREMIUM_SUBSCRIPTION_PRICE_LABEL,
+  SUBSCRIPTION_REQUIRED_AFTER_DAYS,
+  SUBSCRIPTION_REQUIRED_AFTER_MS,
+} from '@/lib/subscription-config'
+import { getBillingCheckoutAvailability, getRuntimeFlagsSnapshot } from '@/lib/runtime-flags'
 
 const STORAGE_KEY = 'dagestaniDiscipline.state'
 const UNDO_TTL_MS = 6000
 const STREAK_GRACE_HOURS = 36
 const DEFAULT_SCREENSHOT_INTERVAL_MS = 1400
 const DEFAULT_SCREENSHOT_DELAY_MS = 400
-const SUBSCRIPTION_REQUIRED_AFTER_DAYS = 7
-const SUBSCRIPTION_REQUIRED_AFTER_MS = SUBSCRIPTION_REQUIRED_AFTER_DAYS * 24 * 60 * 60 * 1000
-const IMPLEMENTED_SCREENS: ReadonlySet<Screen> = new Set([
-  'onboarding-sport',
-  'onboarding-schedule',
-  'onboarding-level',
-  'onboarding-intake',
-  'onboarding-equipment',
-  'onboarding-generating',
-  'onboarding-program-explainer',
-  'onboarding-app-tour',
-  'home',
-  'today-editor',
-  'settings',
-  'log-activity',
-  'training-stats',
-  'training-hub',
-  'drill-detail',
-  'athlete-detail',
-  'category-list',
-  'routine-player',
-  'learning-path',
-  'body-part-selector',
-  'week-view',
-  'program-session-editor',
-  'workout-session',
-  'rest-timer',
-  'session-complete',
-  'exercise-list',
-  'sport-exercise-categories',
-  'sport-category-exercises',
-  'exercise-detail',
-  'post-workout-reflection',
-  'missed-session-accountability',
-  'round-timer',
-  'loading',
-  'auth-login',
-  'auth-signup',
-  'workout-builder',
-  'user-profile',
-  'edit-profile',
-  'workout-detail',
-  'navigation-not-set',
-])
-
-const ONBOARDING_FLOW_SCREENS: ReadonlySet<Screen> = new Set([
-  'onboarding-sport',
-  'onboarding-schedule',
-  'onboarding-level',
-  'onboarding-intake',
-  'onboarding-equipment',
-  'onboarding-generating',
-  'onboarding-program-explainer',
-  'onboarding-app-tour',
-])
 
 // Default empty week progress - will be populated when user sets up their program
 const DEFAULT_WEEK_PROGRESS: WeekDay[] = [
@@ -168,15 +104,7 @@ const getSubscriptionRequiredAt = (
   return anchorMs + SUBSCRIPTION_REQUIRED_AFTER_MS
 }
 
-const estimateDurationMinutes = (exercises: Exercise[]) => {
-  if (!Array.isArray(exercises) || exercises.length === 0) return 0
-  let totalSeconds = 0
-  for (const ex of exercises) {
-    const exerciseTime = ex.duration ?? (ex.reps ?? 10) * 3
-    totalSeconds += (exerciseTime * ex.sets) + (ex.restTime * Math.max(0, ex.sets - 1))
-  }
-  return Math.max(1, Math.ceil(totalSeconds / 60))
-}
+type PendingBillingReturn = 'checkout' | 'portal'
 
 const fingerprintSession = (session: Session | null): string | null => {
   if (!session) return null
@@ -307,10 +235,13 @@ type TodayWorkoutOverride = {
   removedDrillIds: string[]
   drillDoneIds: string[]
   drillsLoggedAt: string | null
+  readinessMode: SessionAdjustmentMode | null
   updatedAt: string
 }
 
 export default function App() {
+  const { showToast } = useToast()
+
   type ProgramMetaState = {
     sport: SportType
     trainingDays: number
@@ -324,6 +255,7 @@ export default function App() {
   // Core state
   const [currentScreen, setCurrentScreen] = useState<Screen>('auth-login')
   const [navigationError, setNavigationError] = useState<{ message: string; details?: string } | null>(null)
+  const [navigationBlockNotice, setNavigationBlockNotice] = useState<string | null>(null)
   const [selectedSport, setSelectedSport] = useState<SportType>('wrestling')
   const [trainingDays, setTrainingDays] = useState(4)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
@@ -334,6 +266,7 @@ export default function App() {
   const [sessionMinutes, setSessionMinutes] = useState(45)
   const [injuryNotes, setInjuryNotes] = useState('')
   const [generatedProgram, setGeneratedProgram] = useState<Session[] | null>(null)
+  const generatedProgramRef = useRef<Session[] | null>(null)
   const [currentDayIndex, setCurrentDayIndex] = useState(0)
   const [programId, setProgramId] = useState<string | null>(null)
   const [savedProgramSessions, setSavedProgramSessions] = useState<Session[] | null>(null)
@@ -367,10 +300,12 @@ export default function App() {
   const [longestStreak, setLongestStreak] = useState(0)
   const [lastWorkoutDate, setLastWorkoutDate] = useState<string | null>(null)
   const [sessionHistory, setSessionHistory] = useState<SessionLog[]>([])
+  const [editingCompletedSessionId, setEditingCompletedSessionId] = useState<string | null>(null)
   const [missedSessionExcuse, setMissedSessionExcuse] = useState<string | null>(null)
 
   // Performance tracking state
   const [currentSessionWeights, setCurrentSessionWeights] = useState<Record<string, number[]>>({})
+  const [currentSessionPRs, setCurrentSessionPRs] = useState<PersonalRecord[]>([])
   const [setProgressByExercise, setSetProgressByExercise] = useState<Record<string, boolean[]>>({})
   const [totalVolume, setTotalVolume] = useState(0)
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null)
@@ -379,9 +314,16 @@ export default function App() {
   const [contentDataVersion, setContentDataVersion] = useState(0)
   const contentRealtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingContentInvalidationRef = useRef(false)
+  const latestCompletedSessionSyncRef = useRef<{
+    localId: string
+    persistedId: string | null
+    effortRating?: number
+    notes?: string
+  } | null>(null)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const hasHydratedRef = useRef(false)
+  const hasTrackedAppOpenedRef = useRef(false)
   const firstActiveSyncUserRef = useRef<string | null>(null)
 
   // Round timer state
@@ -411,6 +353,7 @@ export default function App() {
   const [selectedExercise, setSelectedExercise] = useState<EnhancedExerciseData | null>(null)
   const [favoriteExercises, setFavoriteExercises] = useState<Set<string>>(new Set())
   const [completedExercises, setCompletedExercises] = useState<Set<string>>(new Set())
+  const [workoutBuilderPrefillExercise, setWorkoutBuilderPrefillExercise] = useState<{ id: string; name: string; videoUrl?: string | null } | null>(null)
 
   // Screen transition state
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back' | null>(null)
@@ -423,34 +366,15 @@ export default function App() {
   // Scroll position preservation for screens (stores scrollTop by screen name)
   const screenScrollPositionsRef = useRef<Record<string, number>>({})
 
-  const goBack = useCallback((fallback: Screen = 'home') => {
-    const previous = navigationHistoryRef.current.pop()
-
-    if (!previous) {
-      if (currentScreen !== fallback) {
-        skipNextHistoryPushRef.current = true
-        setCurrentScreen(fallback)
-      }
-      return
-    }
-
-    skipNextHistoryPushRef.current = true
-    setCurrentScreen(previous)
-  }, [currentScreen])
-
-  const resetNavigationTo = useCallback((screen: Screen) => {
-    navigationHistoryRef.current = []
-    skipNextHistoryPushRef.current = true
-    setCurrentScreen(screen)
-  }, [])
-
   // Social state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
   const [selectedWorkout, setSelectedWorkout] = useState<CustomWorkout | null>(null)
+  const [featureUsage, setFeatureUsage] = useState<Record<string, number>>({})
   const [subscriptionGateNow, setSubscriptionGateNow] = useState<number>(() => Date.now())
   const [isStartingMandatorySubscription, setIsStartingMandatorySubscription] = useState(false)
   const [isRefreshingMandatorySubscription, setIsRefreshingMandatorySubscription] = useState(false)
   const [mandatorySubscriptionError, setMandatorySubscriptionError] = useState<string | null>(null)
+  const pendingBillingReturnRef = useRef<PendingBillingReturn | null>(null)
 
   // Loading state for Supabase data
   const [isLoadingSupabaseData, setIsLoadingSupabaseData] = useState(false)
@@ -460,6 +384,151 @@ export default function App() {
   const screenshotScreen = screenshotParams.screen
   const screenshotIntervalMs = screenshotParams.intervalMs
   const screenshotDelayMs = screenshotParams.delayMs
+
+  const navigationContext = useMemo(() => ({
+    isAuthenticated: !!currentUser,
+    onboardingCompleted: currentUser?.onboardingCompleted === true,
+    hasActiveSession: (
+      sessionStartTime !== null ||
+      restTimerEndsAt !== null ||
+      sessionPaused ||
+      pauseStartedAt !== null ||
+      currentScreen === 'workout-session' ||
+      currentScreen === 'rest-timer'
+    ),
+  }), [
+    currentUser,
+    sessionStartTime,
+    restTimerEndsAt,
+    sessionPaused,
+    pauseStartedAt,
+    currentScreen,
+  ])
+
+  const navigateTo = useCallback((screen: Screen, options?: { fallback?: Screen; force?: boolean }) => {
+    if (options?.force || isScreenshotMode) {
+      setCurrentScreen(screen)
+      return
+    }
+
+    // Monetization guard: non-premium users have limited custom workout creations.
+    // Allow editing existing workouts even if the creation cap is reached.
+    if (screen === 'workout-builder' && !selectedWorkout) {
+      const usageCount = featureUsage['custom-workouts']
+      const hasUsageSnapshot = typeof usageCount === 'number'
+      const access = canAccessFeature(currentUser, 'custom-workouts', usageCount)
+      if (hasUsageSnapshot && !access.canAccess) {
+        analytics.track('navigation_blocked', {
+          from: currentScreen,
+          to: screen,
+          redirectTo: 'settings',
+          reason: 'premium-feature-locked',
+          feature: 'custom-workouts',
+        })
+        setNavigationBlockNotice(access.upgradePrompt ?? 'Upgrade to Premium to create more workouts.')
+        setCurrentScreen('settings')
+        return
+      }
+    }
+
+    const decision = resolveNavigation({
+      from: currentScreen,
+      to: screen,
+      fallback: options?.fallback,
+      context: navigationContext,
+    })
+
+    if (decision.blocked) {
+      console.debug(
+        `[navigation] blocked ${currentScreen} -> ${screen} (${decision.reason}); redirected to ${decision.screen}`
+      )
+      analytics.track('navigation_blocked', {
+        from: currentScreen,
+        to: screen,
+        redirectTo: decision.screen,
+        reason: decision.reason ?? 'unknown',
+      })
+
+      if (decision.reason === 'active-session-lock') {
+        setNavigationBlockNotice('Finish or end your active workout first.')
+      }
+
+      if (decision.reason === 'invalid-transition') {
+        setNavigationError({
+          message: 'Navigation state conflict detected.',
+          details: `Blocked transition: ${currentScreen} -> ${screen}`,
+        })
+        setCurrentScreen('navigation-not-set')
+        return
+      }
+    }
+
+    if (decision.screen !== currentScreen) {
+      setCurrentScreen(decision.screen)
+    }
+  }, [currentScreen, navigationContext, isScreenshotMode, selectedWorkout, currentUser, featureUsage])
+
+  const goBack = useCallback((fallback: Screen = 'home') => {
+    const previous = navigationHistoryRef.current.pop()
+    const target = previous ?? fallback
+    if (target === currentScreen) return
+
+    skipNextHistoryPushRef.current = true
+    navigateTo(target, { fallback })
+  }, [currentScreen, navigateTo])
+
+  const resetNavigationTo = useCallback((screen: Screen) => {
+    navigationHistoryRef.current = []
+    skipNextHistoryPushRef.current = true
+    navigateTo(screen, { force: true, fallback: screen })
+  }, [navigateTo])
+
+  const reconcileSessionRuntime = useCallback((source: 'foreground' | 'hydrate') => {
+    if (isScreenshotMode || typeof window === 'undefined' || !hasHydratedRef.current) return
+
+    const normalized = normalizeSessionRuntimeState({
+      screen: currentScreen,
+      sessionStartTime,
+      pausedTime,
+      sessionPaused,
+      pauseStartedAt,
+      restTimerEndsAt,
+      restTimerDuration,
+    })
+
+    const hasChanges = (
+      normalized.screen !== currentScreen
+      || normalized.sessionStartTime !== sessionStartTime
+      || normalized.pausedTime !== pausedTime
+      || normalized.sessionPaused !== sessionPaused
+      || normalized.pauseStartedAt !== pauseStartedAt
+      || normalized.restTimerEndsAt !== restTimerEndsAt
+      || normalized.restTimerDuration !== restTimerDuration
+    )
+
+    if (!hasChanges) return
+
+    console.debug(
+      `[SessionRuntime] Reconciled after ${source}: ${normalized.reason ?? 'state-normalized'}`,
+    )
+
+    if (normalized.screen !== currentScreen) setCurrentScreen(normalized.screen)
+    if (normalized.sessionStartTime !== sessionStartTime) setSessionStartTime(normalized.sessionStartTime)
+    if (normalized.pausedTime !== pausedTime) setPausedTime(normalized.pausedTime)
+    if (normalized.sessionPaused !== sessionPaused) setSessionPaused(normalized.sessionPaused)
+    if (normalized.pauseStartedAt !== pauseStartedAt) setPauseStartedAt(normalized.pauseStartedAt)
+    if (normalized.restTimerEndsAt !== restTimerEndsAt) setRestTimerEndsAt(normalized.restTimerEndsAt)
+    if (normalized.restTimerDuration !== restTimerDuration) setRestTimerDuration(normalized.restTimerDuration)
+  }, [
+    currentScreen,
+    isScreenshotMode,
+    pauseStartedAt,
+    pausedTime,
+    restTimerDuration,
+    restTimerEndsAt,
+    sessionPaused,
+    sessionStartTime,
+  ])
 
   const queueContentInvalidation = useCallback((reason: string) => {
     // Coalesce bursts of realtime events (pipelines can insert many rows).
@@ -506,7 +575,39 @@ export default function App() {
         firstActiveSyncUserRef.current = null
       }
     })()
-  }, [currentUser?.id, currentUser?.onboardingCompleted, currentUser?.firstActiveAt, isScreenshotMode])
+  }, [currentUser, isScreenshotMode])
+
+  useEffect(() => {
+    if (!currentUser || isScreenshotMode) {
+      setFeatureUsage({})
+      return
+    }
+
+    let cancelled = false
+
+    const loadFeatureUsage = async () => {
+      try {
+        const [customWorkoutUsage, learningPathUsage] = await Promise.all([
+          supabaseService.getFeatureUsage('custom-workouts'),
+          supabaseService.getLearningPathUsage(),
+        ])
+        if (cancelled) return
+        setFeatureUsage((prev) => ({
+          ...prev,
+          'custom-workouts': customWorkoutUsage,
+          'learning-paths': learningPathUsage,
+        }))
+      } catch (error) {
+        console.debug('Failed to load feature usage counters:', error)
+      }
+    }
+
+    void loadFeatureUsage()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser, isScreenshotMode])
 
   const shouldShowMandatorySubscriptionGate = useMemo(() => {
     if (isScreenshotMode) return false
@@ -522,13 +623,46 @@ export default function App() {
     subscriptionGateNow,
   ])
 
+  const refreshSubscriptionState = useCallback(async ({ poll }: { poll: boolean }): Promise<boolean> => {
+    const authState = await supabaseService.getAuthState()
+    if (authState.isAuthenticated && authState.user) {
+      setCurrentUser(authState.user)
+      const isPremium = authState.user.isPremium === true
+      if (isPremium || !poll) {
+        return isPremium
+      }
+    } else if (!poll) {
+      return false
+    }
+
+    const isPremiumConfirmed = await stripeService.pollForSubscriptionStatus(4, 1500)
+    if (!isPremiumConfirmed) {
+      return false
+    }
+
+    const refreshedAuthState = await supabaseService.getAuthState()
+    if (refreshedAuthState.isAuthenticated && refreshedAuthState.user) {
+      setCurrentUser(refreshedAuthState.user)
+      return refreshedAuthState.user.isPremium === true
+    }
+
+    return false
+  }, [])
+
   const handleStartMandatorySubscription = useCallback(async () => {
     if (!currentUser) return
     setMandatorySubscriptionError(null)
     setIsStartingMandatorySubscription(true)
+    pendingBillingReturnRef.current = 'checkout'
+    analytics.track('subscription_checkout_started', { source: 'mandatory-gate' })
     try {
       await stripeService.subscribeToPremium()
     } catch (error) {
+      pendingBillingReturnRef.current = null
+      analytics.track('subscription_checkout_failed', {
+        source: 'mandatory-gate',
+        reason: 'launch-failed',
+      })
       const message = error instanceof Error
         ? error.message
         : 'Unable to start subscription checkout right now.'
@@ -543,23 +677,21 @@ export default function App() {
     setMandatorySubscriptionError(null)
     setIsRefreshingMandatorySubscription(true)
     try {
-      const authState = await supabaseService.getAuthState()
-      if (authState.isAuthenticated && authState.user) {
-        setCurrentUser(authState.user)
-        if (authState.user.isPremium) return
-      }
-
-      const isPremiumConfirmed = await stripeService.pollForSubscriptionStatus(4, 1500)
+      const isPremiumConfirmed = await refreshSubscriptionState({ poll: true })
       if (!isPremiumConfirmed) {
+        analytics.track('subscription_checkout_failed', {
+          source: 'mandatory-gate',
+          reason: 'not-active-after-refresh',
+        })
         setMandatorySubscriptionError('Subscription not active yet. Complete checkout, then try again.')
         return
       }
-
-      const refreshedAuthState = await supabaseService.getAuthState()
-      if (refreshedAuthState.isAuthenticated && refreshedAuthState.user) {
-        setCurrentUser(refreshedAuthState.user)
-      }
     } catch (error) {
+      analytics.track('subscription_status_refresh_failed', {
+        source: 'mandatory-gate',
+        flow: 'checkout',
+        reason: 'refresh-failed',
+      })
       const message = error instanceof Error
         ? error.message
         : 'Unable to refresh subscription status.'
@@ -568,11 +700,23 @@ export default function App() {
       setIsRefreshingMandatorySubscription(false)
       setSubscriptionGateNow(Date.now())
     }
-  }, [])
+  }, [refreshSubscriptionState])
 
   useEffect(() => {
     setSubscriptionGateNow(Date.now())
   }, [currentUser?.id, currentUser?.isPremium, currentUser?.createdAt, currentUser?.onboardingCompleted])
+
+  useEffect(() => {
+    if (isScreenshotMode || hasTrackedAppOpenedRef.current) return
+    if (!loadingComplete) return
+
+    hasTrackedAppOpenedRef.current = true
+    analytics.track('app_opened', {
+      authenticated: !!currentUser,
+      onboardingCompleted: currentUser?.onboardingCompleted === true,
+      screen: currentScreen,
+    })
+  }, [currentScreen, currentUser, isScreenshotMode, loadingComplete])
 
   useEffect(() => {
     if (!currentUser || currentUser.isPremium || currentUser.onboardingCompleted !== true || isScreenshotMode) {
@@ -584,7 +728,7 @@ export default function App() {
     }, 60000)
 
     return () => clearInterval(interval)
-  }, [currentUser?.id, currentUser?.isPremium, currentUser?.onboardingCompleted, isScreenshotMode])
+  }, [currentUser, isScreenshotMode])
 
   useEffect(() => {
     if (!currentUser || currentUser.isPremium || currentUser.onboardingCompleted !== true || isScreenshotMode) {
@@ -603,13 +747,7 @@ export default function App() {
     }, msUntilRequired)
 
     return () => clearTimeout(timeout)
-  }, [
-    currentUser?.id,
-    currentUser?.isPremium,
-    currentUser?.onboardingCompleted,
-    isScreenshotMode,
-    subscriptionRequiredAt,
-  ])
+  }, [currentUser, isScreenshotMode, subscriptionRequiredAt])
 
   useEffect(() => {
     const previous = lastHistoryScreenRef.current
@@ -641,11 +779,20 @@ export default function App() {
     return generatedProgram[programIndex] ?? null
   }, [generatedProgram, getProgramIndexForDay])
 
-  const nextPlannedDayIndex = useMemo(() => {
-    const nextIndex = weekProgress.findIndex(d => d.planned && !d.completed)
-    if (nextIndex !== -1) return nextIndex
-    return weekProgress.findIndex(d => d.planned)
-  }, [weekProgress])
+  const missedSessionRecovery = useMemo(() => {
+    return getMissedSessionRecoveryState({
+      weekProgress,
+      todayIndex: getTodayIndex(),
+      lastWorkoutDate,
+      currentStreak,
+    })
+  }, [weekProgress, lastWorkoutDate, currentStreak])
+
+  const nextPlannedDayIndex = missedSessionRecovery.nextSessionDayIndex
+  const missedPlannedSessionCount = missedSessionRecovery.overdueDayIndexes.length
+  const carryOverSessionDayLabel = missedSessionRecovery.carryOverDayIndex !== null
+    ? (weekProgress[missedSessionRecovery.carryOverDayIndex]?.day ?? null)
+    : null
 
   const programDayIndex = (sessionStartTime && sessionSource === 'program')
     ? currentDayIndex
@@ -730,18 +877,28 @@ export default function App() {
     }
   }, [programSession, todayProgramOverride])
 
-  const displaySession = sessionOverride ?? effectiveProgramSession
+  const sessionAdjustmentMode = normalizeSessionAdjustmentMode(todayProgramOverride?.readinessMode)
+
+  const adjustedProgramSession = useMemo(() => {
+    return adjustSessionForReadiness({
+      session: effectiveProgramSession,
+      mode: sessionAdjustmentMode,
+      sport: selectedSport,
+    })
+  }, [effectiveProgramSession, sessionAdjustmentMode, selectedSport])
+
+  const displaySession = sessionOverride ?? adjustedProgramSession
 
   const todayWorkoutExerciseIds = useMemo(() => {
     const ids = new Set<string>()
-    const session = effectiveProgramSession
+    const session = adjustedProgramSession
     if (session?.exercises?.length) {
       session.exercises.forEach((ex) => {
         if (ex?.id) ids.add(ex.id)
       })
     }
     return ids
-  }, [effectiveProgramSession])
+  }, [adjustedProgramSession])
 
   const todayActiveDrillIds = useMemo(() => {
     if (!todayProgramOverride) return []
@@ -795,8 +952,9 @@ export default function App() {
       || (todayProgramOverride.removedDrillIds?.length ?? 0) > 0
       || (todayProgramOverride.drillDoneIds?.length ?? 0) > 0
       || !!todayProgramOverride.drillsLoggedAt
+      || !!sessionAdjustmentMode
     )
-  }, [todayProgramOverride])
+  }, [todayProgramOverride, sessionAdjustmentMode])
 
   // Calculate completed and planned sessions
   const completedSessions = weekProgress.filter(d => d.planned && d.completed).length
@@ -834,16 +992,16 @@ export default function App() {
       try {
         // Check auth state FIRST - if not authenticated, stay on auth-login
         const authState = await supabaseService.getAuthState()
-        console.log('[Hydration] Auth state:', authState)
         if (!authState.isAuthenticated || !authState.user) {
           // User is not logged in - keep them on auth-login screen
-          console.log('[Hydration] Not authenticated, staying on auth-login')
           setCurrentUser(null)
+          setFeatureUsage({})
           setFavoriteExercises(new Set())
           setCompletedExercises(new Set())
           setTodayOverridesByDate({})
           setSetProgressByExercise({})
           setCurrentSessionWeights({})
+          setCurrentSessionPRs([])
           setTotalVolume(0)
           setLoadingContext('default')
           setCurrentScreen('auth-login')
@@ -852,7 +1010,6 @@ export default function App() {
         }
 
         // User is authenticated - set current user and restore app state
-        console.log('[Hydration] User authenticated:', authState.user.username)
         setCurrentUser(authState.user)
         if (authState.user.sport) setSelectedSport(authState.user.sport)
         if (authState.user.trainingDays) setTrainingDays(authState.user.trainingDays)
@@ -868,7 +1025,6 @@ export default function App() {
         const stored = localStorage.getItem(STORAGE_KEY)
         if (!stored) {
           // No saved state but user is authenticated - reset to defaults
-          console.log('[Hydration] No localStorage data, resetting to defaults')
           setGeneratedProgram(null)
           setCurrentStreak(0)
           setLongestStreak(0)
@@ -878,55 +1034,64 @@ export default function App() {
           setTodayOverridesByDate({})
           setSetProgressByExercise({})
           setCurrentSessionWeights({})
+          setCurrentSessionPRs([])
           setTotalVolume(0)
           setLoadingContext('default')
           const needsOnboarding = authState.user.onboardingCompleted !== true
           setCurrentScreen(prev => {
-            const authScreens: Screen[] = ['auth-login', 'auth-signup']
-            const onboardingResumeScreen = prev === 'onboarding-generating' ? 'onboarding-equipment' : prev
-            const newScreen = needsOnboarding
-              ? (ONBOARDING_FLOW_SCREENS.has(onboardingResumeScreen) ? onboardingResumeScreen : 'onboarding-sport')
-              : (authScreens.includes(prev) ? 'loading' : prev)
-            console.log('[Hydration] Screen transition:', prev, '->', newScreen)
+		            const newScreen = resolveHydratedScreenWithoutStorage(prev, needsOnboarding)
             return newScreen
           })
           hasHydratedRef.current = true
           return
         }
-        console.log('[Hydration] Found localStorage data, restoring state')
         const data = JSON.parse(stored)
 
         // Restore screen, but never restore to auth screens for authenticated users
         const savedScreen = data.currentScreen ?? 'home'
-        const authScreens: Screen[] = ['auth-login', 'auth-signup', 'loading']
-        const normalizedScreen = typeof savedScreen === 'string' ? savedScreen : 'home'
         const needsOnboarding = authState.user.onboardingCompleted !== true
-        if (!IMPLEMENTED_SCREENS.has(normalizedScreen as Screen)) {
-          setNavigationError({
-            message: 'The previous route is not available in this build.',
-            details: `Saved route: ${String(normalizedScreen)}`
-          })
-          setCurrentScreen('navigation-not-set')
+	        const restoreDecision = resolvePersistedHydratedScreen(savedScreen, data, needsOnboarding)
+	        if (restoreDecision.navigationError) {
+	          setNavigationError(restoreDecision.navigationError)
+	          setCurrentScreen(restoreDecision.screen)
         } else {
           setNavigationError(null)
-          const parsed = normalizedScreen as Screen
-          const restoredProgram = Array.isArray(data.generatedProgram) ? data.generatedProgram : null
-          const hasRestoredProgram = !!restoredProgram && restoredProgram.length > 0
-          if (needsOnboarding) {
-            let onboardingScreen: Screen = ONBOARDING_FLOW_SCREENS.has(parsed) ? parsed : 'onboarding-sport'
-            if (onboardingScreen === 'onboarding-generating') {
-              onboardingScreen = 'onboarding-equipment'
-            }
-            if (
-              (onboardingScreen === 'onboarding-program-explainer' || onboardingScreen === 'onboarding-app-tour')
-              && !hasRestoredProgram
-            ) {
-              onboardingScreen = 'onboarding-equipment'
-            }
-            setCurrentScreen(onboardingScreen)
-          } else {
-            setCurrentScreen(authScreens.includes(parsed) ? 'home' : parsed)
+	          if (
+	            restoreDecision.requestedScreen
+	            && restoreDecision.reason
+	            && restoreDecision.screen !== restoreDecision.requestedScreen
+	          ) {
+	            console.debug(
+	              `[Hydration] Redirecting restored screen ${restoreDecision.requestedScreen} -> ${restoreDecision.screen} (${restoreDecision.reason})`
+	            )
           }
+
+          const normalizedRuntime = normalizeSessionRuntimeState({
+	            screen: restoreDecision.screen,
+            sessionStartTime: data.sessionStartTime ?? null,
+            pausedTime: data.pausedTime ?? 0,
+            sessionPaused: data.sessionPaused ?? false,
+            pauseStartedAt: data.pauseStartedAt ?? null,
+            restTimerEndsAt: data.restTimerEndsAt ?? null,
+            restTimerDuration: data.restTimerDuration ?? 0,
+          })
+
+	          if (normalizedRuntime.screen !== restoreDecision.screen || normalizedRuntime.reason) {
+            console.debug(
+	              `[Hydration] Normalized session runtime for ${restoreDecision.screen} -> ${normalizedRuntime.screen} (${normalizedRuntime.reason ?? 'state-normalized'})`
+            )
+          }
+
+          setCurrentScreen(normalizedRuntime.screen)
+
+          setCurrentExerciseIndex(data.currentExerciseIndex ?? 0)
+          setCurrentSet(data.currentSet ?? 1)
+          setSessionStartTime(normalizedRuntime.sessionStartTime)
+          setPausedTime(normalizedRuntime.pausedTime)
+          setRestTimerEndsAt(normalizedRuntime.restTimerEndsAt)
+          setRestTimerDuration(normalizedRuntime.restTimerDuration)
+          setSessionPaused(normalizedRuntime.sessionPaused)
+          setPauseStartedAt(normalizedRuntime.pauseStartedAt)
         }
 
         setGeneratedProgram(data.generatedProgram ?? null)
@@ -934,15 +1099,6 @@ export default function App() {
         setSessionOverride(data.sessionOverride ?? null)
         setSessionSource(data.sessionSource ?? null)
         setTodayOverridesByDate(data.todayOverridesByDate ?? {})
-
-        setCurrentExerciseIndex(data.currentExerciseIndex ?? 0)
-        setCurrentSet(data.currentSet ?? 1)
-        setSessionStartTime(data.sessionStartTime ?? null)
-        setPausedTime(data.pausedTime ?? 0)
-        setRestTimerEndsAt(data.restTimerEndsAt ?? null)
-        setRestTimerDuration(data.restTimerDuration ?? 0)
-        setSessionPaused(data.sessionPaused ?? false)
-        setPauseStartedAt(data.pauseStartedAt ?? null)
 
         setSetProgressByExercise(data.setProgressByExercise ?? {})
         setWeekProgress(data.weekProgress ?? DEFAULT_WEEK_PROGRESS)
@@ -952,6 +1108,7 @@ export default function App() {
         setSessionHistory(data.sessionHistory ?? [])
         setMissedSessionExcuse(data.missedSessionExcuse ?? null)
         setCurrentSessionWeights(data.currentSessionWeights ?? {})
+        setCurrentSessionPRs(data.currentSessionPRs ?? [])
         setTotalVolume(data.totalVolume ?? 0)
         setActivityLogs(data.activityLogs ?? [])
         setSelectedLearningPath(data.selectedLearningPath ?? null)
@@ -967,7 +1124,7 @@ export default function App() {
         if (authState.user.sessionMinutes === undefined && data.sessionMinutes !== undefined) setSessionMinutes(data.sessionMinutes)
         if (authState.user.injuryNotes === undefined && typeof data.injuryNotes === 'string') setInjuryNotes(data.injuryNotes)
 
-        if (data.sessionStartTime && ['workout-session', 'rest-timer'].includes(savedScreen)) {
+	        if (restoreDecision.showResumePrompt) {
           setShowResumePrompt(true)
         }
       } catch (error) {
@@ -980,12 +1137,88 @@ export default function App() {
     hydrateState()
   }, [isScreenshotMode])
 
+  useEffect(() => {
+    if (isScreenshotMode || typeof window === 'undefined') return
+
+    const maybeRefreshSubscriptionOnReturn = () => {
+      const pendingBillingReturn = pendingBillingReturnRef.current
+      if (!pendingBillingReturn) return
+
+      pendingBillingReturnRef.current = null
+
+      void refreshSubscriptionState({ poll: pendingBillingReturn === 'checkout' })
+        .then((isPremium) => {
+          if (pendingBillingReturn === 'checkout') {
+            analytics.track('subscription_checkout_returned', {
+              source: 'visibility',
+              premiumActive: isPremium,
+            })
+
+            if (isPremium) {
+              analytics.track('subscription_checkout_completed', { source: 'visibility' })
+            }
+
+            return
+          }
+
+          analytics.track('subscription_portal_returned', {
+            source: 'visibility',
+            premiumActive: isPremium,
+          })
+        })
+        .catch((error) => {
+          console.debug('Failed to refresh subscription status on return:', error)
+          if (pendingBillingReturn === 'checkout') {
+            analytics.track('subscription_checkout_failed', {
+              source: 'visibility',
+              reason: 'refresh-failed',
+            })
+          } else {
+            analytics.track('subscription_portal_failed', {
+              source: 'visibility',
+              reason: 'refresh-failed',
+            })
+          }
+
+          analytics.track('subscription_status_refresh_failed', {
+            source: 'visibility',
+            flow: pendingBillingReturn,
+            reason: 'refresh-failed',
+          })
+        })
+        .finally(() => {
+          setSubscriptionGateNow(Date.now())
+        })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reconcileSessionRuntime('foreground')
+        maybeRefreshSubscriptionOnReturn()
+      }
+    }
+
+    const handleWindowResume = () => {
+      reconcileSessionRuntime('foreground')
+      maybeRefreshSubscriptionOnReturn()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleWindowResume)
+    window.addEventListener('pageshow', handleWindowResume)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleWindowResume)
+      window.removeEventListener('pageshow', handleWindowResume)
+    }
+  }, [isScreenshotMode, reconcileSessionRuntime, refreshSubscriptionState])
+
   // Deep link handler for iOS auth callbacks (email verification, password reset)
   useEffect(() => {
     if (isScreenshotMode) return
 
     const cleanup = initDeepLinkHandler(async (type) => {
-      console.log('[DeepLink] Auth callback received:', type)
 
       // Refresh auth state after deep link auth
       const authState = await supabaseService.getAuthState()
@@ -997,7 +1230,7 @@ export default function App() {
           // Email verified - proceed to app
           setPendingVerificationEmail(null)
           if (authState.user.onboardingCompleted !== true) {
-            setCurrentScreen('onboarding-sport')
+            resetNavigationTo('onboarding-sport')
           } else {
             resetNavigationTo('loading')
           }
@@ -1007,16 +1240,80 @@ export default function App() {
         } else {
           // Generic auth - go to home or onboarding
           if (authState.user.onboardingCompleted !== true) {
-            setCurrentScreen('onboarding-sport')
+            resetNavigationTo('onboarding-sport')
           } else {
             resetNavigationTo('loading')
           }
         }
       }
+    }, async (status: SubscriptionReturnStatus) => {
+      pendingBillingReturnRef.current = null
+
+      if (status === 'canceled') {
+        analytics.track('subscription_checkout_canceled', { source: 'deeplink' })
+        setSubscriptionGateNow(Date.now())
+        return
+      }
+
+      setMandatorySubscriptionError(null)
+
+      try {
+        const isPremium = await refreshSubscriptionState({
+          poll: shouldPollSubscriptionStatusAfterReturn(status),
+        })
+
+        if (status === 'portal') {
+          analytics.track('subscription_portal_returned', {
+            source: 'deeplink',
+            premiumActive: isPremium,
+          })
+        } else {
+          analytics.track('subscription_checkout_returned', {
+            source: 'deeplink',
+            premiumActive: isPremium,
+          })
+
+          if (isPremium) {
+            analytics.track('subscription_checkout_completed', { source: 'deeplink' })
+          }
+        }
+
+        if (status === 'success' && !isPremium) {
+          analytics.track('subscription_checkout_failed', {
+            source: 'deeplink',
+            reason: 'not-active-after-return',
+          })
+          setMandatorySubscriptionError('Subscription not active yet. Complete checkout, then try again.')
+        }
+      } catch (error) {
+        analytics.track('subscription_status_refresh_failed', {
+          source: 'deeplink',
+          flow: status,
+          reason: 'refresh-failed',
+        })
+
+        if (status === 'success') {
+          analytics.track('subscription_checkout_failed', {
+            source: 'deeplink',
+            reason: 'refresh-failed',
+          })
+          const message = error instanceof Error
+            ? error.message
+            : 'Unable to refresh subscription status.'
+          setMandatorySubscriptionError(message)
+        } else if (status === 'portal') {
+          analytics.track('subscription_portal_failed', {
+            source: 'deeplink',
+            reason: 'refresh-failed',
+          })
+        }
+      } finally {
+        setSubscriptionGateNow(Date.now())
+      }
     })
 
     return cleanup
-  }, [isScreenshotMode])
+  }, [isScreenshotMode, refreshSubscriptionState, resetNavigationTo])
 
   // Supabase Realtime: invalidate content caches and refresh screens when pipeline publishes new data.
   useEffect(() => {
@@ -1098,6 +1395,7 @@ export default function App() {
           removedDrillIds: Array.isArray(raw?.removedDrillIds) ? raw.removedDrillIds : [],
           drillDoneIds: Array.isArray(raw?.drillDoneIds) ? raw.drillDoneIds : [],
           drillsLoggedAt: typeof raw?.drillsLoggedAt === 'string' ? raw.drillsLoggedAt : null,
+          readinessMode: normalizeSessionAdjustmentMode(raw?.readinessMode),
           updatedAt,
         }
 
@@ -1155,12 +1453,6 @@ export default function App() {
       (payload: any) => {
         const row = payload?.new ?? null
         if (!row) return
-
-        console.log('[realtime] Profile updated:', {
-          isPremium: row.is_premium,
-          subscriptionStatus: row.subscription_status,
-          subscriptionPeriodEnd: row.subscription_period_end,
-        })
 
         // Update currentUser with the new profile data from database
         setCurrentUser((prev) => {
@@ -1238,6 +1530,7 @@ export default function App() {
       missedSessionExcuse,
       setProgressByExercise,
       currentSessionWeights,
+      currentSessionPRs,
       totalVolume,
       activityLogs,
       selectedLearningPath,
@@ -1282,6 +1575,7 @@ export default function App() {
     missedSessionExcuse,
     setProgressByExercise,
     currentSessionWeights,
+    currentSessionPRs,
     totalVolume,
     activityLogs,
     selectedLearningPath,
@@ -1294,9 +1588,20 @@ export default function App() {
     }
   }, [sessionStartTime, sessionSource])
 
+  useEffect(() => {
+    generatedProgramRef.current = generatedProgram
+  }, [generatedProgram])
+
   // Fetch session and activity data from Supabase when user authenticates
   useEffect(() => {
     if (!currentUser || isScreenshotMode) return
+    const fallbackSport = currentUser.sport ?? 'wrestling'
+    const fallbackDays = currentUser.trainingDays ?? 4
+    const fallbackLevel = currentUser.experienceLevel ?? 'beginner'
+    const fallbackEquipment = currentUser.equipment ?? null
+    const fallbackPrimaryGoal = currentUser.primaryGoal ?? 'balanced'
+    const fallbackCombatSessions = currentUser.combatSessionsPerWeek ?? 0
+    const fallbackSessionCap = currentUser.sessionMinutes ?? 45
 
     const fetchSupabaseData = async () => {
       setIsLoadingSupabaseData(true)
@@ -1308,7 +1613,8 @@ export default function App() {
           // Don't clear program data if we're in the middle of onboarding
           // (the user may have already generated a program in the equipment step)
           // Only clear if there's no generated program yet
-          if (!generatedProgram || generatedProgram.length === 0) {
+          const inProgressProgram = generatedProgramRef.current
+          if (!inProgressProgram || inProgressProgram.length === 0) {
             setProgramId(null)
             setSavedProgramSessions(null)
             setHasProgramChanges(false)
@@ -1324,30 +1630,30 @@ export default function App() {
           supabaseFavorites,
           supabaseCompletions,
           supabaseTodayOverride,
+          supabaseLearningPathProgress,
         ] = await Promise.all([
           supabaseService.getSessionLogs(),
           supabaseService.getActivityLogs(),
           supabaseService.getExerciseFavorites(),
           supabaseService.getExerciseCompletions(),
           supabaseService.getWorkoutDayOverride(todayKey),
+          supabaseService.getLearningPathProgress(),
         ])
 
         // Program + state
         let programSnapshot = await supabaseService.getActiveProgram()
         if (!programSnapshot) {
-          const fallbackSport = currentUser.sport ?? selectedSport
-          const fallbackDays = currentUser.trainingDays ?? trainingDays
           const blueprint = generateWeeklyProgram(fallbackSport, fallbackDays, {
-            level: currentUser.experienceLevel ?? userExperienceLevel,
-            equipment: currentUser.equipment ?? equipment,
-            primaryGoal: currentUser.primaryGoal ?? primaryGoal,
-            combatSessionsPerWeek: currentUser.combatSessionsPerWeek ?? combatSessionsPerWeek,
-            sessionMinutes: currentUser.sessionMinutes ?? sessionMinutes,
+            level: fallbackLevel,
+            equipment: fallbackEquipment,
+            primaryGoal: fallbackPrimaryGoal,
+            combatSessionsPerWeek: fallbackCombatSessions,
+            sessionMinutes: fallbackSessionCap,
           })
           const sessions = await supabaseService.resolveProgramSessionsToLibraryExercises({
             sport: fallbackSport,
             sessions: blueprint,
-            equipment: currentUser.equipment ?? equipment,
+            equipment: fallbackEquipment,
           })
           programSnapshot = await supabaseService.createProgram({
             sport: fallbackSport,
@@ -1361,16 +1667,16 @@ export default function App() {
           const regenSport = programSnapshot.sport
           const regenDays = programSnapshot.trainingDays
           const blueprint = generateWeeklyProgram(regenSport, regenDays, {
-            level: currentUser.experienceLevel ?? userExperienceLevel,
-            equipment: currentUser.equipment ?? equipment,
-            primaryGoal: currentUser.primaryGoal ?? primaryGoal,
-            combatSessionsPerWeek: currentUser.combatSessionsPerWeek ?? combatSessionsPerWeek,
-            sessionMinutes: currentUser.sessionMinutes ?? sessionMinutes,
+            level: fallbackLevel,
+            equipment: fallbackEquipment,
+            primaryGoal: fallbackPrimaryGoal,
+            combatSessionsPerWeek: fallbackCombatSessions,
+            sessionMinutes: fallbackSessionCap,
           })
           const sessions = await supabaseService.resolveProgramSessionsToLibraryExercises({
             sport: regenSport,
             sessions: blueprint,
-            equipment: currentUser.equipment ?? equipment,
+            equipment: fallbackEquipment,
           })
           programSnapshot = await supabaseService.createProgram({
             sport: regenSport,
@@ -1390,11 +1696,11 @@ export default function App() {
           setProgramMeta({
             sport: programSnapshot.sport,
             trainingDays: programSnapshot.trainingDays,
-            equipment: currentUser.equipment ?? equipment,
-            level: currentUser.experienceLevel ?? userExperienceLevel,
-            primaryGoal: currentUser.primaryGoal ?? primaryGoal,
-            combatSessionsPerWeek: currentUser.combatSessionsPerWeek ?? combatSessionsPerWeek,
-            sessionMinutes: currentUser.sessionMinutes ?? sessionMinutes,
+            equipment: fallbackEquipment,
+            level: fallbackLevel,
+            primaryGoal: fallbackPrimaryGoal,
+            combatSessionsPerWeek: fallbackCombatSessions,
+            sessionMinutes: fallbackSessionCap,
           })
 
           const programState = await supabaseService.getProgramState()
@@ -1423,13 +1729,44 @@ export default function App() {
 
         // Merge with localStorage data - Supabase takes precedence
         if (supabaseSessionLogs.length > 0) {
-          setSessionHistory(supabaseSessionLogs)
+          setSessionHistory((prev) => {
+            const prsById = new Map(
+              prev
+                .filter((log) => Array.isArray(log.prs) && log.prs.length > 0)
+                .map((log) => [log.id, log.prs ?? []] as const)
+            )
+
+            const prsByComposite = new Map(
+              prev
+                .filter((log) => Array.isArray(log.prs) && log.prs.length > 0)
+                .map((log) => [`${log.sessionId}|${String(log.date).slice(0, 10)}`, log.prs ?? []] as const)
+            )
+
+            return supabaseSessionLogs.map((log) => {
+              const byId = prsById.get(log.id)
+              const byComposite = prsByComposite.get(`${log.sessionId}|${String(log.date).slice(0, 10)}`)
+              return {
+                ...log,
+                prs: byId ?? byComposite ?? log.prs,
+              }
+            })
+          })
         }
         if (supabaseActivityLogs.length > 0) {
           setActivityLogs(supabaseActivityLogs)
         }
         setFavoriteExercises(supabaseFavorites)
         setCompletedExercises(supabaseCompletions)
+        setLearningPathProgress((prev) => {
+          const merged = { ...prev }
+          for (const [pathId, progress] of Object.entries(supabaseLearningPathProgress ?? {})) {
+            const previous = merged[pathId]
+            merged[pathId] = typeof previous === 'number'
+              ? Math.max(previous, progress)
+              : progress
+          }
+          return merged
+        })
         if (currentUser.equipment !== undefined) setEquipment(currentUser.equipment ?? null)
         if (currentUser.weightUnit) setWeightUnit(currentUser.weightUnit)
         if (currentUser.experienceLevel) setUserExperienceLevel(currentUser.experienceLevel)
@@ -1453,6 +1790,7 @@ export default function App() {
             removedDrillIds: Array.isArray(raw?.removedDrillIds) ? raw.removedDrillIds : [],
             drillDoneIds: Array.isArray(raw?.drillDoneIds) ? raw.drillDoneIds : [],
             drillsLoggedAt: typeof raw?.drillsLoggedAt === 'string' ? raw.drillsLoggedAt : null,
+            readinessMode: normalizeSessionAdjustmentMode(raw?.readinessMode),
             updatedAt: supabaseTodayOverride.updatedAt,
           }
 
@@ -1475,13 +1813,14 @@ export default function App() {
     }
 
     fetchSupabaseData()
-  }, [currentUser?.id, currentUser?.onboardingCompleted, isScreenshotMode])
+  }, [currentUser, isScreenshotMode, todayKey])
 
-  const todayOverrideUpdatedAt = todayOverridesByDate[todayKey]?.updatedAt
+  const todayOverride = todayOverridesByDate[todayKey]
+  const todayOverrideUpdatedAt = todayOverride?.updatedAt
 
   useEffect(() => {
     if (!currentUser || isScreenshotMode) return
-    const override = todayOverridesByDate[todayKey]
+    const override = todayOverride
     if (!override) return
 
     if (todayOverridePersistTimeoutRef.current) {
@@ -1498,7 +1837,7 @@ export default function App() {
         todayOverridePersistTimeoutRef.current = null
       }
     }
-  }, [currentUser?.id, isScreenshotMode, todayKey, todayOverrideUpdatedAt])
+  }, [currentUser, isScreenshotMode, todayKey, todayOverride, todayOverrideUpdatedAt])
 
   useEffect(() => {
     if (currentScreen !== 'loading' || !loadingComplete) return
@@ -1506,15 +1845,15 @@ export default function App() {
     if (isGeneratingOnboardingProgram) return
     setLoadingContext('default')
     if (currentUser && currentUser.onboardingCompleted !== true) {
-      setCurrentScreen('onboarding-sport')
+      navigateTo('onboarding-sport')
       return
     }
     if (!generatedProgram || generatedProgram.length === 0) {
-      setCurrentScreen('onboarding-sport')
+      navigateTo('onboarding-sport')
     } else {
-      setCurrentScreen('home')
+      navigateTo('home')
     }
-  }, [currentScreen, loadingComplete, isLoadingSupabaseData, isGeneratingOnboardingProgram, generatedProgram, currentUser])
+  }, [currentScreen, loadingComplete, isLoadingSupabaseData, isGeneratingOnboardingProgram, generatedProgram, currentUser, navigateTo])
 
   useEffect(() => {
     if (currentScreen !== 'onboarding-generating') return
@@ -1525,9 +1864,9 @@ export default function App() {
     // If this screen was restored from persisted state without an active generation task, recover immediately.
     if (!isGeneratingOnboardingProgram) {
       if (generatedProgram && generatedProgram.length > 0) {
-        setCurrentScreen('onboarding-program-explainer')
+        navigateTo('onboarding-program-explainer')
       } else {
-        setCurrentScreen('onboarding-equipment')
+        navigateTo('onboarding-equipment')
       }
       return
     }
@@ -1539,13 +1878,22 @@ export default function App() {
     }, 10000)
 
     return () => clearTimeout(timeoutId)
-  }, [currentScreen, isGeneratingOnboardingProgram, generatedProgram, onboardingGenerationError])
+  }, [currentScreen, isGeneratingOnboardingProgram, generatedProgram, onboardingGenerationError, navigateTo])
 
   useEffect(() => {
     if (currentScreen === 'navigation-not-set') return
     if (!navigationError) return
     setNavigationError(null)
   }, [currentScreen, navigationError])
+
+  useEffect(() => {
+    if (!navigationBlockNotice) return
+    const timeoutId = setTimeout(() => {
+      setNavigationBlockNotice(null)
+    }, 2200)
+
+    return () => clearTimeout(timeoutId)
+  }, [navigationBlockNotice])
 
   useEffect(() => {
     if (!isScreenshotMode || !screenshotScreen) return
@@ -1753,18 +2101,11 @@ export default function App() {
 
   // Check for missed sessions
   useEffect(() => {
-    if (!lastWorkoutDate || !hasHydratedRef.current) return
-
-    const today = new Date().toDateString()
-    const lastWorkout = new Date(lastWorkoutDate).toDateString()
-    const daysSinceLastWorkout = Math.floor(
-      (new Date(today).getTime() - new Date(lastWorkout).getTime()) / (1000 * 60 * 60 * 24)
-    )
-
-    if (daysSinceLastWorkout > 1 && currentStreak > 0) {
-      setCurrentScreen('missed-session-accountability')
+    if (!hasHydratedRef.current) return
+    if (missedSessionRecovery.shouldPromptAccountability) {
+      navigateTo('missed-session-accountability')
     }
-  }, [lastWorkoutDate, currentStreak])
+  }, [missedSessionRecovery.shouldPromptAccountability, navigateTo])
 
   // Update streak when session is completed
   const updateStreak = useCallback(() => {
@@ -1921,25 +2262,25 @@ export default function App() {
 
     if (isLastSet && isLastExercise) {
       // Session complete - go to reflection screen
-      setCurrentScreen('post-workout-reflection')
+      navigateTo('post-workout-reflection')
     } else if (isLastSet) {
       // Move to next non-skipped exercise
       const nextIndex = findNextExerciseIndex(currentExerciseIndex)
       if (nextIndex !== null) {
         setRestTimerDuration(exercise.restTime)
         setRestTimerEndsAt(Date.now() + exercise.restTime * 1000)
-        setCurrentScreen('rest-timer')
+        navigateTo('rest-timer')
         setCurrentExerciseIndex(nextIndex)
         setCurrentSet(1)
       } else {
         // No more exercises, go to reflection
-        setCurrentScreen('post-workout-reflection')
+        navigateTo('post-workout-reflection')
       }
     } else {
       // Start rest timer, then next set
       setRestTimerDuration(exercise.restTime)
       setRestTimerEndsAt(Date.now() + exercise.restTime * 1000)
-      setCurrentScreen('rest-timer')
+      navigateTo('rest-timer')
       setCurrentSet(prev => prev + 1)
     }
   }, [
@@ -1956,8 +2297,10 @@ export default function App() {
     pauseStartedAt,
     pausedTime,
     queueUndo,
+    setProgressByExercise,
     isLastNonSkippedExercise,
-    findNextExerciseIndex
+    findNextExerciseIndex,
+    navigateTo
   ])
 
   const handleTogglePause = useCallback(() => {
@@ -1992,9 +2335,9 @@ export default function App() {
   const handleSkipRest = useCallback(() => {
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
-    setCurrentScreen('workout-session')
+    navigateTo('workout-session')
     analytics.track('rest_skipped')
-  }, [])
+  }, [navigateTo])
 
   const handleSelectSet = useCallback((exerciseIndex: number, setNumber: number) => {
     if (!currentSession) return
@@ -2092,9 +2435,9 @@ export default function App() {
     setCurrentSet(1)
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
-    setCurrentScreen('workout-session')
+    navigateTo('workout-session')
     analytics.track('exercise_jumped', { fromIndex: currentExerciseIndex, toIndex: index })
-  }, [currentSession, skippedExercises, currentExerciseIndex])
+  }, [currentSession, skippedExercises, currentExerciseIndex, navigateTo])
 
   // Handle skipping an exercise
   const handleSkipExercise = useCallback((exerciseId: string) => {
@@ -2114,8 +2457,8 @@ export default function App() {
   const handleTimerComplete = useCallback(() => {
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
-    setCurrentScreen('workout-session')
-  }, [])
+    navigateTo('workout-session')
+  }, [navigateTo])
 
   // Handle logging external training activity
   const handleLogActivity = useCallback(async (log: Omit<ActivityLog, 'id'>) => {
@@ -2129,6 +2472,8 @@ export default function App() {
     analytics.track('activity_logged', { type: log.type, duration: log.duration, intensity: log.intensity })
     setEditingActivity(null)
     goBack('home')
+    const successFeedback = getActivitySaveFeedback(false)
+    showToast(successFeedback.message, successFeedback.variant)
     const activityDate = new Date(log.date)
     const weekdayIndex = activityDate.getDay() === 0 ? 6 : activityDate.getDay() - 1
     setWeekProgress(prev => {
@@ -2148,8 +2493,10 @@ export default function App() {
       setActivityLogs(prev => prev.map(a => a.id === tempId ? savedLog : a))
     } catch (error) {
       console.debug('Failed to save activity to Supabase, cached locally:', error)
+      const warningFeedback = getActivitySyncFallbackFeedback(false)
+      showToast(warningFeedback.message, warningFeedback.variant)
     }
-  }, [goBack])
+  }, [goBack, showToast])
 
   // Handle updating an existing activity
   const handleUpdateActivity = useCallback(async (log: Omit<ActivityLog, 'id'>, activityId: string) => {
@@ -2160,20 +2507,24 @@ export default function App() {
     analytics.track('activity_updated', { type: log.type, duration: log.duration, intensity: log.intensity })
     setEditingActivity(null)
     goBack('home')
+    const successFeedback = getActivitySaveFeedback(true)
+    showToast(successFeedback.message, successFeedback.variant)
 
     // Persist to Supabase (background, non-blocking)
     try {
       await supabaseService.updateActivity(activityId, log)
     } catch (error) {
       console.debug('Failed to update activity in Supabase, cached locally:', error)
+      const warningFeedback = getActivitySyncFallbackFeedback(true)
+      showToast(warningFeedback.message, warningFeedback.variant)
     }
-  }, [goBack])
+  }, [goBack, showToast])
 
   // Handle editing an activity - navigate to log-activity with pre-filled data
   const handleEditActivity = useCallback((activity: ActivityLog) => {
     setEditingActivity(activity)
-    setCurrentScreen('log-activity')
-  }, [])
+    navigateTo('log-activity')
+  }, [navigateTo])
 
   // Handle deleting an activity
   const handleDeleteActivity = useCallback(async (activityId: string) => {
@@ -2210,6 +2561,7 @@ export default function App() {
     setSkippedExercises(new Set())
     setSetProgressByExercise(initialSetProgress)
     setCurrentSessionWeights(initialWeights)
+    setCurrentSessionPRs([])
     setTotalVolume(0)
 
     if (source === 'program') {
@@ -2222,16 +2574,16 @@ export default function App() {
       setCurrentDayIndex(dayIndex ?? getTodayIndex())
     }
 
-    setCurrentScreen('workout-session')
+    navigateTo('workout-session')
     analytics.track('workout_started', { sessionId: session.id, source })
-  }, [currentDayIndex])
+  }, [currentDayIndex, navigateTo])
 
   const handleStartSession = useCallback(() => {
     const dayIndex = nextPlannedDayIndex
     const session = dayIndex >= 0 ? getSessionForDay(dayIndex) : null
     // If the user edited "today", start the effective instance instead of the raw template session.
-    beginSession(effectiveProgramSession ?? session, 'program', dayIndex)
-  }, [beginSession, getSessionForDay, nextPlannedDayIndex, effectiveProgramSession])
+    beginSession(adjustedProgramSession ?? session, 'program', dayIndex)
+  }, [beginSession, getSessionForDay, nextPlannedDayIndex, adjustedProgramSession])
 
   const handleStartSessionForDay = useCallback((dayIndex: number) => {
     const session = getSessionForDay(dayIndex)
@@ -2278,6 +2630,7 @@ export default function App() {
         removedDrillIds: [],
         drillDoneIds: [],
         drillsLoggedAt: null,
+        readinessMode: null,
         updatedAt: new Date().toISOString(),
       }
 
@@ -2291,6 +2644,7 @@ export default function App() {
             exerciseEdits: (existing.exerciseEdits as Record<string, Partial<Exercise>> | undefined) ?? {},
             drillDoneIds: Array.isArray(existing.drillDoneIds) ? existing.drillDoneIds : [],
             drillsLoggedAt: existing.drillsLoggedAt ?? null,
+            readinessMode: normalizeSessionAdjustmentMode(existing.readinessMode),
           }
         : defaults
 
@@ -2318,6 +2672,14 @@ export default function App() {
     void supabaseService.deleteWorkoutDayOverride(key)
   }, [])
 
+  const handleSetSessionAdjustmentMode = useCallback((mode: SessionAdjustmentMode) => {
+    mutateTodayOverride((current) => ({
+      ...current,
+      readinessMode: mode === 'full' ? null : mode,
+    }))
+    analytics.track('session_adjustment_selected', { mode })
+  }, [mutateTodayOverride])
+
   const buildAddedExercise = useCallback((params: {
     id: string
     name: string
@@ -2337,6 +2699,49 @@ export default function App() {
       videoUrl: params.videoUrl ?? undefined,
     }
   }, [userExperienceLevel])
+
+  const mapGuidanceExerciseToEnhanced = useCallback((exercise: ExerciseWithGuidance): EnhancedExerciseData => {
+    const athleteData = exercise.athleteData?.[0]
+    const sport = (exercise.sport ?? athleteData?.athleteSport ?? selectedAthlete?.sport ?? selectedSport) as SportType
+
+    return {
+      id: exercise.id,
+      name: exercise.name,
+      category: exercise.category,
+      muscleGroups: exercise.muscleGroups || [],
+      equipment: exercise.equipment || [],
+      description: exercise.description,
+      videoUrl: exercise.videoUrl,
+      isWeighted: exercise.isWeighted,
+      sport,
+      athleteId: athleteData?.athleteId ?? selectedAthlete?.id ?? 'elite-athlete',
+      athleteName: athleteData?.athleteName ?? selectedAthlete?.name ?? 'Elite Athlete',
+      athleteAchievements: athleteData?.athleteAchievements ?? selectedAthlete?.achievements ?? [],
+      reps: athleteData?.reps,
+      sets: athleteData?.sets,
+      weight: athleteData?.weight,
+      duration: athleteData?.duration,
+      frequency: athleteData?.frequency,
+      priority: athleteData?.priority ?? 5,
+      notes: athleteData?.notes,
+      eliteStandard: exercise.eliteStandard,
+      benefitsJudo: exercise.benefitsJudo,
+      benefitsWrestling: exercise.benefitsWrestling,
+      benefitsBjj: exercise.benefitsBjj,
+      difficultyLevel: exercise.difficultyLevel,
+      loggableMetrics: exercise.loggableMetrics,
+    }
+  }, [selectedAthlete, selectedSport])
+
+  const handleAddExerciseToWorkoutBuilder = useCallback((exercise: EnhancedExerciseData) => {
+    setWorkoutBuilderPrefillExercise({
+      id: exercise.id,
+      name: exercise.name,
+      videoUrl: exercise.videoUrl ?? null,
+    })
+    setSelectedWorkout(null)
+    navigateTo('workout-builder')
+  }, [navigateTo])
 
   const handleAddExerciseToToday = useCallback((exercise: EnhancedExerciseData) => {
     mutateTodayOverride((current) => {
@@ -2362,6 +2767,126 @@ export default function App() {
       }
     })
   }, [mutateTodayOverride, programSession, buildAddedExercise])
+
+  const workoutBuilderExerciseIds = useMemo(
+    () => new Set(workoutBuilderPrefillExercise?.id ? [workoutBuilderPrefillExercise.id] : []),
+    [workoutBuilderPrefillExercise?.id]
+  )
+
+  const handleSelectTrainingDrill = useCallback((drill: Drill) => {
+    setSelectedDrill(drill)
+    setRecentlyViewedDrills((prev) => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
+    navigateTo('drill-detail')
+  }, [navigateTo])
+
+  const handleSelectTrainingCategory = useCallback((category: DrillCategory) => {
+    setSelectedCategory(category)
+    setSelectedSubcategory(null)
+    navigateTo('category-list')
+  }, [navigateTo])
+
+  const handleSelectTrainingRoutine = useCallback((routine: Routine) => {
+    setSelectedRoutine(routine)
+    navigateTo('routine-player')
+  }, [navigateTo])
+
+  const handleSelectTrainingAthlete = useCallback((athlete: Athlete) => {
+    setSelectedAthlete(athlete)
+    navigateTo('athlete-detail')
+  }, [navigateTo])
+
+  const handleSelectExerciseSport = useCallback((sport: SportType) => {
+    setSelectedExerciseSport(sport)
+  }, [])
+
+  const handleSelectAthleteExercise = useCallback((exercise: ExerciseWithGuidance) => {
+    const enhancedExercise = mapGuidanceExerciseToEnhanced(exercise)
+    setSelectedExerciseSport(enhancedExercise.sport)
+    setSelectedExercise(enhancedExercise)
+    navigateTo('exercise-detail')
+  }, [mapGuidanceExerciseToEnhanced, navigateTo])
+
+  const handleAddAthleteExerciseToWorkout = useCallback((exercise: ExerciseWithGuidance) => {
+    const enhancedExercise = mapGuidanceExerciseToEnhanced(exercise)
+    handleAddExerciseToWorkoutBuilder(enhancedExercise)
+  }, [mapGuidanceExerciseToEnhanced, handleAddExerciseToWorkoutBuilder])
+
+  const handleSelectExerciseCategory = useCallback((sport: SportType, category: ExerciseCategory) => {
+    setSelectedExerciseSport(sport)
+    setSelectedExerciseCategory(category)
+    navigateTo('sport-category-exercises')
+  }, [navigateTo])
+
+  const handleSelectLibraryExercise = useCallback((exercise: EnhancedExerciseData) => {
+    setSelectedExercise(exercise)
+    navigateTo('exercise-detail')
+  }, [navigateTo])
+
+  const handleOpenBodyPartSelector = useCallback(() => {
+    navigateTo('body-part-selector')
+  }, [navigateTo])
+
+  const handleSelectBodyPart = useCallback((bodyPart: DrillSubcategory) => {
+    setSelectedCategory('injury-prevention')
+    setSelectedSubcategory(bodyPart)
+    navigateTo('category-list')
+  }, [navigateTo])
+
+  const handleCloseRoutinePlayer = useCallback(() => {
+    setSelectedRoutine(null)
+    goBack('training-hub')
+  }, [goBack])
+
+  const handleToggleFavoriteExercise = useCallback((exerciseId: string) => {
+    const shouldFavorite = !favoriteExercises.has(exerciseId)
+    setFavoriteExercises(prev => {
+      const next = new Set(prev)
+      if (next.has(exerciseId)) {
+        next.delete(exerciseId)
+      } else {
+        next.add(exerciseId)
+      }
+      return next
+    })
+    supabaseService.setExerciseFavorite(exerciseId, shouldFavorite).catch((error) => {
+      setFavoriteExercises(prev => {
+        const next = new Set(prev)
+        if (shouldFavorite) {
+          next.delete(exerciseId)
+        } else {
+          next.add(exerciseId)
+        }
+        return next
+      })
+      console.debug('Failed to update exercise favorite:', error)
+    })
+  }, [favoriteExercises])
+
+  const handleMarkExerciseComplete = useCallback((exerciseId: string) => {
+    setCompletedExercises(prev => {
+      const next = new Set(prev)
+      next.add(exerciseId)
+      return next
+    })
+    supabaseService.logExerciseCompletions([exerciseId], undefined, 'manual').catch((error) => {
+      setCompletedExercises(prev => {
+        const next = new Set(prev)
+        next.delete(exerciseId)
+        return next
+      })
+      console.debug('Failed to log exercise completion:', error)
+    })
+  }, [])
+
+  const handleShareExercise = useCallback((exercise: EnhancedExerciseData) => {
+    if (navigator.share) {
+      navigator.share({
+        title: exercise.name,
+        text: `Check out this exercise: ${exercise.name} - used by ${exercise.athleteName}`,
+        url: window.location.href,
+      }).catch(() => {})
+    }
+  }, [])
 
   const handleAddPickerExerciseToToday = useCallback((picked: { id: string; name: string; videoUrl?: string | null }) => {
     mutateTodayOverride((current) => {
@@ -2611,11 +3136,12 @@ export default function App() {
     setRestTimerDuration(0)
     setSetProgressByExercise({})
     setCurrentSessionWeights({})
+    setCurrentSessionPRs([])
     setTotalVolume(0)
     setUndoAction(null)
     setSessionOverride(null)
     setSessionSource(null)
-    setCurrentScreen('home')
+    navigateTo('home')
     analytics.track('session_ended')
   }, [
     currentExerciseIndex,
@@ -2630,13 +3156,28 @@ export default function App() {
     sessionPaused,
     pauseStartedAt,
     pausedTime,
-    queueUndo
+    queueUndo,
+    navigateTo
   ])
 
-  // Handle post-workout reflection complete
-  const handleReflectionComplete = useCallback(async (effortRating: number, notes: string) => {
+  const persistCompletedSession = useCallback(async ({
+    effortRating,
+    notes,
+  }: {
+    effortRating?: number
+    notes?: string
+  }) => {
     if (!currentSession) return
-    // Save session log
+
+    const normalizedNotes = notes?.trim() ? notes.trim() : undefined
+    const dedupedSessionPRs = currentSessionPRs.filter((pr, index, arr) => (
+      arr.findIndex((candidate) => (
+        candidate.exerciseId === pr.exerciseId &&
+        candidate.type === pr.type &&
+        candidate.value === pr.value
+      )) === index
+    ))
+
     const tempId = Date.now().toString()
     const completedExerciseIds = currentSession.exercises.map(ex => ex.id)
     const uuidIds = completedExerciseIds.filter((id) =>
@@ -2649,13 +3190,21 @@ export default function App() {
       completed: true,
       effortRating,
       totalTime: getSessionDuration(),
-      notes,
+      notes: normalizedNotes,
       weight: currentSessionWeights,
       volume: totalVolume,
+      prs: dedupedSessionPRs,
     }
 
-    // Optimistically update local state
+    latestCompletedSessionSyncRef.current = {
+      localId: tempId,
+      persistedId: null,
+      effortRating: sessionLog.effortRating,
+      notes: sessionLog.notes,
+    }
+
     setSessionHistory(prev => [...prev, sessionLog])
+    setEditingCompletedSessionId(tempId)
     setCompletedExercises(prev => {
       const next = new Set(prev)
       // Only persist "completed" markers for real library exercises (UUID-backed).
@@ -2663,7 +3212,6 @@ export default function App() {
       return next
     })
 
-    // Reset session tracking
     setCurrentSessionWeights({})
     setSetProgressByExercise({})
     setTotalVolume(0)
@@ -2673,7 +3221,6 @@ export default function App() {
     setPauseStartedAt(null)
     setUndoAction(null)
 
-    // Update week progress
     setWeekProgress(prev => {
       const newProgress = [...prev]
       const fallbackIndex = newProgress.findIndex(d => d.planned && !d.completed)
@@ -2686,22 +3233,20 @@ export default function App() {
 
       newProgress[targetIndex] = {
         ...targetDay,
-        // Extra/custom sessions should not mutate the user's planned schedule.
-        // Otherwise it corrupts the planned-day -> program-session mapping.
         planned: targetDay.planned,
         completed: true,
       }
       return newProgress
     })
 
-    // Update streak
     updateStreak()
 
-    // Go to session complete screen
-    setCurrentScreen('session-complete')
-    analytics.track('session_completed', { sessionId: currentSession.id, effortRating })
+    navigateTo('session-complete')
+    analytics.track('session_completed', {
+      sessionId: currentSession.id,
+      effortRating: sessionLog.effortRating ?? null,
+    })
 
-    // Persist to Supabase (background, non-blocking)
     try {
       const savedLog = await supabaseService.logSession({
         date: sessionLog.date,
@@ -2712,18 +3257,106 @@ export default function App() {
         notes: sessionLog.notes,
         volume: sessionLog.volume,
       })
-      // Update with the real ID from Supabase
-      setSessionHistory(prev => prev.map(s => s.id === tempId ? savedLog : s))
+
+      setSessionHistory(prev => prev.map(s => (
+        s.id === tempId
+          ? {
+              ...s,
+              ...savedLog,
+              id: savedLog.id,
+              effortRating: s.effortRating,
+              notes: s.notes,
+              prs: s.prs ?? sessionLog.prs,
+            }
+          : s
+      )))
+
+      const latestReflection = latestCompletedSessionSyncRef.current?.localId === tempId
+        ? latestCompletedSessionSyncRef.current
+        : null
+
+      latestCompletedSessionSyncRef.current = latestReflection
+        ? {
+            ...latestReflection,
+            localId: savedLog.id,
+            persistedId: savedLog.id,
+          }
+        : null
+
+      setEditingCompletedSessionId((prev) => (prev === tempId ? savedLog.id : prev))
+
       await supabaseService.logExerciseCompletions(uuidIds, savedLog.id, sessionSource ?? 'session')
+
+      const reflectionChangedAfterCreate = latestReflection != null && (
+        latestReflection.effortRating !== sessionLog.effortRating ||
+        latestReflection.notes !== sessionLog.notes
+      )
+
+      if (reflectionChangedAfterCreate) {
+        await supabaseService.updateSessionLog(savedLog.id, {
+          effortRating: latestReflection.effortRating,
+          notes: latestReflection.notes,
+        })
+      }
     } catch (error) {
       console.debug('Failed to save session to Supabase, cached locally:', error)
     }
+
+    setCurrentSessionPRs([])
     setSessionOverride(null)
     setSessionSource(null)
-  }, [currentSession, currentSessionWeights, totalVolume, getSessionDuration, updateStreak, currentDayIndex, sessionSource])
+  }, [currentSession, currentSessionWeights, currentSessionPRs, totalVolume, getSessionDuration, updateStreak, currentDayIndex, sessionSource, navigateTo])
+
+  // Handle post-workout reflection complete
+  const handleReflectionComplete = useCallback(async (effortRating: number, notes: string) => {
+    const normalizedNotes = notes.trim() || undefined
+
+    if (editingCompletedSessionId) {
+      const isPendingCreatedSession =
+        latestCompletedSessionSyncRef.current?.localId === editingCompletedSessionId &&
+        !latestCompletedSessionSyncRef.current?.persistedId
+
+      setSessionHistory((prev) => prev.map((log) => (
+        log.id === editingCompletedSessionId
+          ? { ...log, effortRating, notes: normalizedNotes }
+          : log
+      )))
+
+      if (
+        latestCompletedSessionSyncRef.current && (
+          latestCompletedSessionSyncRef.current.localId === editingCompletedSessionId ||
+          latestCompletedSessionSyncRef.current.persistedId === editingCompletedSessionId
+        )
+      ) {
+        latestCompletedSessionSyncRef.current = {
+          ...latestCompletedSessionSyncRef.current,
+          effortRating,
+          notes: normalizedNotes,
+        }
+      }
+
+      navigateTo('session-complete')
+
+      if (!isPendingCreatedSession) {
+        try {
+          await supabaseService.updateSessionLog(editingCompletedSessionId, {
+            effortRating,
+            notes: normalizedNotes,
+          })
+        } catch (error) {
+          console.debug('Failed to update session reflection in Supabase:', error)
+        }
+      }
+
+      return
+    }
+
+    await persistCompletedSession({ effortRating, notes: normalizedNotes })
+  }, [editingCompletedSessionId, navigateTo, persistCompletedSession])
 
   // Handle session complete close
   const handleSessionCompleteClose = useCallback(() => {
+    setEditingCompletedSessionId(null)
     setCurrentExerciseIndex(0)
     setCurrentSet(1)
     setSessionStartTime(null)
@@ -2732,25 +3365,26 @@ export default function App() {
     setPauseStartedAt(null)
     setRestTimerEndsAt(null)
     setRestTimerDuration(0)
-    setCurrentScreen('home')
-  }, [])
+    setCurrentSessionPRs([])
+    navigateTo('home')
+  }, [navigateTo])
 
   // Handle missed session accountability
   const handleMissedSessionSubmit = useCallback((excuse: string) => {
     setMissedSessionExcuse(excuse)
     setCurrentStreak(0)
-    setCurrentScreen('home')
-  }, [])
+    navigateTo('home')
+  }, [navigateTo])
 
   const handleMissedSessionDismiss = useCallback(() => {
-    setCurrentScreen('home')
-  }, [])
+    navigateTo('home')
+  }, [navigateTo])
 
   // Round timer handlers
   const handleStartRoundTimer = useCallback((mode: TimerMode) => {
     setRoundTimerMode(mode)
-    setCurrentScreen('round-timer')
-  }, [])
+    navigateTo('round-timer')
+  }, [navigateTo])
 
   const handleRoundTimerComplete = useCallback(() => {
     goBack('home')
@@ -2759,6 +3393,341 @@ export default function App() {
   const handleRoundTimerClose = useCallback(() => {
     goBack('home')
   }, [goBack])
+
+  const handleCloseWeekView = useCallback(() => {
+    goBack('home')
+  }, [goBack])
+
+  const handleWeekViewLogTraining = useCallback(() => {
+    navigateTo('log-activity')
+  }, [navigateTo])
+
+  const handleOpenProgramSessionEditor = useCallback((dayIndex: number) => {
+    setEditingSessionDayIndex(dayIndex)
+    navigateTo('program-session-editor')
+  }, [navigateTo])
+
+  const handleHomeScrollChange = useCallback((scrollTop: number) => {
+    screenScrollPositionsRef.current['home'] = scrollTop
+  }, [])
+
+  const handleWeekViewScrollChange = useCallback((scrollTop: number) => {
+    screenScrollPositionsRef.current['week-view'] = scrollTop
+  }, [])
+
+  const handleCloseTodayEditor = useCallback(() => {
+    goBack('home')
+  }, [goBack])
+
+  const handleEditTodayProgram = useCallback(() => {
+    if (programDayIndex >= 0) {
+      setEditingSessionDayIndex(programDayIndex)
+      navigateTo('program-session-editor')
+    } else {
+      navigateTo('week-view')
+    }
+  }, [programDayIndex, navigateTo])
+
+  const handleOpenTodayEditorDrill = useCallback((drill: Drill) => {
+    setSelectedDrill(drill)
+    setRecentlyViewedDrills((prev) => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
+    navigateTo('drill-detail')
+  }, [navigateTo])
+
+  const handleCloseLogActivity = useCallback(() => {
+    setEditingActivity(null)
+    goBack('home')
+  }, [goBack])
+
+  const handleCloseTrainingStats = useCallback(() => {
+    goBack('home')
+  }, [goBack])
+
+  const handleUpgradeTrainingStats = useCallback(() => {
+    const checkoutAvailability = getBillingCheckoutAvailability(getRuntimeFlagsSnapshot())
+    setNavigationBlockNotice(
+      checkoutAvailability.enabled
+        ? 'Unlock Premium analytics in Subscription settings.'
+        : (checkoutAvailability.message ?? 'Premium upgrades are temporarily unavailable right now.')
+    )
+    navigateTo('settings')
+  }, [navigateTo])
+
+  const handleChangeSettingsSport = useCallback((sport: SportType) => {
+    setSelectedSport(sport)
+    setSelectedExerciseSport(null)
+  }, [])
+
+  const handleSaveSettings = useCallback(async () => {
+    let profileSyncFailed = false
+    let programSyncFailed = false
+
+    if (currentUser) {
+      try {
+        const updatedProfile = await supabaseService.updateProfile(currentUser.id, {
+          sport: selectedSport,
+          trainingDays,
+          equipment,
+          weightUnit,
+          experienceLevel: userExperienceLevel,
+          bodyweightKg,
+          primaryGoal,
+          combatSessionsPerWeek,
+          sessionMinutes,
+          injuryNotes: injuryNotes.trim() ? injuryNotes.trim() : null,
+          onboardingCompleted: true,
+        })
+        setCurrentUser(updatedProfile)
+      } catch (error) {
+        profileSyncFailed = true
+        console.debug('Failed to update profile preferences:', error)
+      }
+    }
+
+    const shouldRegenerate = !programMeta
+      || programMeta.sport !== selectedSport
+      || programMeta.trainingDays !== trainingDays
+      || programMeta.equipment !== equipment
+      || programMeta.level !== userExperienceLevel
+      || programMeta.primaryGoal !== primaryGoal
+      || programMeta.combatSessionsPerWeek !== combatSessionsPerWeek
+      || programMeta.sessionMinutes !== sessionMinutes
+
+    if (shouldRegenerate) {
+      try {
+        const blueprint = generateWeeklyProgram(selectedSport, trainingDays, {
+          level: userExperienceLevel,
+          equipment,
+          primaryGoal,
+          combatSessionsPerWeek,
+          sessionMinutes,
+        })
+        const resolved = await supabaseService.resolveProgramSessionsToLibraryExercises({
+          sport: selectedSport,
+          sessions: blueprint,
+          equipment,
+        })
+
+        if (currentUser) {
+          const newProgram = await supabaseService.createProgram({
+            sport: selectedSport,
+            trainingDays,
+            sessions: resolved,
+            label: 'Original',
+          })
+          setProgramId(newProgram.programId)
+          setGeneratedProgram(newProgram.sessions)
+          setSavedProgramSessions(newProgram.sessions)
+          setHasProgramChanges(false)
+          setProgramMeta({
+            sport: newProgram.sport,
+            trainingDays: newProgram.trainingDays,
+            equipment,
+            level: userExperienceLevel,
+            primaryGoal,
+            combatSessionsPerWeek,
+            sessionMinutes,
+          })
+          const defaultProgress = buildWeekProgress(newProgram.trainingDays)
+          setWeekProgress(defaultProgress)
+          await supabaseService.upsertProgramState(newProgram.programId, defaultProgress)
+        } else {
+          setGeneratedProgram(resolved)
+          setSavedProgramSessions(resolved)
+          setHasProgramChanges(false)
+          setProgramMeta({
+            sport: selectedSport,
+            trainingDays,
+            equipment,
+            level: userExperienceLevel,
+            primaryGoal,
+            combatSessionsPerWeek,
+            sessionMinutes,
+          })
+          const defaultProgress = buildWeekProgress(trainingDays)
+          setWeekProgress(defaultProgress)
+        }
+      } catch (error) {
+        if (currentUser) {
+          programSyncFailed = true
+        }
+        console.debug('Failed to regenerate program:', error)
+        const fallbackProgram = generateWeeklyProgram(selectedSport, trainingDays, {
+          level: userExperienceLevel,
+          equipment,
+          primaryGoal,
+          combatSessionsPerWeek,
+          sessionMinutes,
+        })
+        setGeneratedProgram(fallbackProgram)
+        setHasProgramChanges(false)
+      }
+    }
+
+    setCurrentDayIndex(0)
+    navigateTo('home')
+    const feedback = getSettingsSaveFeedback({
+      shouldRegenerate,
+      profileSyncFailed,
+      programSyncFailed,
+    })
+    showToast(feedback.message, feedback.variant)
+  }, [bodyweightKg, combatSessionsPerWeek, currentUser, equipment, injuryNotes, navigateTo, primaryGoal, programMeta, selectedSport, sessionMinutes, showToast, trainingDays, userExperienceLevel, weightUnit])
+
+  const handleLogoutSettings = useCallback(() => {
+    supabaseService.signOut()
+    setCurrentUser(null)
+    setFeatureUsage({})
+    setFavoriteExercises(new Set())
+    setCompletedExercises(new Set())
+    setSessionHistory([])
+    setActivityLogs([])
+    setSetProgressByExercise({})
+    setCurrentSessionWeights({})
+    setCurrentSessionPRs([])
+    setTotalVolume(0)
+    setCurrentExerciseIndex(0)
+    setCurrentSet(1)
+    setSessionStartTime(null)
+    setGeneratedProgram(null)
+    setSavedProgramSessions(null)
+    setProgramId(null)
+    setHasProgramChanges(false)
+    setWorkoutBuilderPrefillExercise(null)
+    resetNavigationTo('auth-login')
+  }, [resetNavigationTo])
+
+  const handleSaveSettingsProgramChanges = useCallback(async () => {
+    if (!programId || !generatedProgram) return
+    try {
+      await supabaseService.saveProgramVersion(programId, generatedProgram, 'Saved changes')
+      setSavedProgramSessions(generatedProgram)
+      setHasProgramChanges(false)
+      const feedback = getProgramDraftSaveFeedback(true)
+      showToast(feedback.message, feedback.variant)
+    } catch (error) {
+      console.debug('Failed to save program changes:', error)
+      const feedback = getProgramDraftSaveFeedback(false)
+      showToast(feedback.message, feedback.variant)
+    }
+  }, [generatedProgram, programId, showToast])
+
+  const handleRevertSettingsProgramChanges = useCallback(() => {
+    if (!savedProgramSessions) return
+    setGeneratedProgram(savedProgramSessions)
+    setHasProgramChanges(false)
+  }, [savedProgramSessions])
+
+  const handleResetSettingsProgram = useCallback(async () => {
+    if (!programId) return
+    try {
+      const sessions = await supabaseService.getOriginalProgramSessions(programId)
+      if (sessions.length > 0) {
+        setGeneratedProgram(sessions)
+        setHasProgramChanges(true)
+      }
+    } catch (error) {
+      console.debug('Failed to reset program:', error)
+    }
+  }, [programId])
+
+  const handleStartSettingsSubscription = useCallback(async () => {
+    if (!currentUser) {
+      resetNavigationTo('auth-login')
+      throw new Error('Please sign in to upgrade to Premium.')
+    }
+    pendingBillingReturnRef.current = 'checkout'
+    analytics.track('subscription_checkout_started', { source: 'settings' })
+
+    try {
+      await stripeService.subscribeToPremium()
+    } catch (error) {
+      pendingBillingReturnRef.current = null
+      analytics.track('subscription_checkout_failed', {
+        source: 'settings',
+        reason: 'launch-failed',
+      })
+      throw error
+    }
+  }, [currentUser, resetNavigationTo])
+
+  const handleManageSettingsSubscription = useCallback(async () => {
+    if (!currentUser) {
+      resetNavigationTo('auth-login')
+      throw new Error('Please sign in to manage your subscription.')
+    }
+    pendingBillingReturnRef.current = 'portal'
+    analytics.track('subscription_portal_opened', { source: 'settings' })
+
+    try {
+      await stripeService.openCustomerPortal()
+    } catch (error) {
+      pendingBillingReturnRef.current = null
+      analytics.track('subscription_portal_failed', {
+        source: 'settings',
+        reason: 'launch-failed',
+      })
+      throw error
+    }
+  }, [currentUser, resetNavigationTo])
+
+  const handleSettingsScrollChange = useCallback((scrollTop: number) => {
+    screenScrollPositionsRef.current['settings'] = scrollTop
+  }, [])
+
+  const handleSaveProgramSession = useCallback((updatedSession: Session) => {
+    const dayIndex = editingSessionDayIndex ?? -1
+    if (dayIndex < 0 || !generatedProgram) return
+
+    const programIndex = getProgramIndexForDay(dayIndex)
+    setGeneratedProgram(prev => {
+      if (!prev) return prev
+      const next = [...prev]
+      if (programIndex >= 0 && programIndex < next.length) {
+        next[programIndex] = updatedSession
+      }
+      return next
+    })
+    setHasProgramChanges(true)
+    goBack('week-view')
+    const feedback = getProgramSessionSaveFeedback()
+    showToast(feedback.message, feedback.variant)
+  }, [editingSessionDayIndex, generatedProgram, getProgramIndexForDay, goBack, showToast])
+
+  const handleCloseProgramSessionEditor = useCallback(() => {
+    goBack('week-view')
+  }, [goBack])
+
+  const handleFinishWorkoutSession = useCallback(() => {
+    setEditingCompletedSessionId(null)
+    navigateTo('post-workout-reflection')
+  }, [navigateTo])
+
+  const handleRecordCurrentSessionPr = useCallback((pr: PersonalRecord) => {
+    setCurrentSessionPRs((prev) => {
+      const exists = prev.some((candidate) => (
+        candidate.exerciseId === pr.exerciseId &&
+        candidate.type === pr.type &&
+        candidate.value === pr.value
+      ))
+      if (exists) return prev
+      return [...prev, pr]
+    })
+  }, [])
+
+  const handleViewWeekFromSessionComplete = useCallback(() => {
+    setEditingCompletedSessionId(null)
+    navigateTo('week-view')
+  }, [navigateTo])
+
+  const handleSkipPostWorkoutReflection = useCallback(async () => {
+    if (editingCompletedSessionId) {
+      navigateTo('session-complete')
+      return
+    }
+
+    await persistCompletedSession({})
+  }, [editingCompletedSessionId, navigateTo, persistCompletedSession])
 
   const handleResumeSession = useCallback(() => {
     setShowResumePrompt(false)
@@ -2776,17 +3745,37 @@ export default function App() {
     setRestTimerDuration(0)
     setCurrentSessionWeights({})
     setSetProgressByExercise({})
+    setCurrentSessionPRs([])
     setTotalVolume(0)
     setUndoAction(null)
     setSessionOverride(null)
     setSessionSource(null)
-    setCurrentScreen('home')
-  }, [])
+    navigateTo('home')
+  }, [navigateTo])
 
 
   const lastSession = sessionHistory.length > 0 ? sessionHistory[sessionHistory.length - 1] : null
   const lastSessionWeights = lastSession?.weight
   const lastCompletedSession = sessionHistory.length > 0 ? sessionHistory[sessionHistory.length - 1] : null
+  const editingReflectionSession = useMemo(() => {
+    if (!editingCompletedSessionId) return null
+    return sessionHistory.find((log) => log.id === editingCompletedSessionId) ?? null
+  }, [editingCompletedSessionId, sessionHistory])
+
+  const previousReflectionSession = useMemo(() => {
+    if (editingCompletedSessionId) {
+      const editingIndex = sessionHistory.findIndex((log) => log.id === editingCompletedSessionId)
+      return editingIndex > 0 ? sessionHistory[editingIndex - 1] ?? null : null
+    }
+
+    return lastCompletedSession
+  }, [editingCompletedSessionId, lastCompletedSession, sessionHistory])
+
+  const handleEditCompletedReflection = useCallback(() => {
+    if (!lastCompletedSession) return
+    setEditingCompletedSessionId(lastCompletedSession.id)
+    navigateTo('post-workout-reflection')
+  }, [lastCompletedSession, navigateTo])
 
   const bestSet = (() => {
     if (!lastCompletedSession?.weight || !currentSession) return null
@@ -2808,6 +3797,9 @@ export default function App() {
 
   const restExerciseIndex = Math.max(0, currentExerciseIndex - (currentSet === 1 ? 1 : 0))
   const restExercise = currentSession?.exercises[restExerciseIndex] ?? null
+  const editingProgramDayIndex = editingSessionDayIndex ?? -1
+  const editingProgramSession = editingProgramDayIndex >= 0 ? getSessionForDay(editingProgramDayIndex) : null
+  const editingSessionDayLabel = weekProgress[editingProgramDayIndex]?.day ?? 'Session'
 
   // Smart center action for bottom nav
   const handleCenterAction = useCallback(() => {
@@ -2816,12 +3808,662 @@ export default function App() {
       handleStartSession()
     } else if (currentUser) {
       // No workout or already started -> Create workout
-      setCurrentScreen('workout-builder')
+      navigateTo('workout-builder')
     } else {
       // Not logged in -> Go to login
-      setCurrentScreen('auth-login')
+      navigateTo('auth-login')
     }
-  }, [programSession, sessionStartTime, currentUser, handleStartSession])
+  }, [programSession, sessionStartTime, currentUser, handleStartSession, navigateTo])
+
+  const handleAuthLogin = useCallback((user: UserProfile) => {
+    setCurrentUser(user)
+    setSelectedSport(user.sport)
+    if (user.trainingDays) setTrainingDays(user.trainingDays)
+    if (user.equipment !== undefined) setEquipment(user.equipment ?? null)
+    if (user.weightUnit) setWeightUnit(user.weightUnit)
+    if (user.experienceLevel) setUserExperienceLevel(user.experienceLevel)
+    if (user.bodyweightKg !== undefined) setBodyweightKg(user.bodyweightKg ?? null)
+    if (user.primaryGoal) setPrimaryGoal(user.primaryGoal)
+    if (user.combatSessionsPerWeek !== undefined) setCombatSessionsPerWeek(user.combatSessionsPerWeek ?? 0)
+    if (user.sessionMinutes !== undefined) setSessionMinutes(user.sessionMinutes ?? 45)
+    if (user.injuryNotes !== undefined) setInjuryNotes(user.injuryNotes ?? '')
+    if (typeof window !== 'undefined') {
+      // Prevent stale cross-user app state while keeping Supabase auth storage intact.
+      localStorage.removeItem(STORAGE_KEY)
+    }
+    setGeneratedProgram(null)
+    setProgramId(null)
+    setSavedProgramSessions(null)
+    setHasProgramChanges(false)
+    setProgramMeta(null)
+    setWeekProgress(DEFAULT_WEEK_PROGRESS)
+    setSessionOverride(null)
+    setSessionSource(null)
+    setLoadingComplete(false)
+    setLoadingContext('default')
+    if (user.onboardingCompleted === true) {
+      resetNavigationTo('loading')
+    } else {
+      resetNavigationTo('onboarding-sport')
+    }
+  }, [resetNavigationTo])
+
+  const handleAuthSkip = useCallback(() => {
+    setCurrentUser(null)
+    setFeatureUsage({})
+    setGeneratedProgram(null)
+    setProgramId(null)
+    setSavedProgramSessions(null)
+    setHasProgramChanges(false)
+    setProgramMeta(null)
+    setWeekProgress(DEFAULT_WEEK_PROGRESS)
+    resetNavigationTo('onboarding-sport')
+  }, [resetNavigationTo])
+
+  const handleAuthSignup = useCallback((user: UserProfile) => {
+    setCurrentUser(user)
+    setSelectedSport(user.sport)
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+    setGeneratedProgram(null)
+    setProgramId(null)
+    setSavedProgramSessions(null)
+    setHasProgramChanges(false)
+    setProgramMeta(null)
+    setWeekProgress(DEFAULT_WEEK_PROGRESS)
+    setSessionOverride(null)
+    setSessionSource(null)
+    setLoadingComplete(false)
+    setLoadingContext('default')
+    // Skip onboarding-sport since sport was already selected during signup
+    resetNavigationTo('onboarding-schedule')
+  }, [resetNavigationTo])
+
+  const handleEmailVerificationRequired = useCallback((email: string) => {
+    setPendingVerificationEmail(email)
+    navigateTo('email-verification-pending')
+  }, [navigateTo])
+
+  const handleVerifiedPendingEmail = useCallback(async () => {
+    // Re-fetch auth state to get the verified user
+    const authState = await supabaseService.getAuthState()
+    if (authState.isAuthenticated && authState.user) {
+      setCurrentUser(authState.user)
+      setSelectedSport(authState.user.sport)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+      setGeneratedProgram(null)
+      setProgramId(null)
+      setSavedProgramSessions(null)
+      setHasProgramChanges(false)
+      setProgramMeta(null)
+      setWeekProgress(DEFAULT_WEEK_PROGRESS)
+      setPendingVerificationEmail(null)
+      // Skip onboarding-sport since sport was already selected during signup
+      resetNavigationTo('onboarding-schedule')
+    }
+  }, [resetNavigationTo])
+
+  const handleBackFromEmailVerification = useCallback(() => {
+    setPendingVerificationEmail(null)
+    supabaseService.signOut()
+    navigateTo('auth-login')
+  }, [navigateTo])
+
+  const handlePendingVerificationFallbackLogin = useCallback((user: UserProfile) => {
+    setCurrentUser(user)
+    navigateTo('home')
+  }, [navigateTo])
+
+  const handlePendingVerificationFallbackSkip = useCallback(() => {
+    navigateTo('home')
+  }, [navigateTo])
+
+  const handleSelectLearningPath = useCallback(async (path: LearningPath) => {
+    const localProgress = learningPathProgress[path.id] ?? 0
+    const hasStartedPath = Object.prototype.hasOwnProperty.call(learningPathProgress, path.id)
+
+    const blockToSettings = (message: string) => {
+      analytics.track('navigation_blocked', {
+        from: currentScreen,
+        to: 'learning-path',
+        redirectTo: 'settings',
+        reason: 'premium-feature-locked',
+        feature: 'learning-paths',
+      })
+      setNavigationBlockNotice(message)
+      navigateTo('settings')
+    }
+
+    if (currentUser && !isScreenshotMode) {
+      let usageCount = featureUsage['learning-paths']
+
+      if (!currentUser.isPremium && typeof usageCount !== 'number') {
+        try {
+          usageCount = await supabaseService.getLearningPathUsage()
+          setFeatureUsage((prev) => ({
+            ...prev,
+            'learning-paths': usageCount,
+          }))
+        } catch (error) {
+          console.debug('Failed to load learning path usage counter:', error)
+        }
+      }
+
+      if (!currentUser.isPremium && !hasStartedPath) {
+        const access = canAccessFeature(currentUser, 'learning-paths', usageCount)
+        const hasUsageSnapshot = typeof usageCount === 'number'
+        if (hasUsageSnapshot && !access.canAccess) {
+          blockToSettings(access.upgradePrompt ?? 'Upgrade to Premium to unlock additional learning paths.')
+          return
+        }
+      }
+
+      if (!hasStartedPath) {
+        try {
+          await supabaseService.upsertLearningPathProgress(path.id, localProgress, false)
+          setLearningPathProgress((prev) => (
+            Object.prototype.hasOwnProperty.call(prev, path.id)
+              ? prev
+              : { ...prev, [path.id]: localProgress }
+          ))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unable to start this learning path.'
+          const normalized = message.toLowerCase()
+          if (normalized.includes('free learning path limit') || normalized.includes('learning path limit')) {
+            blockToSettings('Free tier includes one learning path. Upgrade to unlock all paths.')
+            try {
+              const refreshedUsage = await supabaseService.getLearningPathUsage()
+              setFeatureUsage((prev) => ({
+                ...prev,
+                'learning-paths': refreshedUsage,
+              }))
+            } catch (refreshError) {
+              console.debug('Failed to refresh learning path usage after limit block:', refreshError)
+            }
+            return
+          }
+          console.debug('Failed to initialize learning path progress:', error)
+        }
+
+        if (!currentUser.isPremium) {
+          try {
+            const refreshedUsage = await supabaseService.getLearningPathUsage()
+            setFeatureUsage((prev) => ({
+              ...prev,
+              'learning-paths': refreshedUsage,
+            }))
+          } catch (error) {
+            console.debug('Failed to refresh learning path usage counter:', error)
+          }
+        }
+      }
+    }
+
+    setSelectedLearningPath(path)
+    navigateTo('learning-path')
+  }, [
+    learningPathProgress,
+    currentScreen,
+    currentUser,
+    featureUsage,
+    isScreenshotMode,
+    navigateTo,
+  ])
+
+  const handleAdvanceLearningPath = useCallback(() => {
+    if (!selectedLearningPath) return
+
+    const next = Math.min(
+      (learningPathProgress[selectedLearningPath.id] ?? 0) + 1,
+      selectedLearningPath.drills.length
+    )
+    setLearningPathProgress((prev) => ({ ...prev, [selectedLearningPath.id]: next }))
+
+    if (currentUser && !isScreenshotMode) {
+      const completed = next >= selectedLearningPath.drills.length
+      void supabaseService
+        .upsertLearningPathProgress(selectedLearningPath.id, next, completed)
+        .catch((error) => {
+          console.debug('Failed to persist learning path progress:', error)
+        })
+    }
+  }, [currentUser, isScreenshotMode, learningPathProgress, selectedLearningPath])
+
+  const handleResetLearningPathProgress = useCallback(() => {
+    if (!selectedLearningPath) return
+
+    setLearningPathProgress((prev) => ({ ...prev, [selectedLearningPath.id]: 0 }))
+
+    if (currentUser && !isScreenshotMode) {
+      void supabaseService
+        .upsertLearningPathProgress(selectedLearningPath.id, 0, false)
+        .catch((error) => {
+          console.debug('Failed to reset learning path progress:', error)
+        })
+    }
+  }, [currentUser, isScreenshotMode, selectedLearningPath])
+
+  const handleSaveWorkoutBuilder = useCallback((workout: CustomWorkout) => {
+    const wasEditingExisting = !!selectedWorkout
+    if (!wasEditingExisting && !currentUser?.isPremium && currentUser) {
+      const freeLimit = PREMIUM_FEATURES['custom-workouts'].freeLimit ?? 0
+      void (async () => {
+        try {
+          const usageAfterSave = await supabaseService.getFeatureUsage('custom-workouts')
+          setFeatureUsage((prev) => ({
+            ...prev,
+            'custom-workouts': usageAfterSave,
+          }))
+
+          if (freeLimit > 0) {
+            const remaining = Math.max(0, freeLimit - usageAfterSave)
+            if (remaining === 0) {
+              setNavigationBlockNotice('Free custom workout limit reached. Upgrade in Settings to keep creating.')
+            } else if (remaining === 1) {
+              setNavigationBlockNotice('1 free custom workout creation remaining.')
+            }
+          }
+        } catch (error) {
+          console.debug('Failed to refresh custom workout usage counter:', error)
+        }
+      })()
+    }
+    setSelectedWorkout(workout)
+    setWorkoutBuilderPrefillExercise(null)
+    goBack('user-profile')
+    const feedback = getWorkoutSaveFeedback(wasEditingExisting)
+    showToast(feedback.message, feedback.variant)
+  }, [currentUser, goBack, selectedWorkout, showToast])
+
+  const handleCloseWorkoutBuilder = useCallback(() => {
+    setWorkoutBuilderPrefillExercise(null)
+    goBack('user-profile')
+  }, [goBack])
+
+  const handleSelectProfileWorkout = useCallback((workout: CustomWorkout) => {
+    setSelectedWorkout(workout)
+    navigateTo('workout-detail')
+  }, [navigateTo])
+
+  const handleSaveEditedProfile = useCallback((updatedUser: UserProfile) => {
+    setCurrentUser(updatedUser)
+    goBack('user-profile')
+  }, [goBack])
+
+  const handleCopyWorkoutToBuilder = useCallback((workout: CustomWorkout) => {
+    setSelectedWorkout(workout)
+    navigateTo('workout-builder')
+  }, [navigateTo])
+
+  const handleLoginToProfile = useCallback((user: UserProfile) => {
+    setCurrentUser(user)
+    navigateTo('user-profile')
+  }, [navigateTo])
+
+  const handleChangeOnboardingSport = useCallback((sport: SportType) => {
+    setSelectedSport(sport)
+    setSelectedExerciseSport(null)
+  }, [])
+
+  const handleContinueOnboardingSchedule = useCallback(() => {
+    setIsGeneratingOnboardingProgram(true)
+    setOnboardingGenerationError(null)
+    navigateTo('onboarding-generating')
+    analytics.track('onboarding_started', {
+      source: 'schedule',
+      sport: selectedSport,
+      trainingDays,
+    })
+
+    const defaults = {
+      level: 'intermediate' as ExperienceLevel,
+      equipment: 'gym' as Equipment,
+      primaryGoal: 'balanced' as PrimaryGoal,
+      sessionMinutes: 45,
+      combatSessionsPerWeek: 3,
+    }
+
+    if (!userExperienceLevel) setUserExperienceLevel(defaults.level)
+    if (!equipment) setEquipment(defaults.equipment)
+    if (!primaryGoal) setPrimaryGoal(defaults.primaryGoal)
+    if (!sessionMinutes) setSessionMinutes(defaults.sessionMinutes)
+
+    void (async () => {
+      try {
+        const programBlueprint = generateWeeklyProgram(selectedSport, trainingDays, {
+          level: userExperienceLevel || defaults.level,
+          equipment: equipment || defaults.equipment,
+          primaryGoal: primaryGoal || defaults.primaryGoal,
+          combatSessionsPerWeek: combatSessionsPerWeek || defaults.combatSessionsPerWeek,
+          sessionMinutes: sessionMinutes || defaults.sessionMinutes,
+        })
+        let program = programBlueprint
+
+        try {
+          program = await withTimeout(
+            supabaseService.resolveProgramSessionsToLibraryExercises({
+              sport: selectedSport,
+              sessions: programBlueprint,
+              equipment: equipment || defaults.equipment,
+            }),
+            4500,
+            'Resolve onboarding sessions'
+          )
+        } catch (error) {
+          console.debug('Failed to resolve onboarding sessions, using blueprint fallback:', error)
+        }
+
+        const defaultProgress = buildWeekProgress(trainingDays)
+        setGeneratedProgram(program)
+        setSavedProgramSessions(program)
+        setHasProgramChanges(false)
+        setWeekProgress(defaultProgress)
+        setCurrentDayIndex(0)
+        setProgramId(null)
+        setProgramMeta({
+          sport: selectedSport,
+          trainingDays,
+          equipment: equipment || defaults.equipment,
+          level: userExperienceLevel || defaults.level,
+          primaryGoal: primaryGoal || defaults.primaryGoal,
+          combatSessionsPerWeek: combatSessionsPerWeek || defaults.combatSessionsPerWeek,
+          sessionMinutes: sessionMinutes || defaults.sessionMinutes,
+        })
+
+        setIsGeneratingOnboardingProgram(false)
+        analytics.track('onboarding_program_generated', {
+          source: 'schedule',
+          sessionCount: program.length,
+          authenticated: !!currentUser,
+        })
+
+        if (currentUser) {
+          const profilePatch = {
+            sport: selectedSport,
+            trainingDays,
+            equipment: equipment || defaults.equipment,
+            weightUnit,
+            experienceLevel: userExperienceLevel || defaults.level,
+            bodyweightKg,
+            primaryGoal: primaryGoal || defaults.primaryGoal,
+            combatSessionsPerWeek: combatSessionsPerWeek || defaults.combatSessionsPerWeek,
+            sessionMinutes: sessionMinutes || defaults.sessionMinutes,
+            injuryNotes: injuryNotes?.trim() ? injuryNotes.trim() : null,
+            onboardingCompleted: true as const,
+          }
+
+          void (async () => {
+            try {
+              const updatedProfile = await withTimeout(
+                supabaseService.updateProfile(currentUser.id, profilePatch),
+                5000,
+                'Update onboarding profile'
+              )
+              setCurrentUser(updatedProfile)
+            } catch (error) {
+              console.debug('Failed to update profile during onboarding:', error)
+              setCurrentUser((prev) => (prev ? { ...prev, ...profilePatch } : prev))
+            }
+
+            try {
+              const newProgram = await withTimeout(
+                supabaseService.createProgram({
+                  sport: selectedSport,
+                  trainingDays,
+                  sessions: program,
+                  label: 'Original',
+                }),
+                6500,
+                'Create onboarding program'
+              )
+              setProgramId(newProgram.programId)
+              setSavedProgramSessions(newProgram.sessions)
+              await withTimeout(
+                supabaseService.upsertProgramState(newProgram.programId, defaultProgress),
+                4000,
+                'Persist onboarding program state'
+              )
+            } catch (error) {
+              console.debug('Failed to create program during onboarding:', error)
+            }
+          })()
+        }
+
+        analytics.track('onboarding_completed', {
+          source: 'schedule',
+          sessionCount: program.length,
+          authenticated: !!currentUser,
+        })
+        resetNavigationTo('home')
+      } catch (error) {
+        console.debug('Failed to build onboarding program:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Failed to generate your training program. Please try again.'
+        analytics.track('onboarding_generation_failed', {
+          source: 'schedule',
+          reason: errorMessage,
+        })
+        setOnboardingGenerationError(errorMessage)
+        setIsGeneratingOnboardingProgram(false)
+      }
+    })()
+  }, [
+    bodyweightKg,
+    combatSessionsPerWeek,
+    currentUser,
+    equipment,
+    injuryNotes,
+    navigateTo,
+    primaryGoal,
+    resetNavigationTo,
+    selectedSport,
+    sessionMinutes,
+    trainingDays,
+    userExperienceLevel,
+    weightUnit,
+  ])
+
+  const handleStartOnboardingFromEquipment = useCallback(async () => {
+    setIsGeneratingOnboardingProgram(true)
+    setOnboardingGenerationError(null)
+    navigateTo('onboarding-generating')
+    analytics.track('onboarding_started', {
+      source: 'equipment',
+      sport: selectedSport,
+      trainingDays,
+    })
+
+    try {
+      const programBlueprint = generateWeeklyProgram(selectedSport, trainingDays, {
+        level: userExperienceLevel,
+        equipment,
+        primaryGoal,
+        combatSessionsPerWeek,
+        sessionMinutes,
+      })
+      let program = programBlueprint
+
+      try {
+        program = await withTimeout(
+          supabaseService.resolveProgramSessionsToLibraryExercises({
+            sport: selectedSport,
+            sessions: programBlueprint,
+            equipment,
+          }),
+          4500,
+          'Resolve onboarding sessions'
+        )
+      } catch (error) {
+        console.debug('Failed to resolve onboarding sessions, using blueprint fallback:', error)
+      }
+
+      const defaultProgress = buildWeekProgress(trainingDays)
+      setGeneratedProgram(program)
+      setSavedProgramSessions(program)
+      setHasProgramChanges(false)
+      setWeekProgress(defaultProgress)
+      setCurrentDayIndex(0)
+      setProgramId(null)
+      setProgramMeta({
+        sport: selectedSport,
+        trainingDays,
+        equipment,
+        level: userExperienceLevel,
+        primaryGoal,
+        combatSessionsPerWeek,
+        sessionMinutes,
+      })
+
+      analytics.track('onboarding_program_generated', {
+        source: 'equipment',
+        sessionCount: program.length,
+        authenticated: !!currentUser,
+      })
+
+      navigateTo('onboarding-program-explainer')
+
+      if (currentUser) {
+        const profilePatch = {
+          sport: selectedSport,
+          trainingDays,
+          equipment,
+          weightUnit,
+          experienceLevel: userExperienceLevel,
+          bodyweightKg,
+          primaryGoal,
+          combatSessionsPerWeek,
+          sessionMinutes,
+          injuryNotes: injuryNotes.trim() ? injuryNotes.trim() : null,
+          onboardingCompleted: false as const,
+        }
+
+        void (async () => {
+          try {
+            const updatedProfile = await withTimeout(
+              supabaseService.updateProfile(currentUser.id, profilePatch),
+              5000,
+              'Update onboarding profile'
+            )
+            setCurrentUser(updatedProfile)
+          } catch (error) {
+            console.debug('Failed to update profile during onboarding:', error)
+            setCurrentUser((prev) => (
+              prev
+                ? {
+                    ...prev,
+                    ...profilePatch,
+                  }
+                : prev
+            ))
+          }
+        })()
+
+        void (async () => {
+          try {
+            const newProgram = await withTimeout(
+              supabaseService.createProgram({
+                sport: selectedSport,
+                trainingDays,
+                sessions: program,
+                label: 'Original',
+              }),
+              6500,
+              'Create onboarding program'
+            )
+            setProgramId(newProgram.programId)
+            setSavedProgramSessions(newProgram.sessions)
+            setHasProgramChanges(false)
+            setProgramMeta({
+              sport: newProgram.sport,
+              trainingDays: newProgram.trainingDays,
+              equipment,
+              level: userExperienceLevel,
+              primaryGoal,
+              combatSessionsPerWeek,
+              sessionMinutes,
+            })
+            await withTimeout(
+              supabaseService.upsertProgramState(newProgram.programId, defaultProgress),
+              4000,
+              'Persist onboarding program state'
+            )
+          } catch (error) {
+            console.debug('Failed to create program during onboarding:', error)
+          }
+        })()
+      }
+    } catch (error) {
+      console.debug('Failed to build onboarding program:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate your training program. Please try again.'
+      analytics.track('onboarding_generation_failed', {
+        source: 'equipment',
+        reason: errorMessage,
+      })
+      setOnboardingGenerationError(errorMessage)
+    } finally {
+      setIsGeneratingOnboardingProgram(false)
+    }
+  }, [
+    bodyweightKg,
+    combatSessionsPerWeek,
+    currentUser,
+    equipment,
+    injuryNotes,
+    navigateTo,
+    primaryGoal,
+    selectedSport,
+    sessionMinutes,
+    trainingDays,
+    userExperienceLevel,
+    weightUnit,
+  ])
+
+  const handleRetryOnboardingGeneration = useCallback(() => {
+    setOnboardingGenerationError(null)
+    navigateTo('onboarding-schedule')
+  }, [navigateTo])
+
+  const handleFinishOnboardingTour = useCallback(async () => {
+    if (!generatedProgram || generatedProgram.length === 0) {
+      navigateTo('onboarding-equipment')
+      return
+    }
+
+    analytics.track('onboarding_completed', {
+      source: 'app-tour',
+      sessionCount: generatedProgram.length,
+      authenticated: !!currentUser,
+    })
+
+    if (currentUser) {
+      const userId = currentUser.id
+      setCurrentUser((prev) => (
+        prev
+          ? {
+              ...prev,
+              onboardingCompleted: true,
+            }
+          : prev
+      ))
+
+      void (async () => {
+        try {
+          const updatedProfile = await withTimeout(
+            supabaseService.updateProfile(userId, { onboardingCompleted: true }),
+            5000,
+            'Finalize onboarding profile'
+          )
+          setCurrentUser(updatedProfile)
+        } catch (error) {
+          console.debug('Failed to mark onboarding complete:', error)
+        }
+      })()
+    }
+
+    resetNavigationTo('home')
+  }, [currentUser, generatedProgram, navigateTo, resetNavigationTo])
 
   const hasWorkoutToday = !!programSession
 
@@ -2835,343 +4477,122 @@ export default function App() {
       details={details}
       onGoBack={() => {
         setNavigationError(null)
-        setCurrentScreen(backTo)
+        navigateTo(backTo)
       }}
       onGoHome={() => {
         setNavigationError(null)
-        setCurrentScreen('home')
+        navigateTo('home')
       }}
     />
-  ), [])
+  ), [navigateTo])
+
+  const handleLoadingComplete = useCallback(() => {
+    setLoadingComplete(true)
+  }, [])
+
+  const handleGoBackFromNavigationError = useCallback(() => {
+    setNavigationError(null)
+    goBack('home')
+  }, [goBack])
+
+  const handleGoHomeFromNavigationError = useCallback(() => {
+    setNavigationError(null)
+    navigateTo('home')
+  }, [navigateTo])
 
   let screen: React.ReactNode = null
 
   switch (currentScreen) {
     case 'onboarding-sport':
-      screen = (
-        <OnboardingSport
-          sport={selectedSport}
-          onSportChange={(sport) => {
-            setSelectedSport(sport)
-            setSelectedExerciseSport(null)
-          }}
-          onContinue={() => setCurrentScreen('onboarding-schedule')}
-        />
-      )
-      break
-
     case 'onboarding-schedule':
-      screen = (
-        <OnboardingSchedule
-          trainingDays={trainingDays}
-          onDaysChange={setTrainingDays}
-          onContinue={() => setCurrentScreen('onboarding-level')}
-          onBack={() => setCurrentScreen('onboarding-sport')}
-        />
-      )
-      break
-
     case 'onboarding-level':
-      screen = (
-        <OnboardingLevel
-          level={userExperienceLevel}
-          onLevelChange={setUserExperienceLevel}
-          onContinue={() => setCurrentScreen('onboarding-intake')}
-          onBack={() => setCurrentScreen('onboarding-schedule')}
-        />
-      )
-      break
-
     case 'onboarding-intake':
+    case 'onboarding-equipment':
+    case 'onboarding-generating':
+    case 'onboarding-program-explainer':
+    case 'onboarding-app-tour':
       screen = (
-        <OnboardingIntake
-          bodyweightKg={bodyweightKg}
+        <OnboardingRoutes
+          currentScreen={currentScreen}
+          selectedSport={selectedSport}
+          trainingDays={trainingDays}
+          equipment={equipment}
           weightUnit={weightUnit}
+          bodyweightKg={bodyweightKg}
           primaryGoal={primaryGoal}
           combatSessionsPerWeek={combatSessionsPerWeek}
           sessionMinutes={sessionMinutes}
           injuryNotes={injuryNotes}
+          userExperienceLevel={userExperienceLevel}
+          generatedProgram={generatedProgram}
+          weekProgress={weekProgress}
+          onboardingGenerationError={onboardingGenerationError}
+          navigateTo={navigateTo}
+          onSportChange={handleChangeOnboardingSport}
+          onTrainingDaysChange={setTrainingDays}
+          onContinueFromSchedule={handleContinueOnboardingSchedule}
+          onLevelChange={setUserExperienceLevel}
           onBodyweightKgChange={setBodyweightKg}
           onWeightUnitChange={setWeightUnit}
           onPrimaryGoalChange={setPrimaryGoal}
           onCombatSessionsChange={setCombatSessionsPerWeek}
           onSessionMinutesChange={setSessionMinutes}
           onInjuryNotesChange={setInjuryNotes}
-          onContinue={() => setCurrentScreen('onboarding-equipment')}
-          onBack={() => setCurrentScreen('onboarding-level')}
-        />
-      )
-      break
-
-    case 'onboarding-equipment':
-      screen = (
-        <OnboardingEquipment
-          equipment={equipment}
           onEquipmentChange={setEquipment}
-          onStart={async () => {
-            setIsGeneratingOnboardingProgram(true)
-            setOnboardingGenerationError(null)
-            setCurrentScreen('onboarding-generating')
-
-            try {
-              const programBlueprint = generateWeeklyProgram(selectedSport, trainingDays, {
-                level: userExperienceLevel,
-                equipment,
-                primaryGoal,
-                combatSessionsPerWeek,
-                sessionMinutes,
-              })
-              let program = programBlueprint
-
-              try {
-                program = await withTimeout(
-                  supabaseService.resolveProgramSessionsToLibraryExercises({
-                    sport: selectedSport,
-                    sessions: programBlueprint,
-                    equipment,
-                  }),
-                  4500,
-                  'Resolve onboarding sessions'
-                )
-              } catch (error) {
-                console.debug('Failed to resolve onboarding sessions, using blueprint fallback:', error)
-              }
-
-              const defaultProgress = buildWeekProgress(trainingDays)
-              setGeneratedProgram(program)
-              setSavedProgramSessions(program)
-              setHasProgramChanges(false)
-              setWeekProgress(defaultProgress)
-              setCurrentDayIndex(0)
-              setProgramId(null)
-              setProgramMeta({
-                sport: selectedSport,
-                trainingDays,
-                equipment,
-                level: userExperienceLevel,
-                primaryGoal,
-                combatSessionsPerWeek,
-                sessionMinutes,
-              })
-
-              setCurrentScreen('onboarding-program-explainer')
-
-              if (currentUser) {
-                const profilePatch = {
-                  sport: selectedSport,
-                  trainingDays,
-                  equipment,
-                  weightUnit,
-                  experienceLevel: userExperienceLevel,
-                  bodyweightKg,
-                  primaryGoal,
-                  combatSessionsPerWeek,
-                  sessionMinutes,
-                  injuryNotes: injuryNotes.trim() ? injuryNotes.trim() : null,
-                  onboardingCompleted: false as const,
-                }
-
-                void (async () => {
-                  try {
-                    const updatedProfile = await withTimeout(
-                      supabaseService.updateProfile(currentUser.id, profilePatch),
-                      5000,
-                      'Update onboarding profile'
-                    )
-                    setCurrentUser(updatedProfile)
-                  } catch (error) {
-                    console.debug('Failed to update profile during onboarding:', error)
-                    setCurrentUser((prev) => (
-                      prev
-                        ? {
-                            ...prev,
-                            ...profilePatch,
-                          }
-                        : prev
-                    ))
-                  }
-                })()
-
-                void (async () => {
-                  try {
-                    const newProgram = await withTimeout(
-                      supabaseService.createProgram({
-                        sport: selectedSport,
-                        trainingDays,
-                        sessions: program,
-                        label: 'Original',
-                      }),
-                      6500,
-                      'Create onboarding program'
-                    )
-                    setProgramId(newProgram.programId)
-                    setSavedProgramSessions(newProgram.sessions)
-                    setHasProgramChanges(false)
-                    setProgramMeta({
-                      sport: newProgram.sport,
-                      trainingDays: newProgram.trainingDays,
-                      equipment,
-                      level: userExperienceLevel,
-                      primaryGoal,
-                      combatSessionsPerWeek,
-                      sessionMinutes,
-                    })
-                    await withTimeout(
-                      supabaseService.upsertProgramState(newProgram.programId, defaultProgress),
-                      4000,
-                      'Persist onboarding program state'
-                    )
-                  } catch (error) {
-                    console.debug('Failed to create program during onboarding:', error)
-                  }
-                })()
-              }
-            } catch (error) {
-              console.debug('Failed to build onboarding program:', error)
-              const errorMessage = error instanceof Error ? error.message : 'Failed to generate your training program. Please try again.'
-              setOnboardingGenerationError(errorMessage)
-              // Stay on generating screen but show error state
-            } finally {
-              setIsGeneratingOnboardingProgram(false)
-            }
-          }}
-          onBack={() => setCurrentScreen('onboarding-intake')}
-        />
-      )
-      break
-
-    case 'onboarding-generating':
-      screen = (
-        <OnboardingGenerating
-          sport={selectedSport}
-          trainingDays={trainingDays}
-          equipment={equipment}
-          primaryGoal={primaryGoal}
-          sessionMinutes={sessionMinutes}
-          error={onboardingGenerationError}
-          onRetry={() => {
-            // Clear error and go back to equipment screen to re-trigger generation
-            setOnboardingGenerationError(null)
-            setCurrentScreen('onboarding-equipment')
-          }}
-          onGoBack={() => {
-            setOnboardingGenerationError(null)
-            setCurrentScreen('onboarding-equipment')
-          }}
-        />
-      )
-      break
-
-    case 'onboarding-program-explainer':
-      screen = (
-        <OnboardingProgramExplainer
-          sport={selectedSport}
-          trainingDays={trainingDays}
-          equipment={equipment}
-          primaryGoal={primaryGoal}
-          combatSessionsPerWeek={combatSessionsPerWeek}
-          sessionMinutes={sessionMinutes}
-          weekProgress={weekProgress}
-          program={generatedProgram}
-          onBack={() => setCurrentScreen('onboarding-equipment')}
-          onContinue={() => setCurrentScreen('onboarding-app-tour')}
-        />
-      )
-      break
-
-    case 'onboarding-app-tour':
-      screen = (
-        <OnboardingAppTour
-          onBack={() => setCurrentScreen('onboarding-program-explainer')}
-          onFinish={async () => {
-            if (!generatedProgram || generatedProgram.length === 0) {
-              setCurrentScreen('onboarding-equipment')
-              return
-            }
-
-            if (currentUser) {
-              const userId = currentUser.id
-              // Mark complete immediately in local state so UI cannot get blocked by network latency.
-              setCurrentUser((prev) => (
-                prev
-                  ? {
-                      ...prev,
-                      onboardingCompleted: true,
-                    }
-                  : prev
-              ))
-
-              void (async () => {
-                try {
-                  const updatedProfile = await withTimeout(
-                    supabaseService.updateProfile(userId, { onboardingCompleted: true }),
-                    5000,
-                    'Finalize onboarding profile'
-                  )
-                  setCurrentUser(updatedProfile)
-                } catch (error) {
-                  console.debug('Failed to mark onboarding complete:', error)
-                }
-              })()
-            }
-
-            resetNavigationTo('home')
-          }}
+          onStartFromEquipment={handleStartOnboardingFromEquipment}
+          onRetryGenerating={handleRetryOnboardingGeneration}
+          onFinishAppTour={handleFinishOnboardingTour}
         />
       )
       break
 
     case 'home':
+    case 'today-editor':
+    case 'log-activity':
+    case 'training-stats':
       screen = (
-        <Home
-          session={displaySession}
+        <CoreAppRoutes
+          currentScreen={currentScreen}
+          displaySession={displaySession}
           weekProgress={weekProgress}
           currentStreak={currentStreak}
           longestStreak={longestStreak}
+          userName={currentUser?.displayName}
+          sessionHistory={sessionHistory}
+          activityLogs={activityLogs}
+          selectedSport={selectedSport}
           equipment={equipment}
-          onStartSession={handleStartSession}
-          onNavigate={setCurrentScreen}
-          undoLabel={undoAction?.label ?? null}
-          onUndo={handleUndo}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          onStartRoundTimer={handleStartRoundTimer}
-          initialScrollTop={screenScrollPositionsRef.current['home']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['home'] = scrollTop
-          }}
-        />
-      )
-      break
-
-    case 'today-editor':
-      screen = (
-        <TodayEditor
-          sport={selectedSport}
-          baseSession={programSession}
-          session={effectiveProgramSession}
-          removedExercises={todayRemovedExercises}
-          activeDrillIds={todayActiveDrillIds}
-          removedDrillIds={todayRemovedDrillIds}
-          drillDoneIds={todayDrillDoneIdSet}
-          drillsLoggedAt={todayDrillsLoggedAt}
-          hasOverrides={hasTodayOverrides}
-          hasBaseChanged={hasTodayBaseChanged}
+          programSession={programSession}
+          effectiveProgramSession={adjustedProgramSession}
+          todayRemovedExercises={todayRemovedExercises}
+          todayActiveDrillIds={todayActiveDrillIds}
+          todayRemovedDrillIds={todayRemovedDrillIds}
+          todayDrillDoneIdSet={todayDrillDoneIdSet}
+          todayDrillsLoggedAt={todayDrillsLoggedAt}
+          hasTodayOverrides={hasTodayOverrides}
+          hasTodayBaseChanged={hasTodayBaseChanged}
+          sessionAdjustmentMode={sessionAdjustmentMode}
+          carryOverSessionDayLabel={carryOverSessionDayLabel}
+          missedPlannedSessionCount={missedPlannedSessionCount}
           canEditProgram={!!programSession && programDayIndex >= 0}
-          onBack={() => goBack('home')}
-          onNavigate={setCurrentScreen}
-          onStartAction={handleCenterAction}
+          homeScrollTop={screenScrollPositionsRef.current['home']}
+          completedExerciseCount={completedExercises.size}
+          weightUnit={weightUnit}
+          isPremium={currentUser?.isPremium ?? false}
+          isStatsLoading={isLoadingSupabaseData}
           hasWorkoutToday={hasWorkoutToday}
-          onStartWorkout={handleStartSession}
+          editingActivity={editingActivity}
+          navigateTo={navigateTo}
+          onUndo={handleUndo}
+          undoLabel={undoAction?.label ?? null}
+          onStartAction={handleCenterAction}
+          onStartSession={handleStartSession}
+          onSetSessionAdjustmentMode={handleSetSessionAdjustmentMode}
+          onStartRoundTimer={handleStartRoundTimer}
+          onHomeScrollChange={handleHomeScrollChange}
+          onCloseTodayEditor={handleCloseTodayEditor}
           onResetToday={handleResetTodayOverrides}
-          onEditProgram={() => {
-            if (programDayIndex >= 0) {
-              setEditingSessionDayIndex(programDayIndex)
-              setCurrentScreen('program-session-editor')
-            } else {
-              setCurrentScreen('week-view')
-            }
-          }}
+          onEditTodayProgram={handleEditTodayProgram}
           onAddExercise={handleAddPickerExerciseToToday}
           onReplaceExercise={handleReplacePickerExerciseInToday}
           onSetExerciseOrder={handleSetTodayExerciseOrder}
@@ -3183,18 +4604,20 @@ export default function App() {
           onRestoreDrill={handleRestoreDrillForToday}
           onToggleDrillDone={handleToggleTodayDrillDone}
           onLogDrills={handleLogTodayDrills}
-          onOpenDrill={(drill) => {
-            setSelectedDrill(drill)
-            setRecentlyViewedDrills((prev) => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
-            setCurrentScreen('drill-detail')
-          }}
+          onOpenDrill={handleOpenTodayEditorDrill}
+          onLogActivity={handleLogActivity}
+          onUpdateActivity={handleUpdateActivity}
+          onCloseLogActivity={handleCloseLogActivity}
+          onCloseTrainingStats={handleCloseTrainingStats}
+          onUpgradeTrainingStats={handleUpgradeTrainingStats}
         />
       )
       break
 
     case 'settings':
       screen = (
-        <Settings
+        <SettingsRoutes
+          currentScreen={currentScreen}
           sport={selectedSport}
           trainingDays={trainingDays}
           equipment={equipment}
@@ -3205,10 +4628,7 @@ export default function App() {
           combatSessionsPerWeek={combatSessionsPerWeek}
           sessionMinutes={sessionMinutes}
           injuryNotes={injuryNotes}
-          onSportChange={(sport) => {
-            setSelectedSport(sport)
-            setSelectedExerciseSport(null)
-          }}
+          onSportChange={handleChangeSettingsSport}
           onDaysChange={setTrainingDays}
           onEquipmentChange={setEquipment}
           onWeightUnitChange={setWeightUnit}
@@ -3218,948 +4638,261 @@ export default function App() {
           onCombatSessionsChange={setCombatSessionsPerWeek}
           onSessionMinutesChange={setSessionMinutes}
           onInjuryNotesChange={setInjuryNotes}
-          onSave={async () => {
-            if (currentUser) {
-              try {
-                const updatedProfile = await supabaseService.updateProfile(currentUser.id, {
-                  sport: selectedSport,
-                  trainingDays,
-                  equipment,
-                  weightUnit,
-                  experienceLevel: userExperienceLevel,
-                  bodyweightKg,
-                  primaryGoal,
-                  combatSessionsPerWeek,
-                  sessionMinutes,
-                  injuryNotes: injuryNotes.trim() ? injuryNotes.trim() : null,
-                  onboardingCompleted: true,
-                })
-                setCurrentUser(updatedProfile)
-              } catch (error) {
-                console.debug('Failed to update profile preferences:', error)
-              }
-            }
-
-            const shouldRegenerate = !programMeta
-              || programMeta.sport !== selectedSport
-              || programMeta.trainingDays !== trainingDays
-              || programMeta.equipment !== equipment
-              || programMeta.level !== userExperienceLevel
-              || programMeta.primaryGoal !== primaryGoal
-              || programMeta.combatSessionsPerWeek !== combatSessionsPerWeek
-              || programMeta.sessionMinutes !== sessionMinutes
-
-            if (shouldRegenerate) {
-              try {
-                const blueprint = generateWeeklyProgram(selectedSport, trainingDays, {
-                  level: userExperienceLevel,
-                  equipment,
-                  primaryGoal,
-                  combatSessionsPerWeek,
-                  sessionMinutes,
-                })
-                const resolved = await supabaseService.resolveProgramSessionsToLibraryExercises({
-                  sport: selectedSport,
-                  sessions: blueprint,
-                  equipment,
-                })
-
-                if (currentUser) {
-                  const newProgram = await supabaseService.createProgram({
-                    sport: selectedSport,
-                    trainingDays,
-                    sessions: resolved,
-                    label: 'Original',
-                  })
-                  setProgramId(newProgram.programId)
-                  setGeneratedProgram(newProgram.sessions)
-                  setSavedProgramSessions(newProgram.sessions)
-                  setHasProgramChanges(false)
-                  setProgramMeta({
-                    sport: newProgram.sport,
-                    trainingDays: newProgram.trainingDays,
-                    equipment,
-                    level: userExperienceLevel,
-                    primaryGoal,
-                    combatSessionsPerWeek,
-                    sessionMinutes,
-                  })
-                  const defaultProgress = buildWeekProgress(newProgram.trainingDays)
-                  setWeekProgress(defaultProgress)
-                  await supabaseService.upsertProgramState(newProgram.programId, defaultProgress)
-                } else {
-                  setGeneratedProgram(resolved)
-                  setSavedProgramSessions(resolved)
-                  setHasProgramChanges(false)
-                  setProgramMeta({
-                    sport: selectedSport,
-                    trainingDays,
-                    equipment,
-                    level: userExperienceLevel,
-                    primaryGoal,
-                    combatSessionsPerWeek,
-                    sessionMinutes,
-                  })
-                  const defaultProgress = buildWeekProgress(trainingDays)
-                  setWeekProgress(defaultProgress)
-                }
-              } catch (error) {
-                console.debug('Failed to regenerate program:', error)
-                const fallbackProgram = generateWeeklyProgram(selectedSport, trainingDays, {
-                  level: userExperienceLevel,
-                  equipment,
-                  primaryGoal,
-                  combatSessionsPerWeek,
-                  sessionMinutes,
-                })
-                setGeneratedProgram(fallbackProgram)
-                setHasProgramChanges(false)
-              }
-            }
-
-            setCurrentDayIndex(0)
-            setCurrentScreen('home')
-          }}
-          onLogout={() => {
-            supabaseService.signOut()
-            setCurrentUser(null)
-            setFavoriteExercises(new Set())
-            setCompletedExercises(new Set())
-            setSessionHistory([])
-            setActivityLogs([])
-            setSetProgressByExercise({})
-            setCurrentSessionWeights({})
-            setTotalVolume(0)
-            setCurrentExerciseIndex(0)
-            setCurrentSet(1)
-            setSessionStartTime(null)
-            setGeneratedProgram(null)
-            setSavedProgramSessions(null)
-            setProgramId(null)
-            setHasProgramChanges(false)
-            resetNavigationTo('auth-login')
-          }}
-          onNavigate={setCurrentScreen}
+          onSave={handleSaveSettings}
+          onLogout={handleLogoutSettings}
+          navigateTo={navigateTo}
           onStartAction={handleCenterAction}
           hasWorkoutToday={hasWorkoutToday}
           hasUnsavedProgramChanges={hasProgramChanges}
-          onSaveProgramChanges={async () => {
-            if (!programId || !generatedProgram) return
-            try {
-              const versionId = await supabaseService.saveProgramVersion(programId, generatedProgram, 'Saved changes')
-              setSavedProgramSessions(generatedProgram)
-              setHasProgramChanges(false)
-            } catch (error) {
-              console.debug('Failed to save program changes:', error)
-            }
-          }}
-          onRevertProgramChanges={() => {
-            if (!savedProgramSessions) return
-            setGeneratedProgram(savedProgramSessions)
-            setHasProgramChanges(false)
-          }}
-          onResetProgram={async () => {
-            if (!programId) return
-            try {
-              const sessions = await supabaseService.getOriginalProgramSessions(programId)
-              if (sessions.length > 0) {
-                setGeneratedProgram(sessions)
-                setHasProgramChanges(true)
-              }
-            } catch (error) {
-              console.debug('Failed to reset program:', error)
-            }
-          }}
-          onStartTrial={async () => {
-            if (!currentUser) {
-              resetNavigationTo('auth-login')
-              throw new Error('Please sign in to start the free trial.')
-            }
-            await stripeService.subscribeToPremium()
-          }}
-          onManageSubscription={async () => {
-            if (!currentUser) {
-              throw new Error('Please sign in to manage your subscription.')
-            }
-            await stripeService.openCustomerPortal()
-          }}
+          onSaveProgramChanges={handleSaveSettingsProgramChanges}
+          onRevertProgramChanges={handleRevertSettingsProgramChanges}
+          onResetProgram={handleResetSettingsProgram}
+          onStartSubscription={handleStartSettingsSubscription}
+          onManageSubscription={handleManageSettingsSubscription}
           isPremium={currentUser?.isPremium ?? false}
           subscriptionStatus={currentUser?.subscriptionStatus}
           subscriptionPeriodEnd={currentUser?.subscriptionPeriodEnd}
-          initialScrollTop={screenScrollPositionsRef.current['settings']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['settings'] = scrollTop
-          }}
-        />
-      )
-      break
-
-    case 'log-activity':
-      screen = (
-        <LogActivity
-          onLogActivity={handleLogActivity}
-          onUpdateActivity={handleUpdateActivity}
-          editingActivity={editingActivity}
-          onClose={() => {
-            setEditingActivity(null)
-            goBack('home')
-          }}
-        />
-      )
-      break
-
-    case 'training-stats':
-      screen = (
-        <TrainingStats
-          sessionHistory={sessionHistory}
-          activityLogs={activityLogs}
-          completedExerciseCount={completedExercises.size}
-          currentStreak={currentStreak}
-          longestStreak={longestStreak}
-          weightUnit={weightUnit}
-          onClose={() => goBack('home')}
-          onNavigate={setCurrentScreen}
-          isLoading={isLoadingSupabaseData}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
+          customWorkoutUsage={featureUsage['custom-workouts'] ?? 0}
+          learningPathUsage={featureUsage['learning-paths'] ?? 0}
+          settingsScrollTop={screenScrollPositionsRef.current['settings']}
+          onSettingsScrollChange={handleSettingsScrollChange}
         />
       )
       break
 
     case 'training-hub':
-      screen = (
-        <TrainingHub
-          sport={selectedSport}
-          dataVersion={contentDataVersion}
-          currentWorkoutFocus={displaySession?.focus}
-          onNavigate={setCurrentScreen}
-          backScreen='home'
-          session={displaySession}
-          onSelectDrill={(drill) => {
-            setSelectedDrill(drill)
-            setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
-            setCurrentScreen('drill-detail')
-          }}
-          onSelectCategory={(category) => {
-            setSelectedCategory(category)
-            setSelectedSubcategory(null)
-            setCurrentScreen('category-list')
-          }}
-          onSelectRoutine={(routine) => {
-            setSelectedRoutine(routine)
-            setCurrentScreen('routine-player')
-          }}
-          onSelectLearningPath={(path) => {
-            setSelectedLearningPath(path)
-            setCurrentScreen('learning-path')
-          }}
-          onSelectBodyPart={() => {
-            setCurrentScreen('body-part-selector')
-          }}
-          onSelectAthlete={(athlete) => {
-            setSelectedAthlete(athlete)
-            setCurrentScreen('athlete-detail')
-          }}
-          onSelectSport={(sport) => {
-            setSelectedExerciseSport(sport)
-          }}
-          learningPathProgress={learningPathProgress}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          initialScrollTop={screenScrollPositionsRef.current['training-hub']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['training-hub'] = scrollTop
-          }}
-        />
-      )
-      break
-
     case 'drill-detail':
-      screen = selectedDrill ? (
-        <DrillDetail
-          drill={selectedDrill}
-          dataVersion={contentDataVersion}
-          onBack={() => {
-            goBack('training-hub')
-          }}
-          onAddToToday={handleAddDrillToToday}
-          isInToday={todayActiveDrillIdSet.has(selectedDrill.id)}
-          onSelectRelatedDrill={(drill) => {
-            setSelectedDrill(drill)
-            setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
-          }}
-        />
-      ) : renderNavigationNotSet(
-        'The selected drill is missing from the current app state.',
-        'Open Training Hub and choose a drill again.',
-        'training-hub'
-      )
-      break
-
     case 'athlete-detail':
-      screen = selectedAthlete ? (
-        <AthleteDetail
-          athlete={selectedAthlete}
-          userLevel={userExperienceLevel}
-          dataVersion={contentDataVersion}
-          onNavigate={setCurrentScreen}
-          onBack={() => goBack('training-hub')}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-        />
-      ) : renderNavigationNotSet(
-        'The selected athlete is missing from the current app state.',
-        'Open Training Hub and choose an athlete again.',
-        'training-hub'
-      )
-      break
-
     case 'category-list':
-      screen = selectedCategory ? (
-        <CategoryList
-          category={selectedCategory}
-          dataVersion={contentDataVersion}
-          onBack={() => goBack('training-hub')}
-          onNavigate={setCurrentScreen}
-          onSelectDrill={(drill) => {
-            setSelectedDrill(drill)
-            setRecentlyViewedDrills(prev => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
-            setCurrentScreen('drill-detail')
-          }}
-          onAddToToday={handleAddDrillToToday}
-          todayDrillIds={todayActiveDrillIdSet}
-          initialSubcategory={selectedSubcategory || undefined}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          initialScrollTop={screenScrollPositionsRef.current['category-list']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['category-list'] = scrollTop
-          }}
-        />
-      ) : renderNavigationNotSet(
-        'No category was selected before opening this page.',
-        'Open Training Hub and choose a category again.',
-        'training-hub'
-      )
-      break
-
     case 'routine-player':
-      screen = selectedRoutine ? (
-        <RoutinePlayer
-          routine={selectedRoutine}
-          onComplete={() => {
-            setSelectedRoutine(null)
-            goBack('training-hub')
-          }}
-          onClose={() => {
-            setSelectedRoutine(null)
-            goBack('training-hub')
-          }}
-        />
-      ) : renderNavigationNotSet(
-        'No routine is available for playback right now.',
-        'Open Training Hub and choose a routine again.',
-        'training-hub'
-      )
-      break
-
-    case 'learning-path': {
-      const learningPath = selectedLearningPath
-      const completedSteps = learningPath ? (learningPathProgress[learningPath.id] ?? 0) : 0
-
-      screen = learningPath ? (
-        <LearningPathScreen
-          path={learningPath}
-          dataVersion={contentDataVersion}
-          completedSteps={completedSteps}
-          onBack={() => goBack('training-hub')}
-          onNavigate={setCurrentScreen}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          onOpenDrill={(drill) => {
-            setSelectedDrill(drill)
-            setRecentlyViewedDrills((prev) => [drill.id, ...prev.filter(id => id !== drill.id)].slice(0, 10))
-            setCurrentScreen('drill-detail')
-          }}
-          onAdvanceStep={() => {
-            setLearningPathProgress((prev) => {
-              const previous = prev[learningPath.id] ?? 0
-              const next = Math.min(previous + 1, learningPath.drills.length)
-              return { ...prev, [learningPath.id]: next }
-            })
-          }}
-          onResetProgress={() => {
-            setLearningPathProgress((prev) => ({ ...prev, [learningPath.id]: 0 }))
-          }}
-          initialScrollTop={screenScrollPositionsRef.current['learning-path']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['learning-path'] = scrollTop
-          }}
-        />
-      ) : renderNavigationNotSet(
-        'No learning path was selected before opening this page.',
-        'Open Training Hub and choose a learning path again.',
-        'training-hub'
-      )
-      break
-    }
-
+    case 'learning-path':
     case 'body-part-selector':
+    case 'sport-exercise-categories':
+    case 'sport-category-exercises':
+    case 'exercise-detail':
       screen = (
-        <BodyPartSelector
-          dataVersion={contentDataVersion}
-          onBack={() => goBack('training-hub')}
-          onSelectBodyPart={(bodyPart) => {
-            setSelectedCategory('injury-prevention')
-            setSelectedSubcategory(bodyPart)
-            setCurrentScreen('category-list')
-          }}
-          onNavigate={setCurrentScreen}
-          onStartAction={handleCenterAction}
+        <TrainingLibraryRoutes
+          currentScreen={currentScreen}
+          contentDataVersion={contentDataVersion}
+          selectedSport={selectedSport}
+          displaySession={displaySession}
+          selectedDrill={selectedDrill}
+          selectedAthlete={selectedAthlete}
+          selectedCategory={selectedCategory}
+          selectedSubcategory={selectedSubcategory}
+          selectedRoutine={selectedRoutine}
+          selectedLearningPath={selectedLearningPath}
+          selectedExerciseSport={selectedExerciseSport}
+          selectedExerciseCategory={selectedExerciseCategory}
+          selectedExercise={selectedExercise}
+          userExperienceLevel={userExperienceLevel}
+          learningPathProgress={learningPathProgress}
+          isPremium={currentUser?.isPremium ?? false}
+          learningPathUsage={featureUsage['learning-paths'] ?? 0}
           hasWorkoutToday={hasWorkoutToday}
-          initialScrollTop={screenScrollPositionsRef.current['body-part-selector']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['body-part-selector'] = scrollTop
+          todayActiveDrillIdSet={todayActiveDrillIdSet}
+          todayWorkoutExerciseIds={todayWorkoutExerciseIds}
+          workoutExerciseIds={workoutBuilderExerciseIds}
+          favoriteExercises={favoriteExercises}
+          completedExercises={completedExercises}
+          screenScrollPositions={screenScrollPositionsRef.current}
+          navigateTo={navigateTo}
+          goBack={goBack}
+          renderNavigationNotSet={renderNavigationNotSet}
+          onScreenScrollChange={(screenName, scrollTop) => {
+            screenScrollPositionsRef.current[screenName] = scrollTop
           }}
+          onStartAction={handleCenterAction}
+          onSelectTrainingDrill={handleSelectTrainingDrill}
+          onSelectTrainingCategory={handleSelectTrainingCategory}
+          onSelectTrainingRoutine={handleSelectTrainingRoutine}
+          onSelectLearningPath={handleSelectLearningPath}
+          onOpenBodyPartSelector={handleOpenBodyPartSelector}
+          onSelectTrainingAthlete={handleSelectTrainingAthlete}
+          onSelectExerciseSport={handleSelectExerciseSport}
+          onSelectAthleteExercise={handleSelectAthleteExercise}
+          onAddAthleteExerciseToWorkout={handleAddAthleteExerciseToWorkout}
+          onSelectExerciseCategory={handleSelectExerciseCategory}
+          onSelectLibraryExercise={handleSelectLibraryExercise}
+          onAddDrillToToday={handleAddDrillToToday}
+          onAddExerciseToWorkout={handleAddExerciseToWorkoutBuilder}
+          onAddExerciseToToday={handleAddExerciseToToday}
+          onAdvanceLearningPath={handleAdvanceLearningPath}
+          onResetLearningPathProgress={handleResetLearningPathProgress}
+          onSelectBodyPart={handleSelectBodyPart}
+          onToggleFavoriteExercise={handleToggleFavoriteExercise}
+          onMarkExerciseComplete={handleMarkExerciseComplete}
+          onShareExercise={handleShareExercise}
+          onCloseRoutinePlayer={handleCloseRoutinePlayer}
         />
       )
       break
 
     case 'week-view':
+    case 'program-session-editor':
       screen = (
-        <WeekView
+        <PlanningRoutes
+          currentScreen={currentScreen}
+          selectedSport={selectedSport}
           weekProgress={weekProgress}
           completedSessions={completedSessions}
           plannedSessions={plannedSessions}
-          onClose={() => goBack('home')}
-          onNavigate={setCurrentScreen}
-          program={generatedProgram}
+          generatedProgram={generatedProgram}
           activityLogs={activityLogs}
+          editingProgramSession={editingProgramSession}
+          editingSessionDayLabel={editingSessionDayLabel}
+          hasWorkoutToday={hasWorkoutToday}
+          weekViewScrollTop={screenScrollPositionsRef.current['week-view']}
+          navigateTo={navigateTo}
+          renderNavigationNotSet={renderNavigationNotSet}
+          onCloseWeekView={handleCloseWeekView}
           onEditActivity={handleEditActivity}
           onDeleteActivity={handleDeleteActivity}
-          onLogTraining={() => setCurrentScreen('log-activity')}
+          onLogTraining={handleWeekViewLogTraining}
           onStartSessionForDay={handleStartSessionForDay}
-          onEditSession={(dayIndex) => {
-            setEditingSessionDayIndex(dayIndex)
-            setCurrentScreen('program-session-editor')
-          }}
+          onEditSession={handleOpenProgramSessionEditor}
           onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          initialScrollTop={screenScrollPositionsRef.current['week-view']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['week-view'] = scrollTop
-          }}
+          onWeekViewScrollChange={handleWeekViewScrollChange}
+          onSaveProgramSession={handleSaveProgramSession}
+          onCloseProgramSessionEditor={handleCloseProgramSessionEditor}
         />
       )
       break
-
-    case 'program-session-editor': {
-      const dayIndex = editingSessionDayIndex ?? -1
-      const session = dayIndex >= 0 ? getSessionForDay(dayIndex) : null
-      const dayLabel = weekProgress[dayIndex]?.day ?? 'Session'
-      screen = session ? (
-        <ProgramSessionEditor
-          sport={selectedSport}
-          session={session}
-          dayLabel={dayLabel}
-          onSave={(updatedSession) => {
-            if (!generatedProgram) return
-            const programIndex = getProgramIndexForDay(dayIndex)
-            setGeneratedProgram(prev => {
-              if (!prev) return prev
-              const next = [...prev]
-              if (programIndex >= 0 && programIndex < next.length) {
-                next[programIndex] = updatedSession
-              }
-              return next
-            })
-            setHasProgramChanges(true)
-            goBack('week-view')
-          }}
-          onClose={() => goBack('week-view')}
-        />
-      ) : renderNavigationNotSet(
-        'The requested session could not be found for this day.',
-        'Open Week View and select a planned day again.',
-        'week-view'
-      )
-      break
-    }
 
     case 'workout-session':
+    case 'rest-timer':
+    case 'session-complete':
+    case 'exercise-list':
+    case 'post-workout-reflection':
+    case 'missed-session-accountability':
+    case 'round-timer':
       screen = (
-        <WorkoutSession
-          session={currentSession}
+        <ActiveSessionRoutes
+          currentScreen={currentScreen}
+          currentSession={currentSession}
+          displaySession={displaySession}
           currentExerciseIndex={currentExerciseIndex}
           currentSet={currentSet}
           sessionStartTime={sessionStartTime}
           weightUnit={weightUnit}
           equipment={equipment}
-          isPaused={sessionPaused}
+          sessionPaused={sessionPaused}
           pausedTime={pausedTime}
           pauseStartedAt={pauseStartedAt}
-          onTogglePause={handleTogglePause}
-          onEndSession={handleEndSession}
-          onWeightUnitChange={setWeightUnit}
           setProgressByExercise={setProgressByExercise}
           currentSessionWeights={currentSessionWeights}
           lastSessionWeights={lastSessionWeights}
-          onSelectSet={handleSelectSet}
-          onToggleSetDone={handleToggleSetDone}
-          onFinishSession={() => setCurrentScreen('post-workout-reflection')}
-          undoLabel={undoAction?.label ?? null}
-          onUndo={handleUndo}
-        />
-      )
-      break
-
-    case 'rest-timer':
-      screen = (
-        <RestTimer
-          totalTime={restTimerDuration}
-          endsAt={restTimerEndsAt}
-          exerciseName={restExercise?.name ?? 'Next exercise'}
-          nextSetNumber={currentSet}
-          totalSets={restExercise?.sets ?? 0}
-          isPaused={sessionPaused}
-          onTogglePause={handleTogglePause}
-          onAdjustTime={handleAdjustRest}
-          onSkip={handleSkipRest}
-          onTimerComplete={handleTimerComplete}
-          undoLabel={undoAction?.label ?? null}
-          onUndo={handleUndo}
-        />
-      )
-      break
-
-    case 'session-complete':
-      screen = (
-        <SessionComplete
-          totalTime={getSessionDuration()}
-          completedSessions={weekProgress.filter(d => d.planned && d.completed).length}
+          restTimerDuration={restTimerDuration}
+          restTimerEndsAt={restTimerEndsAt}
+          restExercise={restExercise}
+          sessionDurationSeconds={getSessionDuration()}
+          completedSessions={completedSessions}
           plannedSessions={plannedSessions}
-          totalVolume={lastCompletedSession?.volume}
-          weightUnit={weightUnit}
+          lastCompletedSessionVolume={lastCompletedSession?.volume}
           bestSet={bestSet}
           currentStreak={currentStreak}
           longestStreak={longestStreak}
-          onClose={handleSessionCompleteClose}
-          onViewWeek={() => setCurrentScreen('week-view')}
-        />
-      )
-      break
-
-    case 'exercise-list':
-      screen = (
-        <ExerciseList
-          session={displaySession}
-          currentExerciseIndex={currentExerciseIndex}
-          onNavigate={setCurrentScreen}
-          onStartAction={handleCenterAction}
+          lastCompletedSession={lastCompletedSession}
+          editingReflectionSession={editingReflectionSession}
+          previousReflectionSession={previousReflectionSession}
+          lastCompletedSessionPrs={lastCompletedSession?.prs ?? []}
+          roundTimerMode={roundTimerMode}
           hasWorkoutToday={hasWorkoutToday}
+          carryOverSessionDayLabel={carryOverSessionDayLabel}
+          missedPlannedSessionCount={missedPlannedSessionCount}
+          undoLabel={undoAction?.label ?? null}
+          navigateTo={navigateTo}
+          onStartAction={handleCenterAction}
+          onTogglePause={handleTogglePause}
+          onEndSession={handleEndSession}
+          onWeightUnitChange={setWeightUnit}
+          onSelectSet={handleSelectSet}
+          onToggleSetDone={handleToggleSetDone}
+          onFinishWorkoutSession={handleFinishWorkoutSession}
+          onRecordSessionPr={handleRecordCurrentSessionPr}
+          onUndo={handleUndo}
+          onAdjustRest={handleAdjustRest}
+          onSkipRest={handleSkipRest}
+          onTimerComplete={handleTimerComplete}
+          onCloseSessionComplete={handleSessionCompleteClose}
+          onViewWeekFromSessionComplete={handleViewWeekFromSessionComplete}
+          onEditReflection={handleEditCompletedReflection}
+          onCompleteReflection={handleReflectionComplete}
+          onSkipReflection={handleSkipPostWorkoutReflection}
+          onSubmitMissedSession={handleMissedSessionSubmit}
+          onDismissMissedSession={handleMissedSessionDismiss}
+          onCompleteRoundTimer={handleRoundTimerComplete}
+          onCloseRoundTimer={handleRoundTimerClose}
         />
       )
       break
 
     // exercises-main has been merged into training-hub
 
-    case 'sport-exercise-categories':
-      screen = (
-        <SportExerciseCategories
-          sport={selectedExerciseSport ?? selectedSport}
-          dataVersion={contentDataVersion}
-          onNavigate={setCurrentScreen}
-          onBack={() => goBack('training-hub')}
-          onSelectCategory={(sport, category) => {
-            setSelectedExerciseSport(sport)
-            setSelectedExerciseCategory(category)
-            setCurrentScreen('sport-category-exercises')
-          }}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          initialScrollTop={screenScrollPositionsRef.current['sport-exercise-categories']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['sport-exercise-categories'] = scrollTop
-          }}
-        />
-      )
-      break
-
-    case 'sport-category-exercises':
-      screen = selectedExerciseCategory ? (
-        <SportCategoryExercises
-          sport={selectedExerciseSport ?? selectedSport}
-          category={selectedExerciseCategory}
-          dataVersion={contentDataVersion}
-          onNavigate={setCurrentScreen}
-          onBack={() => goBack('sport-exercise-categories')}
-          onExerciseSelect={(exercise) => {
-            setSelectedExercise(exercise)
-            setCurrentScreen('exercise-detail')
-          }}
-          onAddToToday={handleAddExerciseToToday}
-          todayExerciseIds={todayWorkoutExerciseIds}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-          initialScrollTop={screenScrollPositionsRef.current['sport-category-exercises']}
-          onScrollChange={(scrollTop) => {
-            screenScrollPositionsRef.current['sport-category-exercises'] = scrollTop
-          }}
-        />
-      ) : (
-        <SportExerciseCategories
-          sport={selectedExerciseSport ?? selectedSport}
-          dataVersion={contentDataVersion}
-          onNavigate={setCurrentScreen}
-          onBack={() => goBack('training-hub')}
-          onSelectCategory={(sport, category) => {
-            setSelectedExerciseSport(sport)
-            setSelectedExerciseCategory(category)
-            setCurrentScreen('sport-category-exercises')
-          }}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-        />
-      )
-      break
-
-    case 'exercise-detail':
-      screen = selectedExercise ? (
-        <ExerciseDetail
-          exercise={selectedExercise}
-          dataVersion={contentDataVersion}
-          onNavigate={setCurrentScreen}
-          onBack={() => goBack('sport-category-exercises')}
-          isFavorite={favoriteExercises.has(selectedExercise.id)}
-          isCompleted={completedExercises.has(selectedExercise.id)}
-          isInToday={todayWorkoutExerciseIds.has(selectedExercise.id)}
-          onAddToToday={handleAddExerciseToToday}
-          onToggleFavorite={(exerciseId) => {
-            const shouldFavorite = !favoriteExercises.has(exerciseId)
-            setFavoriteExercises(prev => {
-              const next = new Set(prev)
-              if (next.has(exerciseId)) {
-                next.delete(exerciseId)
-              } else {
-                next.add(exerciseId)
-              }
-              return next
-            })
-            supabaseService.setExerciseFavorite(exerciseId, shouldFavorite).catch((error) => {
-              setFavoriteExercises(prev => {
-                const next = new Set(prev)
-                if (shouldFavorite) {
-                  next.delete(exerciseId)
-                } else {
-                  next.add(exerciseId)
-                }
-                return next
-              })
-              console.debug('Failed to update exercise favorite:', error)
-            })
-          }}
-          onMarkComplete={(exerciseId) => {
-            setCompletedExercises(prev => {
-              const next = new Set(prev)
-              next.add(exerciseId)
-              return next
-            })
-            supabaseService.logExerciseCompletions([exerciseId], undefined, 'manual').catch((error) => {
-              setCompletedExercises(prev => {
-                const next = new Set(prev)
-                next.delete(exerciseId)
-                return next
-              })
-              console.debug('Failed to log exercise completion:', error)
-            })
-          }}
-          onShare={(exercise) => {
-            if (navigator.share) {
-              navigator.share({
-                title: exercise.name,
-                text: `Check out this exercise: ${exercise.name} - used by ${exercise.athleteName}`,
-                url: window.location.href
-              }).catch(() => {})
-            }
-          }}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-        />
-      ) : renderNavigationNotSet(
-        'The selected exercise is missing from the current app state.',
-        'Open the exercise library and choose an exercise again.',
-        'sport-exercise-categories'
-      )
-      break
-
-    case 'post-workout-reflection':
-      screen = (
-        <PostWorkoutReflection
-          totalTime={getSessionDuration()}
-          onComplete={handleReflectionComplete}
-          onSkip={() => setCurrentScreen('session-complete')}
-          undoLabel={undoAction?.label ?? null}
-          onUndo={handleUndo}
-        />
-      )
-      break
-
-    case 'missed-session-accountability':
-      screen = (
-        <MissedSessionAccountability
-          currentStreak={currentStreak}
-          longestStreak={longestStreak}
-          onSubmit={handleMissedSessionSubmit}
-          onDismiss={handleMissedSessionDismiss}
-        />
-      )
-      break
-
-    case 'round-timer':
-      screen = (
-        <RoundTimer
-          mode={roundTimerMode}
-          onComplete={handleRoundTimerComplete}
-          onClose={handleRoundTimerClose}
-        />
-      )
-      break
-
     // Loading screen - shown after login while data loads
     case 'loading':
-      screen = (
-        <LoadingScreen
-          onLoadComplete={() => {
-            setLoadingComplete(true)
-          }}
-          loadingDuration={loadingContext === 'signup' ? 5200 : 2500}
-          variant={loadingContext}
-        />
-      )
-      break
-
     case 'navigation-not-set':
       screen = (
-        <NavigationNotSet
-          message={navigationError?.message ?? 'The requested navigation route is not available.'}
-          details={navigationError?.details}
-          onGoBack={() => {
-            setNavigationError(null)
-            goBack('home')
-          }}
-          backLabel="Back to home"
-          onGoHome={() => {
-            setNavigationError(null)
-            setCurrentScreen('home')
-          }}
+        <StatusRoutes
+          currentScreen={currentScreen}
+          loadingContext={loadingContext}
+          navigationError={navigationError}
+          onLoadComplete={handleLoadingComplete}
+          onGoBackFromNavigationError={handleGoBackFromNavigationError}
+          onGoHomeFromNavigationError={handleGoHomeFromNavigationError}
         />
       )
       break
 
     // Social screens
     case 'auth-login':
-      screen = (
-        <AuthLogin
-          onLogin={(user) => {
-            console.log('[Login] User logged in:', user.username)
-            setCurrentUser(user)
-            setSelectedSport(user.sport)
-            if (user.trainingDays) setTrainingDays(user.trainingDays)
-            if (user.equipment !== undefined) setEquipment(user.equipment ?? null)
-            if (user.weightUnit) setWeightUnit(user.weightUnit)
-            if (user.experienceLevel) setUserExperienceLevel(user.experienceLevel)
-            if (user.bodyweightKg !== undefined) setBodyweightKg(user.bodyweightKg ?? null)
-            if (user.primaryGoal) setPrimaryGoal(user.primaryGoal)
-            if (user.combatSessionsPerWeek !== undefined) setCombatSessionsPerWeek(user.combatSessionsPerWeek ?? 0)
-            if (user.sessionMinutes !== undefined) setSessionMinutes(user.sessionMinutes ?? 45)
-            if (user.injuryNotes !== undefined) setInjuryNotes(user.injuryNotes ?? '')
-            if (typeof window !== 'undefined') {
-              // Prevent stale cross-user app state while keeping Supabase auth storage intact.
-              localStorage.removeItem(STORAGE_KEY)
-            }
-            setGeneratedProgram(null)
-            setProgramId(null)
-            setSavedProgramSessions(null)
-            setHasProgramChanges(false)
-            setProgramMeta(null)
-            setWeekProgress(DEFAULT_WEEK_PROGRESS)
-            setSessionOverride(null)
-            setSessionSource(null)
-            setLoadingComplete(false)
-            setLoadingContext('default')
-            if (user.onboardingCompleted === true) {
-              console.log('[Login] Navigating to loading screen')
-              resetNavigationTo('loading')
-            } else {
-              console.log('[Login] Navigating to onboarding wizard')
-              resetNavigationTo('onboarding-sport')
-            }
-          }}
-          onNavigate={setCurrentScreen}
-          onSkip={() => {
-            setCurrentUser(null)
-            setGeneratedProgram(null)
-            setProgramId(null)
-            setSavedProgramSessions(null)
-            setHasProgramChanges(false)
-            setProgramMeta(null)
-            setWeekProgress(DEFAULT_WEEK_PROGRESS)
-            resetNavigationTo('onboarding-sport')
-          }}
-        />
-      )
-      break
-
     case 'auth-signup':
-      screen = (
-        <AuthSignup
-          onSignup={(user) => {
-            setCurrentUser(user)
-            setSelectedSport(user.sport)
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem(STORAGE_KEY)
-            }
-            setGeneratedProgram(null)
-            setProgramId(null)
-            setSavedProgramSessions(null)
-            setHasProgramChanges(false)
-            setProgramMeta(null)
-            setWeekProgress(DEFAULT_WEEK_PROGRESS)
-            setSessionOverride(null)
-            setSessionSource(null)
-            setLoadingComplete(false)
-            setLoadingContext('default')
-            // Skip onboarding-sport since sport was already selected during signup
-            resetNavigationTo('onboarding-schedule')
-          }}
-          onNavigate={setCurrentScreen}
-          onEmailVerificationRequired={(email) => {
-            setPendingVerificationEmail(email)
-            setCurrentScreen('email-verification-pending')
-          }}
-        />
-      )
-      break
-
     case 'email-verification-pending':
-      screen = pendingVerificationEmail ? (
-        <EmailVerificationPending
-          email={pendingVerificationEmail}
-          onVerified={async () => {
-            // Re-fetch auth state to get the verified user
-            const authState = await supabaseService.getAuthState()
-            if (authState.isAuthenticated && authState.user) {
-              setCurrentUser(authState.user)
-              setSelectedSport(authState.user.sport)
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem(STORAGE_KEY)
-              }
-              setGeneratedProgram(null)
-              setProgramId(null)
-              setSavedProgramSessions(null)
-              setHasProgramChanges(false)
-              setProgramMeta(null)
-              setWeekProgress(DEFAULT_WEEK_PROGRESS)
-              setPendingVerificationEmail(null)
-              // Skip onboarding-sport since sport was already selected during signup
-              resetNavigationTo('onboarding-schedule')
-            }
-          }}
-          onBack={() => {
-            setPendingVerificationEmail(null)
-            supabaseService.signOut()
-            setCurrentScreen('auth-login')
-          }}
-        />
-      ) : (
-        <AuthLogin
-          onLogin={(user) => {
-            setCurrentUser(user)
-            setCurrentScreen('home')
-          }}
-          onNavigate={setCurrentScreen}
-          onSkip={() => setCurrentScreen('home')}
+      screen = (
+        <AuthRoutes
+          currentScreen={currentScreen}
+          pendingVerificationEmail={pendingVerificationEmail}
+          navigateTo={navigateTo}
+          onLogin={handleAuthLogin}
+          onSkipLogin={handleAuthSkip}
+          onSignup={handleAuthSignup}
+          onEmailVerificationRequired={handleEmailVerificationRequired}
+          onVerifiedEmail={handleVerifiedPendingEmail}
+          onBackFromEmailVerification={handleBackFromEmailVerification}
+          onPendingFallbackLogin={handlePendingVerificationFallbackLogin}
+          onPendingFallbackSkip={handlePendingVerificationFallbackSkip}
         />
       )
       break
 
     case 'workout-builder':
-      screen = (
-        <WorkoutBuilder
-          onSave={(workout) => {
-            setSelectedWorkout(workout)
-            goBack('user-profile')
-          }}
-          onClose={() => goBack('user-profile')}
-          editingWorkout={selectedWorkout || undefined}
-          onNavigate={setCurrentScreen}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-        />
-      )
-      break
-
     case 'user-profile':
-      screen = currentUser ? (
-        <UserProfileScreen
-          user={currentUser}
-          isOwnProfile={true}
-          currentUser={currentUser}
-          onNavigate={setCurrentScreen}
-          onSelectWorkout={(workout) => {
-            setSelectedWorkout(workout)
-            setCurrentScreen('workout-detail')
-          }}
-          onStartAction={handleCenterAction}
-          hasWorkoutToday={hasWorkoutToday}
-        />
-      ) : (
-        <AuthLogin
-          onLogin={(user) => {
-            setCurrentUser(user)
-            setCurrentScreen('user-profile')
-          }}
-          onNavigate={setCurrentScreen}
-          onSkip={() => setCurrentScreen('home')}
-        />
-      )
-      break
-
     case 'edit-profile':
-      screen = currentUser ? (
-        <EditProfile
-          user={currentUser}
-          onSave={(updatedUser) => {
-            setCurrentUser(updatedUser)
-            goBack('user-profile')
-          }}
-          onBack={() => goBack('user-profile')}
-        />
-      ) : renderNavigationNotSet(
-        'Profile data is not loaded for editing.',
-        'Sign in again and retry.',
-        'auth-login'
-      )
-      break
-
     case 'workout-detail':
-      screen = selectedWorkout ? (
-        <WorkoutDetail
-          workout={selectedWorkout}
+      screen = (
+        <ProfileWorkoutRoutes
+          currentScreen={currentScreen}
           currentUser={currentUser}
-          onStartWorkout={(workout) => {
-            handleStartCustomWorkout(workout)
-          }}
-          onCopyWorkout={(workout) => {
-            setSelectedWorkout(workout)
-            setCurrentScreen('workout-builder')
-          }}
-          onBack={() => goBack('user-profile')}
+          selectedWorkout={selectedWorkout}
+          workoutBuilderPrefillExercise={workoutBuilderPrefillExercise}
+          hasWorkoutToday={hasWorkoutToday}
+          currentStreak={currentStreak}
+          longestStreak={longestStreak}
+          sessionHistory={sessionHistory}
+          activityLogs={activityLogs}
+          navigateTo={navigateTo}
+          goBack={goBack}
+          renderNavigationNotSet={renderNavigationNotSet}
+          onSaveWorkout={handleSaveWorkoutBuilder}
+          onCloseWorkoutBuilder={handleCloseWorkoutBuilder}
+          onWorkoutPrefillHandled={() => setWorkoutBuilderPrefillExercise(null)}
+          onSelectWorkout={handleSelectProfileWorkout}
+          onSaveEditedProfile={handleSaveEditedProfile}
+          onStartWorkout={handleStartCustomWorkout}
+          onCopyWorkout={handleCopyWorkoutToBuilder}
+          onLoginToProfile={handleLoginToProfile}
+          onStartAction={handleCenterAction}
         />
-      ) : renderNavigationNotSet(
-        'The selected workout is missing from the current app state.',
-        'Open your profile and select a workout again.',
-        'user-profile'
       )
       break
 
@@ -4188,6 +4921,13 @@ export default function App() {
       <div className={`h-full ${getTransitionClass()}`}>
         {screen}
       </div>
+      {navigationBlockNotice && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[75] px-4">
+          <div className="rounded-full border border-red-500/45 bg-black/90 px-4 py-2 text-xs font-semibold tracking-wide text-white shadow-lg">
+            {navigationBlockNotice}
+          </div>
+        </div>
+      )}
       {showResumePrompt && (
         <div className="fixed inset-0 bg-background/95 z-50 flex items-center justify-center px-6">
           <div className="w-full max-w-sm text-center">
@@ -4237,13 +4977,26 @@ export default function App() {
               Subscription required
             </p>
             <h2 className="text-2xl font-black text-foreground mb-3">
-              Continue with Premium
+              Keep the full coaching layer
             </h2>
             <p className="text-sm text-muted-foreground mb-3">
-              To continue using the app, you need an active subscription.
+              Premium is required after your first {SUBSCRIPTION_REQUIRED_AFTER_DAYS} days to keep full access to the app.
             </p>
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-4 mb-4 text-left">
+              <p className="text-sm font-semibold text-foreground leading-relaxed">
+                {PREMIUM_POSITIONING_COPY}
+              </p>
+            </div>
+            <div className="mb-6 space-y-2 text-left">
+              {PREMIUM_CORE_HIGHLIGHTS.map((highlight) => (
+                <div key={highlight} className="flex items-start gap-2 text-sm text-muted-foreground leading-relaxed">
+                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+                  <span>{highlight}</span>
+                </div>
+              ))}
+            </div>
             <p className="text-lg font-black text-foreground mb-8">
-              25 SEK / month
+              {PREMIUM_SUBSCRIPTION_PRICE_LABEL}
             </p>
             <div className="flex flex-col gap-3">
               <button

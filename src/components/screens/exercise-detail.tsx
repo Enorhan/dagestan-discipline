@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { EnhancedExerciseData, ExerciseRecommendation, ExperienceLevel, Screen } from '@/lib/types'
+import { EnhancedExerciseData, ExerciseRecommendation, ExperienceLevel, Screen, SportType } from '@/lib/types'
 import { athletesService } from '@/lib/athletes-service'
+import { parseExerciseCoachingContent } from '@/lib/exercise-coaching'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -11,20 +12,22 @@ import { Button } from '@/components/ui/button'
 import { VideoPlayer } from '@/components/ui/video-player'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Trophy, Dumbbell, Tag, Clock, RefreshCw, ChevronRight, Info, Video,
-  Heart, Check, Share, Star, Plus
+  Trophy, Dumbbell, Tag, RefreshCw, Info, Video,
+  Check, Share, Star, Plus, AlertCircle, Target, TrendingUp
 } from '@/components/ui/icons'
 
 interface ExerciseDetailProps {
-  exercise: EnhancedExerciseData
+  exercise: EnhancedExerciseData & { athleteData?: Array<{ athleteName: string; athleteAchievements?: string[] }> }
   dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
   isFavorite?: boolean
   isCompleted?: boolean
   isInToday?: boolean
+  isInWorkoutBuilder?: boolean
   onToggleFavorite?: (exerciseId: string) => void
   onMarkComplete?: (exerciseId: string) => void
+  onAddToWorkout?: (exercise: EnhancedExerciseData) => void
   onAddToToday?: (exercise: EnhancedExerciseData) => void
   onShare?: (exercise: EnhancedExerciseData) => void
   onStartAction?: () => void
@@ -49,6 +52,14 @@ const sportThemes: Record<string, { gradient: string; color: string; bg: string 
   }
 }
 
+function formatDisplayLabel(value: string): string {
+  return value
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 export function ExerciseDetail({
   exercise,
   dataVersion = 0,
@@ -57,8 +68,10 @@ export function ExerciseDetail({
   isFavorite = false,
   isCompleted = false,
   isInToday = false,
+  isInWorkoutBuilder = false,
   onToggleFavorite,
   onMarkComplete,
+  onAddToWorkout,
   onAddToToday,
   onShare,
   onStartAction,
@@ -67,6 +80,7 @@ export function ExerciseDetail({
   const [recommendation, setRecommendation] = useState<ExerciseRecommendation | null>(null)
   const [isLoadingRec, setIsLoadingRec] = useState(true)
   const [selectedLevel, setSelectedLevel] = useState<ExperienceLevel>('intermediate')
+  const [benefitTab, setBenefitTab] = useState<SportType>(exercise.sport)
 
   useEffect(() => {
     const fetchRecommendation = async () => {
@@ -76,11 +90,10 @@ export function ExerciseDetail({
           exercise.id,
           selectedLevel
         )
-        if (exerciseWithGuidance?.recommendations) {
-          setRecommendation(exerciseWithGuidance.recommendations)
-        }
+        setRecommendation(exerciseWithGuidance?.recommendations ?? null)
       } catch (error) {
         console.error('[ExerciseDetail] Error fetching recommendation:', error)
+        setRecommendation(null)
       } finally {
         setIsLoadingRec(false)
       }
@@ -95,10 +108,30 @@ export function ExerciseDetail({
   ]
 
   const theme = sportThemes[exercise.sport] || sportThemes.bjj
+  const athleteName = exercise.athleteName ?? (exercise as { athleteData?: Array<{ athleteName: string }> }).athleteData?.[0]?.athleteName
+  const athleteAchievements = exercise.athleteAchievements ?? (exercise as { athleteData?: Array<{ athleteAchievements?: string[] }> }).athleteData?.[0]?.athleteAchievements
+  const showAddWorkoutAction = Boolean(onAddToWorkout)
   const showAddAction = Boolean(onAddToToday)
   const showCompleteAction = !isCompleted && Boolean(onMarkComplete)
-  const hasFooterActions = showAddAction || showCompleteAction
+  const hasFooterActions = showAddWorkoutAction || showAddAction || showCompleteAction
   const hasAthleteMetrics = Boolean(exercise.sets || exercise.reps || exercise.weight || exercise.duration)
+  const coachingContent = parseExerciseCoachingContent(exercise.description)
+  const performanceTags = exercise.eliteStandard?.tags ?? []
+  const loggableMetrics = exercise.eliteStandard?.loggable_metrics ?? exercise.loggableMetrics ?? []
+  const benefitTabs: { id: SportType; label: string }[] = [
+    { id: 'judo', label: 'Judo' },
+    { id: 'wrestling', label: 'Wrestling' },
+    { id: 'bjj', label: 'BJJ' },
+  ]
+  const benefitsBySport: Record<SportType, string | undefined> = {
+    judo: exercise.eliteStandard?.benefits_judo ?? exercise.benefitsJudo,
+    wrestling: exercise.eliteStandard?.benefits_wrestling ?? exercise.benefitsWrestling,
+    bjj: exercise.eliteStandard?.benefits_bjj ?? exercise.benefitsBjj,
+  }
+  const availableBenefitTabs = benefitTabs.filter(({ id }) => Boolean(benefitsBySport[id]))
+  const activeBenefit = benefitsBySport[benefitTab] ?? benefitsBySport[availableBenefitTabs[0]?.id ?? 'bjj']
+  const progressionGuidance = recommendation?.progressionNotes ?? coachingContent.progression
+  const regressionGuidance = recommendation?.regressionNotes ?? null
 
   return (
     <ScreenShell>
@@ -144,13 +177,18 @@ export function ExerciseDetail({
               </div>
 
               <div className="mt-8">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className={`text-[10px] font-black tracking-[0.2em] ${theme.color} uppercase bg-white/10 px-2 py-1 rounded-lg backdrop-blur-md border border-white/5`}>
                     {exercise.category.replace('-', ' ')}
                   </span>
                   {exercise.isWeighted && (
                     <span className="bg-amber-500/20 text-amber-400 text-[10px] font-black tracking-[0.2em] px-2 py-1 rounded-lg backdrop-blur-md border border-white/5 uppercase">
                       Weighted
+                    </span>
+                  )}
+                  {exercise.difficultyLevel && (
+                    <span className="text-[10px] font-bold tracking-wider text-white/70 uppercase bg-white/5 px-2 py-1 rounded-lg border border-white/5">
+                      {exercise.difficultyLevel}
                     </span>
                   )}
                 </div>
@@ -166,12 +204,105 @@ export function ExerciseDetail({
             </div>
           </div>
 
-          {/* Video Section - Premium Card */}
-          {exercise.videoUrl && (
+          {/* Video / Demo Placeholder - Premium Card */}
+          {exercise.videoUrl ? (
             <div className="px-6 -mt-6 relative z-20">
               <div className="card-glass p-2 rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
                 <VideoPlayer url={exercise.videoUrl} title={exercise.name} />
               </div>
+            </div>
+          ) : (
+            <div className="px-6 -mt-6 relative z-20">
+              <div className="rounded-3xl border border-white/10 bg-white/5 aspect-video flex items-center justify-center overflow-hidden">
+                <div className="flex flex-col items-center gap-3 text-white/30">
+                  <Video size={48} />
+                  <span className="text-xs font-bold uppercase tracking-wider">Demo Coming Soon</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(exercise.difficultyLevel || performanceTags.length > 0 || loggableMetrics.length > 0) && (
+            <div className="px-6 py-6">
+              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase mb-4">
+                Performance Profile
+              </h2>
+              <div className="card-elevated rounded-3xl p-5 bg-white/[0.03] border border-white/5 space-y-4">
+                {performanceTags.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-2">
+                      Focus Tags
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {performanceTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/75"
+                        >
+                          <Tag size={11} />
+                          {formatDisplayLabel(tag)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {exercise.difficultyLevel && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-1">
+                        Difficulty
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {formatDisplayLabel(exercise.difficultyLevel)}
+                      </p>
+                    </div>
+                  )}
+                  {loggableMetrics.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-1">
+                        Track Progress With
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {loggableMetrics.map((metric) => formatDisplayLabel(metric)).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sport-Specific Benefits - Tabbed */}
+          {availableBenefitTabs.length > 0 && activeBenefit && (
+            <div className="px-6 py-6">
+              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase mb-4">
+                Grappling Transfer
+              </h2>
+              {availableBenefitTabs.length > 1 ? (
+                <div className="flex gap-1 p-1 rounded-2xl bg-white/5 border border-white/10">
+                  {availableBenefitTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setBenefitTab(tab.id)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                        benefitTab === tab.id
+                          ? 'bg-white text-black shadow-lg'
+                          : 'text-white/50 hover:text-white/80'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  {availableBenefitTabs[0]?.label}
+                </div>
+              )}
+              <p className="mt-4 text-sm text-white/80 leading-relaxed">
+                {activeBenefit}
+              </p>
             </div>
           )}
 
@@ -194,10 +325,10 @@ export function ExerciseDetail({
                     <Trophy size={28} className="text-white/90" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-foreground tracking-tight">{exercise.athleteName}</h3>
-                    {exercise.athleteAchievements && exercise.athleteAchievements.length > 0 && (
+                    <h3 className="text-xl font-bold text-foreground tracking-tight">{athleteName ?? 'Elite Athlete'}</h3>
+                    {athleteAchievements && athleteAchievements.length > 0 && (
                       <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${theme.color}`}>
-                        {exercise.athleteAchievements[0]}
+                        {athleteAchievements[0]}
                       </p>
                     )}
                   </div>
@@ -242,6 +373,14 @@ export function ExerciseDetail({
                   <div className="mt-6 flex gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
                     <Info size={16} className="text-white/20 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-white/50 leading-relaxed italic">{exercise.notes}</p>
+                  </div>
+                )}
+
+                {exercise.frequency && (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-white/50">
+                      Frequency: {exercise.frequency}
+                    </p>
                   </div>
                 )}
               </div>
@@ -303,7 +442,9 @@ export function ExerciseDetail({
                     <div className="bg-primary/5 rounded-2xl p-4 text-center border border-primary/10">
                       <span className="text-[9px] font-bold text-primary/60 uppercase tracking-widest block mb-1">Rest</span>
                       <p className="text-xl font-black text-primary">
-                        {recommendation.restRange.min}s
+                        {recommendation.restRange.min === recommendation.restRange.max
+                          ? `${recommendation.restRange.min}s`
+                          : `${recommendation.restRange.min}-${recommendation.restRange.max}s`}
                       </p>
                     </div>
                   </div>
@@ -317,23 +458,89 @@ export function ExerciseDetail({
                         </p>
                       </div>
                     )}
-                    {recommendation.progressionNotes && (
-                      <div className="flex items-start gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5" />
-                        <p className="text-xs text-foreground/70 font-medium leading-relaxed">
-                          <span className="text-foreground font-bold uppercase text-[10px] tracking-wider">Advance:</span> {recommendation.progressionNotes}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">Standard protocol for this drill.</p>
+                  <p className="text-sm text-muted-foreground">Standard protocol for this exercise.</p>
                 </div>
               )}
             </div>
           </div>
+
+          {(coachingContent.executionPoints.length > 0 || coachingContent.commonMistakes.length > 0 || progressionGuidance || regressionGuidance) && (
+            <div className="px-6 py-4 space-y-4">
+              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase">
+                Coaching Notes
+              </h2>
+
+              {coachingContent.executionPoints.length > 0 && (
+                <div className="card-elevated rounded-3xl p-5 bg-white/[0.03] border border-white/5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target size={16} className="text-primary" />
+                    <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-foreground/70">
+                      Execution Focus
+                    </h3>
+                  </div>
+                  <ul className="space-y-2">
+                    {coachingContent.executionPoints.map((point, index) => (
+                      <li key={`${point}-${index}`} className="flex items-start gap-3">
+                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                        <p className="text-sm text-foreground/80 leading-relaxed">{point}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {coachingContent.commonMistakes.length > 0 && (
+                <div className="card-elevated rounded-3xl p-5 bg-red-500/[0.06] border border-red-500/15">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertCircle size={16} className="text-red-400" />
+                    <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-red-200/80">
+                      Watch For
+                    </h3>
+                  </div>
+                  <ul className="space-y-2">
+                    {coachingContent.commonMistakes.map((mistake, index) => (
+                      <li key={`${mistake}-${index}`} className="flex items-start gap-3">
+                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-red-400" />
+                        <p className="text-sm text-foreground/80 leading-relaxed">{mistake}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {(progressionGuidance || regressionGuidance) && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {progressionGuidance && (
+                    <div className="card-elevated rounded-3xl p-5 bg-emerald-500/[0.06] border border-emerald-500/15">
+                      <div className="flex items-center gap-2 mb-3">
+                        <TrendingUp size={16} className="text-emerald-400" />
+                        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200/80">
+                          Scale Up
+                        </h3>
+                      </div>
+                      <p className="text-sm text-foreground/80 leading-relaxed">{progressionGuidance}</p>
+                    </div>
+                  )}
+
+                  {regressionGuidance && (
+                    <div className="card-elevated rounded-3xl p-5 bg-amber-500/[0.06] border border-amber-500/15">
+                      <div className="flex items-center gap-2 mb-3">
+                        <RefreshCw size={16} className="text-amber-400" />
+                        <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-amber-100/80">
+                          Scale Back
+                        </h3>
+                      </div>
+                      <p className="text-sm text-foreground/80 leading-relaxed">{regressionGuidance}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Equipment & Muscles Section */}
           <div className="px-6 py-4 space-y-8">
@@ -387,6 +594,32 @@ export function ExerciseDetail({
         <div className="max-w-lg mx-auto w-full">
           {hasFooterActions && (
             <div className="px-6 pt-3 pb-2 space-y-3 border-b border-white/5">
+              {showAddWorkoutAction && onAddToWorkout && (
+                <Button
+                  variant={isInWorkoutBuilder ? 'secondary' : 'primary'}
+                  size="lg"
+                  fullWidth
+                  className="h-14 rounded-2xl font-black text-base uppercase tracking-[0.14em]"
+                  disabled={isInWorkoutBuilder}
+                  onClick={() => {
+                    haptics.medium()
+                    onAddToWorkout(exercise)
+                  }}
+                >
+                  {isInWorkoutBuilder ? (
+                    <>
+                      <Check size={18} className="mr-2" />
+                      Added to Workout
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={18} className="mr-2" />
+                      Add to Workout
+                    </>
+                  )}
+                </Button>
+              )}
+
               {showAddAction && onAddToToday && (
                 <Button
                   variant={isInToday ? 'secondary' : 'primary'}
@@ -424,7 +657,7 @@ export function ExerciseDetail({
                     onMarkComplete(exercise.id)
                   }}
                 >
-                  Complete Drill
+                  Complete Exercise
                 </Button>
               )}
             </div>

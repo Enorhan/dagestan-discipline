@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { Equipment, Session, WeightUnit } from '@/lib/types'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Equipment, Session, WeightUnit, PersonalRecord } from '@/lib/types'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { EliteInsightsPanel } from '@/components/ui/elite-insights-panel'
-import { X, Pause, Play, Check } from '@/components/ui/icons'
+import { PRCelebration, PRBadge } from '@/components/ui/pr-celebration'
+import { checkForPR, getCurrentPR, getExercisePRHistory } from '@/lib/pr-service'
+import { X, Pause, Play, Check, Trophy } from '@/components/ui/icons'
 
 const sessionVisualTheme = (focus: string | undefined) => {
   const f = (focus ?? '').toLowerCase()
@@ -88,6 +90,7 @@ interface WorkoutSessionProps {
   onSelectSet: (exerciseIndex: number, setNumber: number) => void
   onToggleSetDone: (exerciseIndex: number, setNumber: number, shouldBeDone: boolean, weightBase?: number) => void
   onFinishSession: () => void
+  onNewPR?: (pr: PersonalRecord) => void
   undoLabel?: string | null
   onUndo: () => void
 }
@@ -111,81 +114,44 @@ export function WorkoutSession({
   onSelectSet,
   onToggleSetDone,
   onFinishSession,
+  onNewPR,
   undoLabel,
   onUndo,
 }: WorkoutSessionProps) {
   const [showEndConfirm, setShowEndConfirm] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [weight, setWeight] = useState<string>('')
+  const [currentPR, setCurrentPR] = useState<PersonalRecord | null>(null)
+  const [exercisePRs, setExercisePRs] = useState<Record<string, PersonalRecord[]>>({})
 
   const unitRef = useRef<WeightUnit>(weightUnit)
-
-  // Handle null session
-  if (!session) {
-    return (
-      <ScreenShell className="items-center justify-center px-6">
-        <p className="text-sm text-muted-foreground uppercase tracking-[0.3em] mb-4">
-          No workout program loaded
-        </p>
-        <Button
-          onClick={onEndSession}
-          variant="primary"
-          size="lg"
-          fullWidth
-          className="max-w-sm bg-foreground text-background"
-        >
-          Go Back
-        </Button>
-      </ScreenShell>
-    )
-  }
-
-  const currentExercise = session.exercises[currentExerciseIndex]
-  const totalExercises = session.exercises.length
+  const currentExercise = session?.exercises[currentExerciseIndex] ?? null
+  const totalExercises = session?.exercises.length ?? 0
   const isBodyweightOnly = equipment === 'bodyweight'
-
-  if (!currentExercise) {
-    return (
-      <ScreenShell className="items-center justify-center px-6">
-        <p className="text-sm text-muted-foreground uppercase tracking-[0.3em] mb-4">
-          No exercise loaded
-        </p>
-        <Button
-          onClick={onEndSession}
-          variant="primary"
-          size="lg"
-          fullWidth
-          className="max-w-sm bg-foreground text-background"
-        >
-          Return home
-        </Button>
-      </ScreenShell>
-    )
-  }
 
   const LBS_PER_KG = 2.20462
 
-  const formatWeightValue = (value: number) => {
+  const formatWeightValue = useCallback((value: number) => {
     const decimals = weightUnit === 'kg' ? 1 : 0
     return Number(value.toFixed(decimals)).toString()
-  }
+  }, [weightUnit])
 
-  const toDisplayWeight = (valueLbs: number) => (
+  const toDisplayWeight = useCallback((valueLbs: number) => (
     weightUnit === 'lbs' ? valueLbs : valueLbs / LBS_PER_KG
-  )
+  ), [weightUnit])
 
-  const toBaseWeight = (value: number) => (
+  const toBaseWeight = useCallback((value: number) => (
     weightUnit === 'lbs' ? value : value * LBS_PER_KG
-  )
+  ), [weightUnit])
 
-  const visualTheme = sessionVisualTheme(session.focus)
+  const visualTheme = sessionVisualTheme(session?.focus)
   const selectedSetIndex = Math.max(0, currentSet - 1)
 
   const selectedDone =
-    !!setProgressByExercise[currentExercise.id]?.[selectedSetIndex]
+    !!(currentExercise && setProgressByExercise[currentExercise.id]?.[selectedSetIndex])
 
-  const selectedCurrentBase = currentSessionWeights[currentExercise.id]?.[selectedSetIndex] ?? 0
-  const selectedLastBase = lastSessionWeights?.[currentExercise.id]?.[selectedSetIndex] ?? 0
+  const selectedCurrentBase = currentExercise ? (currentSessionWeights[currentExercise.id]?.[selectedSetIndex] ?? 0) : 0
+  const selectedLastBase = currentExercise ? (lastSessionWeights?.[currentExercise.id]?.[selectedSetIndex] ?? 0) : 0
 
   const selectedLastDisplay = selectedLastBase > 0 ? formatWeightValue(toDisplayWeight(selectedLastBase)) : null
 
@@ -196,7 +162,7 @@ export function WorkoutSession({
 
   // Update elapsed time every second (paused time excluded)
   useEffect(() => {
-    if (!sessionStartTime) return
+    if (!sessionStartTime || !session || !currentExercise) return
 
     const updateElapsed = () => {
       const activePausedTime = isPaused && pauseStartedAt
@@ -211,10 +177,15 @@ export function WorkoutSession({
 
     const interval = setInterval(updateElapsed, 1000)
     return () => clearInterval(interval)
-  }, [sessionStartTime, isPaused, pausedTime, pauseStartedAt])
+  }, [sessionStartTime, isPaused, pausedTime, pauseStartedAt, session, currentExercise])
 
   // Prefill weight when selection changes.
   useEffect(() => {
+    if (!session || !currentExercise) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset derived input when exercise context is unavailable
+      setWeight('')
+      return
+    }
     if (isBodyweightOnly) {
       setWeight('')
       return
@@ -228,7 +199,7 @@ export function WorkoutSession({
       return
     }
     setWeight('')
-  }, [currentExerciseIndex, currentSet, isBodyweightOnly, selectedCurrentBase, selectedLastBase, weightUnit])
+  }, [session, currentExercise, currentExerciseIndex, currentSet, isBodyweightOnly, selectedCurrentBase, selectedLastBase, toDisplayWeight, formatWeightValue])
 
   // Convert input when unit changes
   useEffect(() => {
@@ -238,10 +209,11 @@ export function WorkoutSession({
       const converted = unitRef.current === 'lbs'
         ? currentValue / LBS_PER_KG
         : currentValue * LBS_PER_KG
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronized conversion when display unit flips
       setWeight(formatWeightValue(converted))
     }
     unitRef.current = weightUnit
-  }, [weightUnit, weight, LBS_PER_KG])
+  }, [weightUnit, weight, formatWeightValue])
 
   const formatElapsedTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -250,10 +222,30 @@ export function WorkoutSession({
   }
 
   const handleToggleSelectedSet = () => {
-    if (isPaused) return
+    if (isPaused || !currentExercise) return
     const parsed = weight ? parseFloat(weight) : Number.NaN
     const baseWeight = !Number.isNaN(parsed) ? Number(toBaseWeight(parsed).toFixed(2)) : undefined
     const nextState = !selectedDone
+
+    // Check for PR when completing a set with weight
+    if (nextState && baseWeight && baseWeight > 0 && currentExercise.reps) {
+      const pr = checkForPR(
+        currentExercise.id,
+        currentExercise.name,
+        baseWeight,
+        currentExercise.reps,
+        1 // This set
+      )
+      if (pr) {
+        setCurrentPR(pr)
+        setExercisePRs(prev => ({
+          ...prev,
+          [currentExercise.id]: [...(prev[currentExercise.id] || []), pr]
+        }))
+        onNewPR?.(pr)
+      }
+    }
+
     haptics.medium()
     onToggleSetDone(currentExerciseIndex, currentSet, nextState, baseWeight)
 
@@ -289,14 +281,52 @@ export function WorkoutSession({
     onTogglePause()
   }
 
-  const totalSets = session.exercises.reduce((acc, ex) => acc + ex.sets, 0)
-  const completedSets = session.exercises.reduce((acc, ex) => {
+  const totalSets = (session?.exercises ?? []).reduce((acc, ex) => acc + ex.sets, 0)
+  const completedSets = (session?.exercises ?? []).reduce((acc, ex) => {
     const flags = setProgressByExercise[ex.id] ?? []
     const done = flags.slice(0, ex.sets).filter(Boolean).length
     return acc + done
   }, 0)
   const progressPercent = totalSets > 0 ? (completedSets / totalSets) * 100 : 0
   const isSessionComplete = totalSets > 0 && completedSets >= totalSets
+
+  if (!session) {
+    return (
+      <ScreenShell className="items-center justify-center px-6">
+        <p className="text-sm text-muted-foreground uppercase tracking-[0.3em] mb-4">
+          No workout program loaded
+        </p>
+        <Button
+          onClick={onEndSession}
+          variant="primary"
+          size="lg"
+          fullWidth
+          className="max-w-sm bg-foreground text-background"
+        >
+          Go Back
+        </Button>
+      </ScreenShell>
+    )
+  }
+
+  if (!currentExercise) {
+    return (
+      <ScreenShell className="items-center justify-center px-6">
+        <p className="text-sm text-muted-foreground uppercase tracking-[0.3em] mb-4">
+          No exercise loaded
+        </p>
+        <Button
+          onClick={onEndSession}
+          variant="primary"
+          size="lg"
+          fullWidth
+          className="max-w-sm bg-foreground text-background"
+        >
+          Return home
+        </Button>
+      </ScreenShell>
+    )
+  }
 
   return (
     <ScreenShell className="relative">
@@ -411,9 +441,18 @@ export function WorkoutSession({
                       <p className="text-[10px] font-bold tracking-[0.2em] text-white/50 uppercase">
                         {exercise.sets} sets · {exercise.duration ? `${exercise.duration}s` : `${exercise.reps ?? 0} reps`} · {exercise.restTime}s rest
                       </p>
-                      <h3 className="text-base font-black text-white mt-1 truncate">
-                        {exercise.name}
-                      </h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <h3 className="text-base font-black text-white truncate">
+                          {exercise.name}
+                        </h3>
+                        {/* Show PR badge if this exercise hit a PR */}
+                        {exercisePRs[exercise.id] && exercisePRs[exercise.id].length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex-shrink-0">
+                            <Trophy size={10} />
+                            PR
+                          </span>
+                        )}
+                      </div>
                       {exercise.notes && (
                         <p className="text-xs text-white/60 mt-2 leading-relaxed line-clamp-2">
                           {exercise.notes}
@@ -597,13 +636,47 @@ export function WorkoutSession({
                       +10
                     </Button>
                   </div>
-                  <div className="text-right pr-1">
-                    <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
-                      Last
-                    </p>
-                    <p className="text-sm font-bold text-foreground tabular-nums">
-                      {selectedLastDisplay ? `${selectedLastDisplay} ${weightUnit}` : '—'}
-                    </p>
+                  {/* Last Time + Progression Suggestion */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      {selectedLastDisplay ? (
+                        <div className="flex items-center gap-2">
+                          <div className="bg-white/5 rounded-lg px-2 py-1 border border-white/10">
+                            <p className="text-[9px] font-bold tracking-[0.15em] text-white/40 uppercase">
+                              Last Time
+                            </p>
+                            <p className="text-sm font-bold text-white/70 tabular-nums">
+                              {selectedLastDisplay} {weightUnit}
+                            </p>
+                          </div>
+                          {/* Progression suggestion if last session was successful */}
+                          <button
+                            onClick={() => {
+                              const lastWeight = parseFloat(selectedLastDisplay)
+                              if (!Number.isNaN(lastWeight)) {
+                                const increment = weightUnit === 'lbs' ? 5 : 2.5
+                                const suggestedWeight = lastWeight + increment
+                                setWeight(formatWeightValue(suggestedWeight))
+                                haptics.light()
+                              }
+                            }}
+                            className="bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg px-2 py-1 border border-emerald-500/30 transition-colors"
+                          >
+                            <p className="text-[9px] font-bold tracking-[0.15em] text-emerald-400 uppercase">
+                              Try
+                            </p>
+                            <p className="text-sm font-bold text-emerald-400 tabular-nums">
+                              +{weightUnit === 'lbs' ? 5 : 2.5}
+                            </p>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-500/10 rounded-lg px-2 py-1 border border-amber-500/20 inline-flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-amber-400">New Exercise</span>
+                          <span className="text-[9px] text-amber-400/70">Start light, progress weekly</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -661,7 +734,7 @@ export function WorkoutSession({
               Take a breath
             </h2>
             <p className="text-sm text-muted-foreground mb-8">
-              Resume when you're ready.
+              Resume when you&apos;re ready.
             </p>
             <Button
               onClick={handlePauseToggle}
@@ -687,6 +760,13 @@ export function WorkoutSession({
         confirmText="End Session"
         cancelText="Continue"
         variant="destructive"
+      />
+
+      {/* PR Celebration */}
+      <PRCelebration
+        pr={currentPR}
+        onClose={() => setCurrentPR(null)}
+        autoCloseDelay={3500}
       />
     </ScreenShell>
   )

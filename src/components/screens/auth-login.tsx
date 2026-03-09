@@ -5,6 +5,9 @@ import Image from 'next/image'
 import { Screen } from '@/lib/types'
 import { ScreenShell, ScreenShellContent } from '@/components/ui/screen-shell'
 import { haptics } from '@/lib/haptics'
+import { analytics } from '@/lib/analytics'
+import { SUPPORT_EMAIL, buildSupportMailtoLink, openSupportLink } from '@/lib/app-support'
+import { captureException } from '@/lib/monitoring'
 import { supabaseService } from '@/lib/supabase-service'
 import { UserProfile } from '@/lib/social-types'
 import { Button } from '@/components/ui/button'
@@ -28,6 +31,7 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
   const [showResetPassword, setShowResetPassword] = useState(false)
   const [resetEmailSent, setResetEmailSent] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
+  const [supportError, setSupportError] = useState<string | null>(null)
 
   // Rate limiting state
   const loginAttemptsRef = useRef(0)
@@ -55,10 +59,10 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
 
     setIsLoading(true)
     setError(null)
+    setSupportError(null)
     let timeoutId: ReturnType<typeof setTimeout> | null = null
 
     try {
-      console.log('[Login] Starting login for:', email.trim())
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           reject(new Error('Login timed out. Check your connection and try again.'))
@@ -74,11 +78,13 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
       loginAttemptsRef.current = 0
       lockoutUntilRef.current = null
 
-      console.log('[Login] Sign in successful, user:', user.username)
       haptics.success()
       onLogin(user)
     } catch (e) {
-      console.error('[Login] Error:', e)
+      captureException('auth-login', e, {
+        step: 'sign-in',
+        timedResetMode: showResetPassword,
+      }, 'warning')
 
       // Increment failed attempts and check for lockout
       loginAttemptsRef.current += 1
@@ -109,16 +115,55 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
 
     setIsResetting(true)
     setError(null)
+    setSupportError(null)
 
     try {
       await supabaseService.resetPassword(email.trim())
       setResetEmailSent(true)
       haptics.success()
     } catch (e) {
+      captureException('auth-login', e, {
+        step: 'reset-password',
+      }, 'warning')
       setError(e instanceof Error ? e.message : 'Failed to send reset email')
       haptics.error()
     } finally {
       setIsResetting(false)
+    }
+  }
+
+  const handleRecoverySupport = async (reason: 'sign-in' | 'password-reset') => {
+    setSupportError(null)
+    analytics.track('support_contact_opened', {
+      source: 'auth-login',
+      channel: 'email',
+      reason,
+    })
+
+    const subject = reason === 'password-reset'
+      ? 'Dagestani Disciple password recovery help'
+      : 'Dagestani Disciple sign-in help'
+    const body = [
+      'Hi Dagestani Disciple support,',
+      '',
+      reason === 'password-reset'
+        ? 'I need help recovering access to my account after requesting a password reset.'
+        : 'I need help signing in to my account.',
+      '',
+      `Account email: ${email.trim() || '[enter your account email]'}`,
+      '',
+      'What happened:',
+      '[add a short description here]',
+    ].join('\n')
+
+    try {
+      await openSupportLink(buildSupportMailtoLink(SUPPORT_EMAIL, subject, body))
+    } catch (error) {
+      captureException('auth-login-support', error, {
+        step: 'open-support',
+        reason,
+      }, 'warning')
+      setSupportError(`Unable to open support right now. Please email ${SUPPORT_EMAIL}.`)
     }
   }
 
@@ -194,7 +239,7 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
             {resetEmailSent && (
               <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
                 <p className="text-sm text-green-400">
-                  Password reset email sent! Check your inbox and follow the link to reset your password.
+                  Password reset email sent! Check your inbox and follow the secure reset page link to choose a new password.
                 </p>
               </div>
             )}
@@ -222,6 +267,7 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
                   onClick={() => {
                     setShowResetPassword(false)
                     setError(null)
+                    setSupportError(null)
                     setResetEmailSent(false)
                   }}
                   variant="ghost"
@@ -265,12 +311,32 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
                 </div>
               </>
             )}
+
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
+                Account recovery
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Use password reset first. If the reset email never arrives or you still can&apos;t access your account, contact support and include your account email.
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-3 w-full"
+                onClick={() => void handleRecoverySupport(showResetPassword ? 'password-reset' : 'sign-in')}
+              >
+                Contact support
+              </Button>
+              {supportError && (
+                <p className="mt-2 text-xs text-red-400">{supportError}</p>
+              )}
+            </div>
           </div>
 
           {/* Sign Up Link */}
           <div className="text-center mt-8">
             <p className="text-muted-foreground text-sm">
-              Don't have an account?{' '}
+              Don’t have an account?{' '}
               <Button
                 variant="link"
                 size="sm"

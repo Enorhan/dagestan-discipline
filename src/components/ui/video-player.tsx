@@ -96,6 +96,7 @@ export function VideoPlayer({
               <iframe
                 src={url}
                 className="w-full aspect-video"
+                loading="lazy"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
                 title={title}
@@ -119,6 +120,7 @@ export function VideoPlayer({
       <iframe
         src={url}
         className="w-full aspect-video"
+        loading="lazy"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
         title={title}

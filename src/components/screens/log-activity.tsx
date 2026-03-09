@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { ActivityType, ActivityLog } from '@/lib/types'
+import { getActivityIntensityDetail, getActivityIntensityLabel } from '@/lib/activity-intensity'
 import { haptics } from '@/lib/haptics'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { Button } from '@/components/ui/button'
@@ -97,13 +98,6 @@ const ACTIVITY_TYPES: { type: ActivityType; label: string; description: string; 
 
 const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120]
 
-const getIntensityLabel = (value: number) => {
-  if (value <= 3) return 'Easy'
-  if (value <= 6) return 'Moderate'
-  if (value <= 8) return 'Hard'
-  return 'Max Effort'
-}
-
 export function LogActivity({
   onLogActivity,
   onUpdateActivity,
@@ -134,6 +128,15 @@ export function LogActivity({
   const selectedTypeMeta = ACTIVITY_TYPES.find((item) => item.type === selectedType) ?? null
   const parsedDuration = Number.parseInt(duration, 10)
   const validDuration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0
+  const intensityLabel = getActivityIntensityLabel(intensity)
+  const intensityDetail = getActivityIntensityDetail(intensity)
+  const intensityToneClasses = intensity >= 9
+    ? 'border-red-400/25 bg-red-500/10 text-red-100'
+    : intensity >= 7
+      ? 'border-amber-400/25 bg-amber-500/10 text-amber-100'
+      : intensity >= 4
+        ? 'border-cyan-400/25 bg-cyan-500/10 text-cyan-100'
+        : 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100'
 
   const handleSubmit = () => {
     if (!selectedType || !validDuration) return
@@ -193,7 +196,7 @@ export function LogActivity({
               Which Day
             </h2>
 
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scroll-fade-x">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scroll-fade-x" role="group" aria-label="Select which day to log">
               {weekDays.map((day, index) => (
                 <Button
                   key={index}
@@ -302,6 +305,7 @@ export function LogActivity({
                         : 'bg-white/[0.03] border border-white/10 text-white/65 hover:text-white'
                       }
                     `}
+                    aria-pressed={duration === mins.toString()}
                   >
                     {mins}
                   </Button>
@@ -317,6 +321,7 @@ export function LogActivity({
                   step={5}
                   className="h-11 bg-white/[0.03] border-white/10 text-center font-bold"
                   placeholder="60"
+                  aria-label="Custom duration in minutes"
                 />
                 <span className="text-xs uppercase tracking-[0.2em] text-white/50">min</span>
               </div>
@@ -329,11 +334,11 @@ export function LogActivity({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-amber-200">Intensity {intensity}/10</p>
-                  <p className="text-[11px] text-white/60 uppercase tracking-[0.18em]">{getIntensityLabel(intensity)}</p>
+                  <p className="text-[11px] text-white/60 uppercase tracking-[0.18em]">{intensityLabel}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-2" role="group" aria-label="Select session intensity">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
                   <Button
                     key={level}
@@ -348,10 +353,20 @@ export function LogActivity({
                       }
                     `}
                     aria-label={`Intensity ${level}`}
+                    aria-pressed={intensity === level}
                   >
                     {level}
                   </Button>
                 ))}
+              </div>
+
+              <div className={`mt-3 rounded-xl border px-3 py-3 transition-colors motion-reduce:transition-none ${intensityToneClasses}`} aria-live="polite" aria-atomic="true">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em]">
+                  {intensityLabel} effort selected
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/75">
+                  {intensityDetail}
+                </p>
               </div>
             </div>
           </div>
@@ -368,6 +383,7 @@ export function LogActivity({
               className="min-h-[120px] rounded-2xl bg-white/[0.02] border-white/10 text-sm"
               maxLength={500}
               showCount
+              aria-label="Session notes"
             />
           </div>
         </div>
