@@ -1,61 +1,21 @@
 'use client'
 
-import React, { useCallback, useState, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Screen, SportType, DrillCategory, Drill, Routine, LearningPath, Athlete, ExerciseCounts } from '@/lib/types'
 import { PREMIUM_FEATURES } from '@/lib/premium-gate'
-import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { categoryInfo } from '@/lib/drills-data'
 import { drillsService } from '@/lib/drills-service'
 import { athletesService } from '@/lib/athletes-service'
-import { BackButton } from '@/components/ui/back-button'
 import { HorizontalScroll } from '@/components/ui/horizontal-scroll'
 import { Button } from '@/components/ui/button'
 import { usePullToRefresh } from '@/lib/hooks/use-pull-to-refresh'
 import { haptics } from '@/lib/haptics'
 import {
   Shield, Stretch, Target, Flame, Heart, Zap, Activity, Book,
-  ChevronRight, Refresh, Trophy, User, Clock, Lock
+  ChevronRight, Refresh, Trophy, Clock, Lock
 } from '@/components/ui/icons'
-
-// Breadcrumb component (matching sport-exercise-categories.tsx)
-function Breadcrumb({
-  items,
-  variant = 'default'
-}: {
-  items: Array<{ label: string; onClick?: () => void }>
-  variant?: 'default' | 'glass'
-}) {
-  return (
-    <nav className="flex items-center gap-1.5 text-xs mb-2" aria-label="Breadcrumb">
-      {items.map((item, index) => {
-        const isLast = index === items.length - 1
-        return (
-          <div key={index} className="flex items-center gap-1.5">
-            {index > 0 && (
-              <ChevronRight size={12} className={`${variant === 'glass' ? 'text-white/30' : 'text-muted-foreground/50'} flex-shrink-0`} />
-            )}
-            {item.onClick && !isLast ? (
-              <button
-                onClick={() => {
-                  haptics.light()
-                  item.onClick!()
-                }}
-                className={`${variant === 'glass' ? 'text-white/60 hover:text-white' : 'text-muted-foreground hover:text-foreground'} transition-colors truncate max-w-[100px]`}
-              >
-                {item.label}
-              </button>
-            ) : (
-              <span className={`truncate max-w-[120px] ${isLast ? (variant === 'glass' ? 'text-white font-bold' : 'text-foreground font-medium') : (variant === 'glass' ? 'text-white/60' : 'text-muted-foreground')}`}>
-                {item.label}
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </nav>
-  )
-}
 
 // Map category to icon component with matching colors
 const categoryIcons: Record<DrillCategory, React.ReactNode> = {
@@ -68,6 +28,30 @@ const categoryIcons: Record<DrillCategory, React.ReactNode> = {
   'recovery': <Heart size={20} className="text-pink-400" />
 }
 
+const sportNames: Record<SportType, string> = {
+  wrestling: 'Wrestling',
+  judo: 'Judo',
+  bjj: 'Jiu-Jitsu'
+}
+
+const sportCardThemes: Record<SportType, { gradient: string; iconBg: string; iconColor: string }> = {
+  wrestling: {
+    gradient: 'from-red-500/20 via-black/80 to-black/95',
+    iconBg: 'bg-red-500/20',
+    iconColor: 'text-red-200'
+  },
+  judo: {
+    gradient: 'from-blue-500/20 via-black/80 to-black/95',
+    iconBg: 'bg-blue-500/20',
+    iconColor: 'text-blue-200'
+  },
+  bjj: {
+    gradient: 'from-purple-500/20 via-black/80 to-black/95',
+    iconBg: 'bg-purple-500/20',
+    iconColor: 'text-purple-200'
+  }
+}
+
 interface TrainingHubProps {
   sport: SportType
   dataVersion?: number
@@ -75,6 +59,7 @@ interface TrainingHubProps {
   onNavigate: (screen: Screen) => void
   onSelectDrill: (drill: Drill) => void
   onSelectCategory: (category: DrillCategory) => void
+  onOpenSportDrills?: (sport: SportType) => void
   onSelectRoutine: (routine: Routine) => void
   onSelectLearningPath: (path: LearningPath) => void
   onSelectBodyPart: () => void
@@ -83,7 +68,6 @@ interface TrainingHubProps {
   learningPathProgress?: Record<string, number>
   isPremium?: boolean
   learningPathUsage?: number
-  backScreen?: Screen
   session?: any // Today's workout session
   onStartAction?: () => void
   hasWorkoutToday?: boolean
@@ -100,6 +84,7 @@ export function TrainingHub({
   onNavigate,
   onSelectDrill,
   onSelectCategory,
+  onOpenSportDrills,
   onSelectRoutine,
   onSelectLearningPath,
   onSelectBodyPart,
@@ -108,7 +93,6 @@ export function TrainingHub({
   learningPathProgress = {},
   isPremium = false,
   learningPathUsage = 0,
-  backScreen = 'home',
   session,
   onStartAction,
   hasWorkoutToday = false,
@@ -274,6 +258,27 @@ export function TrainingHub({
   const sportPaths = learningPathsData.filter(p => p.sport === sport)
   const learningPathFreeLimit = PREMIUM_FEATURES['learning-paths'].freeLimit ?? 0
 
+  const totalExerciseCount = useMemo(() => {
+    if (!exerciseCounts) {
+      return null
+    }
+    return Object.values(exerciseCounts.byCategory).reduce((sum, count) => sum + count, 0)
+  }, [exerciseCounts])
+
+  const drillSports = (['wrestling', 'judo', 'bjj'] as SportType[])
+  const prepBrowseCategories = (['mobility', 'injury-prevention', 'conditioning'] as DrillCategory[])
+
+  const handleExerciseBrowse = useCallback(() => {
+    haptics.light()
+    onSelectSport?.(sport)
+    onNavigate('sport-exercise-categories')
+  }, [onNavigate, onSelectSport, sport])
+
+  const handleSportDrillBrowse = useCallback((targetSport: SportType) => {
+    haptics.light()
+    onOpenSportDrills?.(targetSport)
+  }, [onOpenSportDrills])
+
   const handleCategoryClick = (category: DrillCategory) => {
     if (category === 'injury-prevention') {
       onSelectBodyPart()
@@ -313,7 +318,7 @@ export function TrainingHub({
                 Training Hub
               </h1>
               <p className="text-muted-foreground text-sm mt-2 max-w-[280px] leading-relaxed">
-                Elite athletes, exercises, drills, and learning paths for combat sports.
+                Split your library cleanly: open sport-specific drills when you want technique, or jump into global exercises by muscle group when you want training.
               </p>
             </div>
           </div>
@@ -377,287 +382,170 @@ export function TrainingHub({
           </div>
         ) : (
           <>
-        {/* For You Today */}
-        {(warmups.length > 0 || recoveries.length > 0) && (
-          <div className="px-6 py-4 -mt-4 relative z-20">
-            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-              For You Today
+        <div className="px-6 py-4 -mt-4 relative z-20 space-y-4">
+          <div>
+            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-2">
+              Browse Library
             </h2>
-            <div className="space-y-3">
-              {warmups.map((routine, index) => (
-                <Button
-                  key={routine.id}
-                  onClick={() => onSelectRoutine(routine)}
-                  variant="secondary"
-                  size="sm"
-                  className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-amber-500/15 via-black/80 to-black/95"
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  <div className="relative z-10 flex flex-col gap-3 w-full">
-                    <div className="flex items-start justify-between gap-3 w-full">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
-                          <Shield size={20} className="text-amber-400" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-base text-amber-200">Pre-Workout Warmup</h3>
-                          <p className="text-xs text-white/65 mt-1 leading-relaxed">{routine.name} · {routine.duration} min</p>
-                        </div>
-                      </div>
-                      <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
-                    </div>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                      Recommended
-                    </span>
-                  </div>
-                </Button>
-              ))}
-              {recoveries.map((routine, index) => (
-                <Button
-                  key={routine.id}
-                  onClick={() => onSelectRoutine(routine)}
-                  variant="secondary"
-                  size="sm"
-                  className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-slate-500/15 via-black/80 to-black/95"
-                  style={{ animationDelay: `${(warmups.length + index) * 50}ms` }}
-                >
-                  <div className="relative z-10 flex flex-col gap-3 w-full">
-                    <div className="flex items-start justify-between gap-3 w-full">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-500/15 flex items-center justify-center">
-                          <Heart size={20} className="text-slate-400" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-base text-slate-200">Post-Workout Recovery</h3>
-                          <p className="text-xs text-white/65 mt-1 leading-relaxed">{routine.name} · {routine.duration} min</p>
-                        </div>
-                      </div>
-                      <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
-                    </div>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                      Recommended
-                    </span>
-                  </div>
-                </Button>
-              ))}
-            </div>
+            <p className="text-sm text-muted-foreground max-w-[32rem]">
+              Open the new split fast: sport-specific drills on one side, global exercises by muscle group on the other.
+            </p>
           </div>
-        )}
 
-        {/* Elite Athletes */}
-        {athletesData.length > 0 && (
-          <div className="px-6 py-4">
-            <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-              Elite Athletes
-            </h2>
-            <HorizontalScroll gap={12}>
-              {athletesData.map((athlete, index) => (
+          <div className="grid grid-cols-2 gap-3">
+            {drillSports.map((targetSport) => {
+              const theme = sportCardThemes[targetSport]
+              return (
                 <Button
-                  key={athlete.id}
-                  onClick={() => onSelectAthlete?.(athlete)}
-                  variant="ghost"
-                  className="flex-shrink-0 rounded-2xl p-5 text-left transition-all card-interactive min-w-[180px] normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-primary/15 via-black/80 to-black/95"
-                  style={{ animationDelay: `${index * 50}ms` }}
+                  key={targetSport}
+                  onClick={() => handleSportDrillBrowse(targetSport)}
+                  variant="secondary"
+                  size="sm"
+                  stacked
+                  className={`rounded-2xl p-4 text-left h-auto items-start justify-start border border-white/10 bg-gradient-to-br ${theme.gradient}`}
                 >
-                  <div className="relative z-10 flex flex-col gap-3 w-full">
-                    <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
-                      <Trophy size={20} className="text-primary/80" />
-                    </div>
+                  <div className="flex items-start justify-between w-full gap-3">
                     <div>
-                      <h3 className="font-bold text-base text-primary/90">{athlete.name}</h3>
-                      <p className="text-xs text-white/65 mt-1 leading-relaxed line-clamp-2">
-                        {athlete.achievements?.[0] || athlete.sport}
+                      <div className={`w-10 h-10 rounded-xl ${theme.iconBg} flex items-center justify-center mb-3`}>
+                        <Target size={20} className={theme.iconColor} />
+                      </div>
+                      <h3 className={`font-bold text-sm ${theme.iconColor}`}>{sportNames[targetSport]} Drills</h3>
+                      <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                        Technical drills only — no exercises mixed in.
                       </p>
                     </div>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                      View Profile
-                    </span>
+                    <ChevronRight size={18} className="text-white/30 flex-shrink-0" />
                   </div>
                 </Button>
-              ))}
-            </HorizontalScroll>
+              )
+            })}
+
+            <Button
+              onClick={handleExerciseBrowse}
+              variant="secondary"
+              size="sm"
+              stacked
+              className="rounded-2xl p-4 text-left h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-primary/20 via-black/80 to-black/95"
+            >
+              <div className="flex items-start justify-between w-full gap-3">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center mb-3">
+                    <Zap size={20} className="text-primary" />
+                  </div>
+                  <h3 className="font-bold text-sm text-primary/95">Exercises</h3>
+                  <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                    {totalExerciseCount !== null ? `${totalExerciseCount} global results across 8 muscle groups` : 'Browse all exercises by muscle group'}
+                  </p>
+                </div>
+                <ChevronRight size={18} className="text-white/30 flex-shrink-0" />
+              </div>
+            </Button>
           </div>
-        )}
 
-        {/* General Exercises Library */}
-        <div className="px-6 py-4">
-          <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-            Exercise Library
-          </h2>
-
-          {/* My Workout Card */}
-          <Button
-            onClick={() => onNavigate('today-editor')}
-            variant="secondary"
-            size="sm"
-            className="w-full rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start mb-4 border border-white/10 bg-gradient-to-br from-cyan-500/20 via-black/80 to-black/95"
-            style={{ animationDelay: '0ms' }}
-          >
-            <div className="relative z-10 flex flex-col gap-3 w-full">
-              <div className="flex items-start justify-between gap-3 w-full">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                    <Clock size={24} className="text-cyan-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-base text-cyan-200">My Workout</h3>
-                    {session ? (
-                      <>
-                        <p className="text-xs text-white/65 mt-1 leading-relaxed">{session.day}</p>
-                        <p className="text-xs text-white/50 mt-0.5">
-                          {session.focus} · {session.exercises.length} exercises · {session.duration} min
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-xs text-white/65 mt-1 leading-relaxed">No workout scheduled for today</p>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
-              </div>
-              <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                Edit Today
-              </span>
+          {session && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">Today at a glance</p>
+              <p className="text-sm text-foreground mt-1 font-semibold">{session.day}</p>
+              <p className="text-xs text-white/60 mt-1">{session.focus} · {session.exercises.length} exercises · {session.duration} min</p>
             </div>
-          </Button>
+          )}
+        </div>
 
-          {/* Browse by Martial Art */}
-          <div className="space-y-3">
-            {/* Wrestling Card */}
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-1">
+                Today & Recovery
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Keep the daily workflow one tap away: continue, warm up, or recover without leaving the hub.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Button
-              onClick={() => {
-                onSelectSport?.('wrestling')
-                onNavigate('sport-exercise-categories')
-              }}
+              onClick={() => onNavigate('today-editor')}
               variant="secondary"
               size="sm"
-              className="w-full card-elevated rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-red-500/20 via-black/80 to-black/95"
-              style={{ animationDelay: '0ms' }}
+              stacked
+              className="rounded-2xl p-4 text-left h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-cyan-500/20 via-black/80 to-black/95"
             >
-              <div className="relative z-10 flex flex-col gap-3 w-full">
-                <div className="flex items-start justify-between gap-3 w-full">
-                  <div>
-                    <h3 className="font-bold text-base text-red-200">Wrestling</h3>
-                    <p className="text-xs text-white/65 mt-1 leading-relaxed">
-                      Athlete exercises from world-class wrestlers
-                    </p>
+              <div className="flex items-start justify-between w-full gap-3">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center mb-3">
+                    <Clock size={20} className="text-cyan-300" />
                   </div>
-                  <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
+                  <h3 className="font-bold text-sm text-cyan-100">Continue Today</h3>
+                  <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                    {session
+                      ? `${session.focus} · ${session.exercises.length} exercises`
+                      : 'Open today and build your session'}
+                  </p>
                 </div>
-                {exerciseCounts && (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-white/70">
-                    <span className="border border-white/15 rounded-full px-2.5 py-1">
-                      {exerciseCounts.athletesBySport.wrestling} athletes
-                    </span>
-                    <span className="border border-white/15 rounded-full px-2.5 py-1">
-                      {exerciseCounts.bySport.wrestling} exercises
-                    </span>
-                  </div>
-                )}
-                <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                  Browse Training
-                </span>
+                <ChevronRight size={18} className="text-white/30 flex-shrink-0" />
               </div>
             </Button>
 
-            {/* Judo Card */}
             <Button
-              onClick={() => {
-                onSelectSport?.('judo')
-                onNavigate('sport-exercise-categories')
-              }}
+              onClick={() => (warmups[0] ? onSelectRoutine(warmups[0]) : handleCategoryClick('warmup'))}
               variant="secondary"
               size="sm"
-              className="w-full card-elevated rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-blue-500/20 via-black/80 to-black/95"
-              style={{ animationDelay: '50ms' }}
+              stacked
+              className="rounded-2xl p-4 text-left h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-amber-500/15 via-black/80 to-black/95"
             >
-              <div className="relative z-10 flex flex-col gap-3 w-full">
-                <div className="flex items-start justify-between gap-3 w-full">
-                  <div>
-                    <h3 className="font-bold text-base text-blue-200">Judo</h3>
-                    <p className="text-xs text-white/65 mt-1 leading-relaxed">
-                      Olympic champions&apos; strength and throw prep
-                    </p>
+              <div className="flex items-start justify-between w-full gap-3">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center mb-3">
+                    <Activity size={20} className="text-amber-300" />
                   </div>
-                  <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
+                  <h3 className="font-bold text-sm text-amber-100">Warm Up</h3>
+                  <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                    {warmups[0] ? `${warmups[0].name} · ${warmups[0].duration} min` : `${drillCounts.warmup} warmup drills`}
+                  </p>
                 </div>
-                {exerciseCounts && (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-white/70">
-                    <span className="border border-white/15 rounded-full px-2.5 py-1">
-                      {exerciseCounts.athletesBySport.judo} athletes
-                    </span>
-                    <span className="border border-white/15 rounded-full px-2.5 py-1">
-                      {exerciseCounts.bySport.judo} exercises
-                    </span>
-                  </div>
-                )}
-                <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                  Browse Training
-                </span>
+                <ChevronRight size={18} className="text-white/30 flex-shrink-0" />
               </div>
             </Button>
 
-            {/* Jiu-Jitsu Card */}
             <Button
-              onClick={() => {
-                onSelectSport?.('bjj')
-                onNavigate('sport-exercise-categories')
-              }}
+              onClick={() => (recoveries[0] ? onSelectRoutine(recoveries[0]) : handleCategoryClick('recovery'))}
               variant="secondary"
               size="sm"
-              className="w-full card-elevated rounded-2xl p-5 text-left transition-all card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-purple-500/20 via-black/80 to-black/95"
-              style={{ animationDelay: '100ms' }}
+              stacked
+              className="rounded-2xl p-4 text-left h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-slate-500/20 via-black/80 to-black/95"
             >
-              <div className="relative z-10 flex flex-col gap-3 w-full">
-                <div className="flex items-start justify-between gap-3 w-full">
-                  <div>
-                    <h3 className="font-bold text-base text-purple-200">Jiu-Jitsu</h3>
-                    <p className="text-xs text-white/65 mt-1 leading-relaxed">
-                      Elite grapplers&apos; strength and conditioning
-                    </p>
+              <div className="flex items-start justify-between w-full gap-3">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-slate-500/20 flex items-center justify-center mb-3">
+                    <Heart size={20} className="text-slate-300" />
                   </div>
-                  <ChevronRight size={20} className="text-white/40 flex-shrink-0 mt-1" />
+                  <h3 className="font-bold text-sm text-slate-100">Recover</h3>
+                  <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                    {recoveries[0] ? `${recoveries[0].name} · ${recoveries[0].duration} min` : `${drillCounts.recovery} recovery options`}
+                  </p>
                 </div>
-                {exerciseCounts && (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-white/70">
-                    <span className="border border-white/15 rounded-full px-2.5 py-1">
-                      {exerciseCounts.athletesBySport.bjj} athletes
-                    </span>
-                    <span className="border border-white/15 rounded-full px-2.5 py-1">
-                      {exerciseCounts.bySport.bjj} exercises
-                    </span>
-                  </div>
-                )}
-                <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                  Browse Training
-                </span>
+                <ChevronRight size={18} className="text-white/30 flex-shrink-0" />
               </div>
             </Button>
           </div>
         </div>
 
-        {/* Browse Library */}
         <div className="px-6 py-4">
-          <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-            Browse Library
-          </h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-1">
+                Prep & Support
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Supporting drill collections that still matter around the main sport-drills-plus-exercises split.
+              </p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
-            {(Object.entries(categoryInfo) as [DrillCategory, typeof categoryInfo[DrillCategory]][]).map(([category, info], index) => {
+            {prepBrowseCategories.map((category) => {
+              const info = categoryInfo[category]
               const drillCount = drillCounts[category]
-              if (drillCount === 0 && category !== 'injury-prevention' && category !== 'conditioning' && category !== 'recovery') return null
-
-              // Simplified 3-color system: Primary (red), Success (green), Neutral (slate)
-              const categoryGradients: Record<DrillCategory, { gradient: string; textColor: string; iconBg: string }> = {
-                'technique': { gradient: 'from-primary/20 via-black/80 to-black/95', textColor: 'text-primary/90', iconBg: 'bg-primary/20' },
-                'exercise': { gradient: 'from-primary/15 via-black/80 to-black/95', textColor: 'text-primary/80', iconBg: 'bg-primary/15' },
-                'injury-prevention': { gradient: 'from-emerald-500/15 via-black/80 to-black/95', textColor: 'text-emerald-300', iconBg: 'bg-emerald-500/15' },
-                'mobility': { gradient: 'from-slate-500/20 via-black/80 to-black/95', textColor: 'text-slate-300', iconBg: 'bg-slate-500/20' },
-                'conditioning': { gradient: 'from-primary/25 via-black/80 to-black/95', textColor: 'text-primary', iconBg: 'bg-primary/25' },
-                'warmup': { gradient: 'from-amber-500/15 via-black/80 to-black/95', textColor: 'text-amber-300', iconBg: 'bg-amber-500/15' },
-                'recovery': { gradient: 'from-slate-500/15 via-black/80 to-black/95', textColor: 'text-slate-300', iconBg: 'bg-slate-500/15' }
-              }
-              const catStyle = categoryGradients[category]
-
               return (
                 <Button
                   key={category}
@@ -665,22 +553,19 @@ export function TrainingHub({
                   variant="secondary"
                   size="sm"
                   stacked
-                  className={`rounded-2xl p-5 text-left min-h-[130px] card-interactive stagger-item normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br ${catStyle.gradient}`}
-                  style={{ animationDelay: `${index * 40}ms` }}
+                  className="rounded-2xl p-4 text-left h-auto items-start justify-start border border-white/10 bg-white/[0.03]"
                 >
-                  <div className="relative z-10 flex flex-col gap-2 w-full h-full">
-                    <div className={`w-10 h-10 rounded-xl ${catStyle.iconBg} flex items-center justify-center`}>
-                      {categoryIcons[category]}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className={`font-bold text-sm ${catStyle.textColor}`}>{info.name}</h3>
-                      <p className="text-xs text-white/65 mt-1 leading-relaxed">
+                  <div className="flex items-start justify-between gap-3 w-full">
+                    <div>
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-3">
+                        {categoryIcons[category]}
+                      </div>
+                      <h3 className="font-bold text-sm text-foreground">{info.name}</h3>
+                      <p className="text-xs text-white/55 mt-1 leading-relaxed">
                         {category === 'injury-prevention' ? 'By body part' : `${drillCount} drills`}
                       </p>
                     </div>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                      Browse
-                    </span>
+                    <ChevronRight size={16} className="text-white/25 flex-shrink-0" />
                   </div>
                 </Button>
               )
@@ -692,7 +577,7 @@ export function TrainingHub({
         {sportPaths.length > 0 && (
           <div className="px-6 py-4">
             <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-              Learning Paths
+              Continue Learning
             </h2>
             <div className="space-y-3">
               {sportPaths.map((path, index) => {
@@ -786,6 +671,45 @@ export function TrainingHub({
                     <span className="font-bold text-sm text-slate-200">{drill.name}</span>
                     <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                       View Drill
+                    </span>
+                  </div>
+                </Button>
+              ))}
+            </HorizontalScroll>
+          </div>
+        )}
+
+        {athletesData.length > 0 && (
+          <div className="px-6 py-4 pb-8">
+            <div className="mb-4">
+              <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-1">
+                Elite Inspiration
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Optional deep dives when you want ideas and context after you already know what you need.
+              </p>
+            </div>
+            <HorizontalScroll gap={12}>
+              {athletesData.map((athlete, index) => (
+                <Button
+                  key={athlete.id}
+                  onClick={() => onSelectAthlete?.(athlete)}
+                  variant="ghost"
+                  className="flex-shrink-0 rounded-2xl p-5 text-left transition-all card-interactive min-w-[180px] normal-case tracking-normal h-auto items-start justify-start border border-white/10 bg-gradient-to-br from-primary/15 via-black/80 to-black/95"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="relative z-10 flex flex-col gap-3 w-full">
+                    <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+                      <Trophy size={20} className="text-primary/80" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-base text-primary/90">{athlete.name}</h3>
+                      <p className="text-xs text-white/65 mt-1 leading-relaxed line-clamp-2">
+                        {athlete.achievements?.[0] || athlete.sport}
+                      </p>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+                      View Themes
                     </span>
                   </div>
                 </Button>

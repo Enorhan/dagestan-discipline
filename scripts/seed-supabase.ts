@@ -18,8 +18,45 @@ if (!supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+function chunkArray<T>(items: T[], size = 100): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
+}
+
+async function deleteByIds(table: 'routine_drills' | 'learning_path_drills', column: 'drill_id' | 'routine_id' | 'learning_path_id', ids: string[]) {
+  for (const batch of chunkArray(ids)) {
+    const { error } = await supabase.from(table).delete().in(column, batch)
+    if (error) throw error
+  }
+}
+
 async function seedDrills() {
   console.log('Seeding drills...')
+
+  const { data: existingTechniqueDrills, error: existingTechniqueDrillsError } = await supabase
+    .from('drills')
+    .select('id')
+    .eq('category', 'technique')
+
+  if (existingTechniqueDrillsError) throw existingTechniqueDrillsError
+
+  const existingTechniqueIds = (existingTechniqueDrills ?? []).map((drill) => drill.id)
+
+  if (existingTechniqueIds.length > 0) {
+    await deleteByIds('routine_drills', 'drill_id', existingTechniqueIds)
+    await deleteByIds('learning_path_drills', 'drill_id', existingTechniqueIds)
+
+    const { error: deleteTechniqueError } = await supabase
+      .from('drills')
+      .delete()
+      .eq('category', 'technique')
+
+    if (deleteTechniqueError) throw deleteTechniqueError
+    console.log(`✓ Removed ${existingTechniqueIds.length} existing technique drills before reseeding`)
+  }
   
   // Transform drills to database format
   const drillsData = allDrills.map(drill => ({
@@ -70,6 +107,10 @@ async function seedRoutines() {
   // Then, insert routine_drills
   console.log('Seeding routine drills...')
   let totalRoutineDrills = 0
+
+  if (routines.length > 0) {
+    await deleteByIds('routine_drills', 'routine_id', routines.map((routine) => routine.id))
+  }
   
   for (const routine of routines) {
     if (routine.drills && routine.drills.length > 0) {
@@ -112,6 +153,10 @@ async function seedLearningPaths() {
   // Then, insert learning_path_drills
   console.log('Seeding learning path drills...')
   let totalPathDrills = 0
+
+  if (learningPaths.length > 0) {
+    await deleteByIds('learning_path_drills', 'learning_path_id', learningPaths.map((path) => path.id))
+  }
 
   for (const path of learningPaths) {
     if (path.drills && path.drills.length > 0) {

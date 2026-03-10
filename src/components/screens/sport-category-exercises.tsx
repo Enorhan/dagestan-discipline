@@ -1,27 +1,35 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import {
   EnhancedAthleteExerciseGroup,
   EnhancedExerciseData,
   ExerciseCategory,
-  ExerciseSortOption,
   Screen,
-  SportType
+  SportType,
 } from '@/lib/types'
 import { athletesService } from '@/lib/athletes-service'
 import { haptics } from '@/lib/haptics'
 import { usePullToRefresh } from '@/lib/hooks/use-pull-to-refresh'
-import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Search, X, ChevronRight, ChevronDown, AlertCircle, RefreshCw,
-  Video, Filter, Trophy, Dumbbell, ArrowUpDown, Tag, Plus, Check
+  Search,
+  X,
+  ChevronRight,
+  AlertCircle,
+  RefreshCw,
+  Video,
+  Filter,
+  Trophy,
+  ArrowUpDown,
+  Tag,
+  Plus,
+  Check,
 } from '@/components/ui/icons'
 
 const categoryLabels: Record<ExerciseCategory, { title: string; description: string }> = {
@@ -59,14 +67,28 @@ const categoryLabels: Record<ExerciseCategory, { title: string; description: str
   }
 }
 
-const sportLabels: Record<SportType, string> = {
-  wrestling: 'Wrestling',
-  judo: 'Judo',
-  bjj: 'Jiu-Jitsu'
+type ExerciseResultSortOption = 'priority' | 'name' | 'equipment'
+
+interface ExerciseResultAthlete {
+  athleteId: string
+  athleteName: string
+  achievements: string[]
+  imageUrl?: string
+  priority: number
+}
+
+interface ExerciseResult {
+  exercise: EnhancedExerciseData
+  athletes: ExerciseResultAthlete[]
+  bestPriority: number
+}
+
+interface ExerciseDisplayResult extends ExerciseResult {
+  matchedAthleteCount: number
 }
 
 interface SportCategoryExercisesProps {
-  sport: SportType
+  sport?: SportType
   category: ExerciseCategory
   dataVersion?: number
   onNavigate: (screen: Screen) => void
@@ -82,70 +104,136 @@ interface SportCategoryExercisesProps {
   onScrollChange?: (scrollTop: number) => void
 }
 
-const MAX_VISIBLE_EXERCISES = 6
 const DEBOUNCE_DELAY = 300
 
-const sortOptions: { value: ExerciseSortOption; label: string }[] = [
-  { value: 'athlete', label: 'By Athlete' },
-  { value: 'name', label: 'By Name' },
-  { value: 'priority', label: 'By Priority' },
-  { value: 'equipment', label: 'By Equipment' }
+const sortOptions: { value: ExerciseResultSortOption; label: string }[] = [
+  { value: 'priority', label: 'Recommended' },
+  { value: 'name', label: 'A–Z' },
+  { value: 'equipment', label: 'Equipment' }
 ]
 
-function getEquipmentFromGroups(groups: EnhancedAthleteExerciseGroup[]): string[] {
+function getEquipmentFromResults(results: ExerciseResult[]): string[] {
   const equipmentSet = new Set<string>()
 
-  groups.forEach((group) => {
-    group.exercises.forEach((exercise) => {
-      exercise.equipment.forEach((equipmentItem) => {
-        const normalized = equipmentItem.trim()
-        if (normalized) {
-          equipmentSet.add(normalized)
-        }
-      })
+  results.forEach((result) => {
+    result.exercise.equipment.forEach((equipmentItem) => {
+      const normalized = equipmentItem.trim()
+      if (normalized) {
+        equipmentSet.add(normalized)
+      }
     })
   })
 
   return Array.from(equipmentSet).sort((a, b) => a.localeCompare(b))
 }
 
-// Loading skeleton for athlete cards
-function AthleteCardSkeleton() {
+function buildExerciseResults(groups: EnhancedAthleteExerciseGroup[]): ExerciseResult[] {
+  const resultMap = new Map<string, ExerciseResult>()
+
+  groups.forEach((group) => {
+    group.exercises.forEach((exercise) => {
+      const existing = resultMap.get(exercise.id)
+      const athleteEntry: ExerciseResultAthlete = {
+        athleteId: group.athleteId,
+        athleteName: group.athleteName,
+        achievements: group.achievements,
+        imageUrl: group.imageUrl,
+        priority: exercise.priority,
+      }
+
+      if (!existing) {
+        resultMap.set(exercise.id, {
+          exercise: {
+            ...exercise,
+            athleteId: group.athleteId,
+            athleteName: group.athleteName,
+            athleteAchievements: group.achievements,
+          },
+          athletes: [athleteEntry],
+          bestPriority: exercise.priority,
+        })
+        return
+      }
+
+      const athleteAlreadyIncluded = existing.athletes.some((athlete) => athlete.athleteId === group.athleteId)
+      if (!athleteAlreadyIncluded) {
+        existing.athletes.push(athleteEntry)
+      }
+
+      if (exercise.priority > existing.bestPriority) {
+        existing.exercise = {
+          ...exercise,
+          athleteId: group.athleteId,
+          athleteName: group.athleteName,
+          athleteAchievements: group.achievements,
+        }
+        existing.bestPriority = exercise.priority
+      }
+    })
+  })
+
+  return Array.from(resultMap.values()).map((result) => ({
+    ...result,
+    athletes: [...result.athletes].sort((a, b) => b.priority - a.priority),
+  }))
+}
+
+function formatExerciseName(name: string): string {
+  if (!name) return name
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+function formatPrescription(exercise: EnhancedExerciseData): string | null {
+  const parts: string[] = []
+
+  if (exercise.sets || exercise.reps) {
+    parts.push(`${exercise.sets || 1}×${exercise.reps || 10}`)
+  }
+
+  if (exercise.weight) {
+    parts.push(exercise.weight)
+  }
+
+  if (exercise.duration) {
+    parts.push(exercise.duration)
+  }
+
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+function ExerciseResultSkeleton() {
   return (
     <div className="card-elevated rounded-xl p-4 bg-card border border-border animate-pulse">
-      <div className="flex items-center gap-3 mb-3">
-        <Skeleton variant="circular" width={40} height={40} />
+      <div className="flex items-start gap-3 mb-4">
         <div className="flex-1">
-          <Skeleton className="h-5 w-1/3 mb-1" />
-          <Skeleton className="h-3 w-1/4" />
+          <Skeleton className="h-5 w-1/2 mb-2" />
+          <Skeleton className="h-3 w-3/4 mb-3" />
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
         </div>
+        <Skeleton className="h-10 w-10 rounded-xl" />
       </div>
-      <div className="space-y-2">
-        {[1, 2, 3, 4].map(j => (
-          <Skeleton key={j} className="h-10 rounded-lg" />
-        ))}
+      <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+        <Skeleton className="h-3 w-24 mb-3" />
+        <div className="flex gap-2 flex-wrap">
+          {[1, 2, 3].map((item) => (
+            <Skeleton key={item} className="h-7 w-24 rounded-full" />
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-const sportThemes: Record<SportType, { gradient: string; color: string; bg: string }> = {
-  wrestling: {
-    gradient: 'from-red-950 via-red-900 to-background',
-    color: 'text-red-500',
-    bg: 'bg-red-500'
-  },
-  judo: {
-    gradient: 'from-blue-950 via-blue-900 to-background',
-    color: 'text-blue-500',
-    bg: 'bg-blue-500'
-  },
-  bjj: {
-    gradient: 'from-purple-950 via-purple-900 to-background',
-    color: 'text-purple-500',
-    bg: 'bg-purple-500'
-  }
-}
+const exerciseLibraryTheme = {
+  gradient: 'from-primary/25 via-background/95 to-background',
+  color: 'text-primary',
+  bg: 'bg-primary',
+  textColor: 'text-primary/90',
+  borderColor: 'border-primary/20'
+} as const
 
 // Breadcrumb component
 function Breadcrumb({
@@ -187,7 +275,6 @@ function Breadcrumb({
 }
 
 export function SportCategoryExercises({
-  sport,
   category,
   dataVersion = 0,
   onNavigate,
@@ -202,16 +289,14 @@ export function SportCategoryExercises({
 }: SportCategoryExercisesProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [expandedAthletes, setExpandedAthletes] = useState<Set<string>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [rawAthleteGroups, setRawAthleteGroups] = useState<EnhancedAthleteExerciseGroup[]>([])
-  const [sortBy, setSortBy] = useState<ExerciseSortOption>('athlete')
+  const [rawExerciseResults, setRawExerciseResults] = useState<ExerciseResult[]>([])
+  const [sortBy, setSortBy] = useState<ExerciseResultSortOption>('priority')
   const [showSortOptions, setShowSortOptions] = useState(false)
   const [equipmentFilter, setEquipmentFilter] = useState<string | null>(null)
   const [availableEquipment, setAvailableEquipment] = useState<string[]>([])
   const [showFilterOptions, setShowFilterOptions] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Scroll position preservation
@@ -233,7 +318,7 @@ export function SportCategoryExercises({
   }, [isLoading, initialScrollTop])
 
   // Handle scroll to save position
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
     if (onScrollChange) {
       onScrollChange((e.target as HTMLDivElement).scrollTop)
     }
@@ -257,24 +342,24 @@ export function SportCategoryExercises({
 
   // Fetch data from Supabase with enhanced data
   const fetchData = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setIsRefreshing(true)
-    } else {
+    if (!isRefresh) {
       setIsLoading(true)
     }
+
     setError(null)
+
     try {
-      const groups = await athletesService.getEnhancedExercisesBySportAndCategory(sport, category)
-      setRawAthleteGroups(groups)
-      setAvailableEquipment(getEquipmentFromGroups(groups))
+      const groups = await athletesService.getEnhancedExercisesByCategory(category)
+      const results = buildExerciseResults(groups)
+      setRawExerciseResults(results)
+      setAvailableEquipment(getEquipmentFromResults(results))
     } catch (err) {
       console.error('[SportCategoryExercises] Error fetching data:', err)
       setError('Failed to load exercises. Please try again.')
     } finally {
       setIsLoading(false)
-      setIsRefreshing(false)
     }
-  }, [sport, category])
+  }, [category])
 
   useEffect(() => {
     if (equipmentFilter && !availableEquipment.includes(equipmentFilter)) {
@@ -293,7 +378,6 @@ export function SportCategoryExercises({
 
   // Pull to refresh hook with visual feedback
   const {
-    pullDistance,
     isRefreshing: isPulling,
     handleTouchStart,
     handleTouchMove,
@@ -306,75 +390,64 @@ export function SportCategoryExercises({
 
   const trimmedQuery = debouncedQuery
 
-  // Filter and sort groups based on search query and sort option
-  const athleteGroups = useMemo(() => {
-    let groups = rawAthleteGroups.map(group => {
-      const athleteMatch = trimmedQuery
-        ? group.athleteName.toLowerCase().includes(trimmedQuery)
-        : true
+  const exerciseResults = useMemo(() => {
+    const includesQuery = (value?: string | null) => {
+      if (!trimmedQuery || !value) {
+        return false
+      }
 
-      const filteredExercises = group.exercises.filter(exercise => {
-        // Text search filter
-        const matchesSearch = !trimmedQuery || athleteMatch ||
-          exercise.name.toLowerCase().includes(trimmedQuery) ||
-          exercise.equipment.some(eq => eq.toLowerCase().includes(trimmedQuery)) ||
-          exercise.muscleGroups.some(mg => mg.toLowerCase().includes(trimmedQuery))
+      return value.toLowerCase().includes(trimmedQuery)
+    }
 
-        // Equipment filter
-        const matchesEquipment = !equipmentFilter ||
-          exercise.equipment.includes(equipmentFilter)
+    let results: ExerciseDisplayResult[] = rawExerciseResults
+      .map((result) => {
+        const matchedAthleteCount = trimmedQuery
+          ? result.athletes.filter((athlete) => (
+              includesQuery(athlete.athleteName) ||
+              athlete.achievements.some((achievement) => includesQuery(achievement))
+            )).length
+          : 0
+
+        return {
+          ...result,
+          matchedAthleteCount,
+        }
+      })
+      .filter((result) => {
+        const exercise = result.exercise
+        const matchesSearch = !trimmedQuery ||
+          includesQuery(exercise.name) ||
+          includesQuery(exercise.description) ||
+          exercise.equipment.some((equipmentItem) => includesQuery(equipmentItem)) ||
+          exercise.muscleGroups.some((muscleGroup) => includesQuery(muscleGroup)) ||
+          result.matchedAthleteCount > 0
+
+        const matchesEquipment = !equipmentFilter || exercise.equipment.includes(equipmentFilter)
 
         return matchesSearch && matchesEquipment
       })
 
-      return {
-        ...group,
-        exercises: filteredExercises,
-        athleteMatch
-      }
-    }).filter(group => group.exercises.length > 0)
-
-    // Sort exercises within groups and groups themselves
     if (sortBy === 'name') {
-      groups = groups.map(g => ({
-        ...g,
-        exercises: [...g.exercises].sort((a, b) => a.name.localeCompare(b.name))
-      }))
-    } else if (sortBy === 'priority') {
-      groups = groups.map(g => ({
-        ...g,
-        exercises: [...g.exercises].sort((a, b) => b.priority - a.priority)
-      }))
+      results = [...results].sort((a, b) => a.exercise.name.localeCompare(b.exercise.name))
     } else if (sortBy === 'equipment') {
-      groups = groups.map(g => ({
-        ...g,
-        exercises: [...g.exercises].sort((a, b) =>
-          (a.equipment[0] || 'zzz').localeCompare(b.equipment[0] || 'zzz')
-        )
-      }))
+      results = [...results].sort((a, b) =>
+        (a.exercise.equipment[0] || 'zzz').localeCompare(b.exercise.equipment[0] || 'zzz')
+      )
+    } else {
+      results = [...results].sort((a, b) => {
+        if (b.bestPriority !== a.bestPriority) {
+          return b.bestPriority - a.bestPriority
+        }
+
+        return a.exercise.name.localeCompare(b.exercise.name)
+      })
     }
 
-    return groups
-  }, [rawAthleteGroups, trimmedQuery, equipmentFilter, sortBy])
+    return results
+  }, [rawExerciseResults, trimmedQuery, equipmentFilter, sortBy])
 
-  const totalExercises = athleteGroups.reduce((sum, group) => sum + group.exercises.length, 0)
-
-  const toggleExpanded = (athleteId: string) => {
-    setExpandedAthletes(prev => {
-      const next = new Set(prev)
-      if (next.has(athleteId)) {
-        next.delete(athleteId)
-      } else {
-        next.add(athleteId)
-      }
-      return next
-    })
-  }
-
-  const formatExerciseName = (name: string) => {
-    if (!name) return name
-    return name.charAt(0).toUpperCase() + name.slice(1)
-  }
+  const totalExercises = exerciseResults.length
+  const activeSortLabel = sortOptions.find((option) => option.value === sortBy)?.label ?? 'Recommended'
 
   const clearSearch = () => {
     setSearchQuery('')
@@ -383,7 +456,7 @@ export function SportCategoryExercises({
 
   const clearFilters = () => {
     setEquipmentFilter(null)
-    setSortBy('athlete')
+    setSortBy('priority')
   }
 
   const handleExerciseTap = (exercise: EnhancedExerciseData) => {
@@ -393,7 +466,7 @@ export function SportCategoryExercises({
     }
   }
 
-  const theme = sportThemes[sport]
+  const theme = exerciseLibraryTheme
 
   return (
     <ScreenShell>
@@ -416,7 +489,7 @@ export function SportCategoryExercises({
             
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <BackButton onClick={onBack} label={sportLabels[sport]} styleVariant="glass" />
+                <BackButton onClick={onBack} label="Exercises" styleVariant="glass" />
                 {!isLoading && !error && (
                   <div className="text-[10px] font-bold tracking-widest text-white/40 uppercase">
                     {totalExercises} Exercises
@@ -428,7 +501,7 @@ export function SportCategoryExercises({
                 <Breadcrumb
                   items={[
                     { label: 'Training Hub', onClick: () => onNavigate('training-hub') },
-                    { label: sportLabels[sport], onClick: onBack },
+                    { label: 'Exercises', onClick: onBack },
                     { label: categoryLabels[category].title }
                   ]}
                   variant="glass"
@@ -438,8 +511,8 @@ export function SportCategoryExercises({
               <h1 className="text-4xl font-black tracking-tight text-foreground mt-2 uppercase">
                 {categoryLabels[category].title}
               </h1>
-              <p className="text-white/60 text-xs mt-2 max-w-[300px] leading-relaxed font-medium">
-                {categoryLabels[category].description}
+              <p className="text-white/60 text-xs mt-2 max-w-[320px] leading-relaxed font-medium">
+                Find the right {categoryLabels[category].title.toLowerCase()} exercise fast from the combined library, then use athlete sources as optional proof.
               </p>
             </div>
           </div>
@@ -471,7 +544,7 @@ export function SportCategoryExercises({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={`h-10 w-10 p-0 rounded-xl ${sortBy !== 'athlete' ? 'text-primary bg-primary/10' : 'text-white/60'}`}
+                    className={`h-10 w-10 p-0 rounded-xl ${sortBy !== 'priority' ? 'text-primary bg-primary/10' : 'text-white/60'}`}
                     onClick={() => {
                       haptics.light()
                       setShowSortOptions(!showSortOptions)
@@ -556,11 +629,46 @@ export function SportCategoryExercises({
 
           {/* Content Area */}
           <div className="px-6 py-6 pt-8">
+            {!isLoading && !error && (
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/70">
+                  {totalExercises} deduped results
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/50">
+                  Sort: {activeSortLabel}
+                </span>
+                {equipmentFilter && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptics.light()
+                      setEquipmentFilter(null)
+                    }}
+                    className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-primary"
+                  >
+                    {equipmentFilter} · Clear
+                  </button>
+                )}
+                {(equipmentFilter || sortBy !== 'priority') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptics.light()
+                      clearFilters()
+                    }}
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/55"
+                  >
+                    Reset filters
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Loading State */}
             {isLoading && (
               <div className="space-y-4 animate-in fade-in duration-300">
                 {[1, 2, 3].map(i => (
-                  <AthleteCardSkeleton key={i} />
+                  <ExerciseResultSkeleton key={i} />
                 ))}
               </div>
             )}
@@ -593,13 +701,13 @@ export function SportCategoryExercises({
             )}
 
             {/* Empty State */}
-            {!isLoading && !error && athleteGroups.length === 0 && (
+            {!isLoading && !error && exerciseResults.length === 0 && (
               <EmptyState
                 title={searchQuery ? 'No matches' : 'No exercises yet'}
                 message={
                   searchQuery
                     ? `No results for "${searchQuery}"`
-                    : `No ${categoryLabels[category].title.toLowerCase()} exercises for ${sportLabels[sport]} yet.`
+                    : `No ${categoryLabels[category].title.toLowerCase()} exercises are available yet.`
                 }
                 actionText={searchQuery ? 'Clear search' : undefined}
                 onAction={searchQuery ? clearSearch : undefined}
@@ -607,151 +715,152 @@ export function SportCategoryExercises({
               />
             )}
 
-            {/* Athlete Cards */}
-            {!isLoading && !error && athleteGroups.length > 0 && (
+            {/* Exercise Results */}
+            {!isLoading && !error && exerciseResults.length > 0 && (
               <div className="space-y-4">
-                {athleteGroups.map((group, index) => {
-                  const isExpanded = expandedAthletes.has(group.athleteId)
-                  const visibleExercises = isExpanded
-                    ? group.exercises
-                    : group.exercises.slice(0, MAX_VISIBLE_EXERCISES)
-                  const hiddenCount = Math.max(0, group.exercises.length - visibleExercises.length)
+                {exerciseResults.map((result, index) => {
+                  const prescription = formatPrescription(result.exercise)
+                  const visibleAthletes = result.athletes.slice(0, 3)
+                  const extraAthleteCount = Math.max(0, result.athletes.length - visibleAthletes.length)
+                  const topAchievement = result.athletes.find((athlete) => athlete.achievements.length > 0)?.achievements[0]
 
                   return (
                     <div
-                      key={`${group.athleteId}-${index}`}
+                      key={result.exercise.id}
                       className="group/card relative card-elevated rounded-2xl p-4 bg-card/60 backdrop-blur-sm border border-white/5 stagger-item hover:border-white/10 transition-all duration-300"
                       style={{ animationDelay: `${index * 100}ms` }}
                     >
-                      {/* Athlete Header */}
-                      <div className="flex items-start gap-4 mb-4">
-                        {/* Athlete Avatar */}
-                        <div className="relative">
-                          <div className={`absolute -inset-1 bg-gradient-to-br ${theme.gradient} opacity-20 rounded-full blur-sm group-hover/card:opacity-40 transition-opacity`} />
-                          {group.imageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- Small remote athlete avatars are user-provided and not LCP-critical.
-                            <img
-                              src={group.imageUrl}
-                              alt={group.athleteName}
-                              loading="lazy"
-                              decoding="async"
-                              className="relative w-14 h-14 rounded-full object-cover border-2 border-white/10"
-                            />
-                          ) : (
-                            <div className="relative w-14 h-14 rounded-full bg-white/5 flex items-center justify-center border-2 border-white/10">
-                              <Trophy size={24} className="text-white/20" />
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0 pt-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-lg text-foreground tracking-tight">{group.athleteName}</h3>
-                            {group.imageUrl && <Trophy size={14} className={theme.color} />}
+                      <div className="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleExerciseTap(result.exercise)}
+                          className="flex-1 min-w-0 text-left"
+                          aria-label={`Open ${result.exercise.name}`}
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-lg font-bold text-foreground tracking-tight group-hover/card:text-primary transition-colors">
+                              {formatExerciseName(result.exercise.name)}
+                            </h3>
+                            {result.exercise.videoUrl && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-blue-300">
+                                <Video size={10} fill="currentColor" className="opacity-80" />
+                                Video
+                              </span>
+                            )}
+                            {result.bestPriority >= 8 && (
+                              <span className={`inline-flex items-center gap-1 rounded-full border ${theme.borderColor} ${theme.bg}/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${theme.textColor}`}>
+                                <Trophy size={10} />
+                                High value
+                              </span>
+                            )}
+                            {trimmedQuery && result.matchedAthleteCount > 0 && (
+                              <span className={`inline-flex items-center gap-1 rounded-full border ${theme.borderColor} bg-white/5 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${theme.color}`}>
+                                {result.matchedAthleteCount} athlete match{result.matchedAthleteCount > 1 ? 'es' : ''}
+                              </span>
+                            )}
                           </div>
-                          {/* Achievements */}
-                          {group.achievements && group.achievements.length > 0 && (
-                            <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mt-0.5 line-clamp-1">
-                              {group.achievements[0]}
+
+                          {result.exercise.description && (
+                            <p className="mt-2 text-sm text-white/65 leading-relaxed line-clamp-2 max-w-[38rem]">
+                              {result.exercise.description}
                             </p>
                           )}
-                        </div>
 
-                        {group.athleteMatch && trimmedQuery && (
-                          <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${theme.color} px-2 py-1 bg-white/5 rounded-lg`}>
-                            MATCH
-                          </span>
-                        )}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {prescription && (
+                              <span className={`rounded-full border ${theme.borderColor} ${theme.bg}/10 px-3 py-1.5 text-[11px] font-bold ${theme.textColor}`}>
+                                {prescription}
+                              </span>
+                            )}
+                            {result.exercise.equipment.slice(0, 2).map((equipmentItem) => (
+                              <span
+                                key={equipmentItem}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/65"
+                              >
+                                <Tag size={11} />
+                                {equipmentItem}
+                              </span>
+                            ))}
+                            {result.exercise.muscleGroups.slice(0, 2).map((muscleGroup) => (
+                              <span
+                                key={muscleGroup}
+                                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-medium text-white/55"
+                              >
+                                {muscleGroup}
+                              </span>
+                            ))}
+                          </div>
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          {onAddToToday && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={`h-10 w-10 rounded-xl border ${
+                                todayExerciseIds?.has(result.exercise.id)
+                                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                  : 'bg-white/5 border-white/10 text-white/70 hover:text-white'
+                              }`}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                if (todayExerciseIds?.has(result.exercise.id)) return
+                                haptics.medium()
+                                onAddToToday(result.exercise)
+                              }}
+                              aria-label={todayExerciseIds?.has(result.exercise.id) ? 'Added to today' : 'Add to today'}
+                            >
+                              {todayExerciseIds?.has(result.exercise.id) ? <Check size={16} /> : <Plus size={16} />}
+                            </Button>
+                          )}
+                          <ChevronRight size={18} className="mt-1 text-white/20 group-hover/card:translate-x-0.5 transition-transform" />
+                        </div>
                       </div>
 
-                      {/* Exercise List */}
-                      <div className="space-y-2">
-                        {visibleExercises.map((exercise) => (
-                          <div
-                            key={exercise.id}
-                            className="group/row w-full rounded-xl border border-white/5 bg-white/[0.02] p-3 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <button
-                                onClick={() => handleExerciseTap(exercise)}
-                                className="flex-1 min-w-0 text-left"
-                                aria-label={`Open ${exercise.name}`}
-                              >
-                                <span className="text-sm font-bold text-foreground group-hover/row:text-primary transition-colors">
-                                  {formatExerciseName(exercise.name)}
-                                </span>
-                                
-                                {/* Exercise Metadata Row */}
-                                <div className="flex items-center gap-3 mt-1">
-                                  {(exercise.reps || exercise.sets || exercise.weight) && (
-                                    <div className={`flex items-center gap-1 text-[11px] font-bold ${theme.color}`}>
-                                      <span>{exercise.sets || 1}×{exercise.reps || 10}</span>
-                                      {exercise.weight && <span className="opacity-60">· {exercise.weight}</span>}
-                                    </div>
-                                  )}
-                                  
-                                  {exercise.equipment && exercise.equipment.length > 0 && (
-                                    <div className="flex items-center gap-1 text-[10px] text-white/30 font-medium">
-                                      <Tag size={10} />
-                                      <span className="truncate">{exercise.equipment[0]}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </button>
-
-                              <div className="flex items-center gap-2">
-                                {onAddToToday && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`h-9 w-9 rounded-xl border ${
-                                      todayExerciseIds?.has(exercise.id)
-                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                                        : 'bg-white/5 border-white/10 text-white/70 hover:text-white'
-                                    }`}
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      if (todayExerciseIds?.has(exercise.id)) return
-                                      haptics.medium()
-                                      onAddToToday(exercise)
-                                    }}
-                                    aria-label={todayExerciseIds?.has(exercise.id) ? 'Added to today' : 'Add to today'}
-                                  >
-                                    {todayExerciseIds?.has(exercise.id) ? <Check size={16} /> : <Plus size={16} />}
-                                  </Button>
-                                )}
-                                {exercise.videoUrl && (
-                                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                                    <Video size={16} fill="currentColor" className="opacity-80" />
-                                  </div>
-                                )}
-                                {exercise.priority >= 8 && (
-                                  <div className={`w-8 h-8 rounded-lg ${theme.bg}/10 flex items-center justify-center ${theme.color}`}>
-                                    <Trophy size={16} />
-                                  </div>
-                                )}
-                                <ChevronRight size={16} className="text-white/20 group-hover/row:translate-x-0.5 transition-transform" />
-                              </div>
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${theme.bg}/10 ${theme.color}`}>
+                              <Trophy size={16} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
+                                Elite proof
+                              </p>
+                              <p className="text-xs text-white/65">
+                                {result.athletes.length} athlete source{result.athletes.length > 1 ? 's' : ''}
+                              </p>
                             </div>
                           </div>
-                        ))}
-                      </div>
+                          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                            Optional context
+                          </span>
+                        </div>
 
-                      {hiddenCount > 0 && (
-                        <Button
-                          onClick={() => {
-                            haptics.light()
-                            toggleExpanded(group.athleteId)
-                          }}
-                          variant="ghost"
-                          size="sm"
-                          className={`w-full mt-3 h-10 text-[11px] font-bold uppercase tracking-widest ${theme.color} bg-white/5 hover:bg-white/10 rounded-xl transition-colors`}
-                        >
-                          {isExpanded ? 'Show fewer' : `+ ${hiddenCount} more exercises`}
-                        </Button>
-                      )}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {visibleAthletes.map((athlete) => (
+                            <span
+                              key={athlete.athleteId}
+                              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold text-white/75"
+                            >
+                              {athlete.athleteName}
+                            </span>
+                          ))}
+                          {extraAthleteCount > 0 && (
+                            <span className="rounded-full border border-white/10 bg-white/[0.02] px-3 py-1.5 text-[11px] font-semibold text-white/45">
+                              +{extraAthleteCount} more
+                            </span>
+                          )}
+                        </div>
+
+                        {topAchievement && (
+                          <p className="mt-3 text-xs leading-relaxed text-white/55">
+                            Featured source: {topAchievement}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )
                 })}

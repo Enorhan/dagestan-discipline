@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { Drill, DrillCategory, DrillSubcategory, Screen } from '@/lib/types'
+import { Drill, DrillCategory, DrillSubcategory, Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { categoryInfo } from '@/lib/drills-data'
@@ -119,8 +119,15 @@ const categoryThemes: Record<DrillCategory, { gradient: string; cardGradient: st
   }
 }
 
+const sportNames: Record<SportType, string> = {
+  wrestling: 'Wrestling',
+  judo: 'Judo',
+  bjj: 'Jiu-Jitsu'
+}
+
 interface CategoryListProps {
   category: DrillCategory
+  sportFilter?: SportType
   dataVersion?: number
   onBack: () => void
   onSelectDrill: (drill: Drill) => void
@@ -138,6 +145,7 @@ interface CategoryListProps {
 
 export function CategoryList({
   category,
+  sportFilter,
   dataVersion = 0,
   onBack,
   onSelectDrill,
@@ -182,6 +190,12 @@ export function CategoryList({
 
   const categoryDisplay = categoryInfo[category]
   const theme = categoryThemes[category]
+  const pageTitle = sportFilter && category === 'technique'
+    ? `${sportNames[sportFilter]} Drills`
+    : (categoryDisplay?.name ?? 'Category')
+  const pageDescription = sportFilter && category === 'technique'
+    ? `Technique-first drill library for ${sportNames[sportFilter].toLowerCase()}. Only drills show here — exercises live in the global exercise library.`
+    : (categoryDisplay?.description ?? '')
 
   // Fetch drills for this category
   useEffect(() => {
@@ -189,7 +203,7 @@ export function CategoryList({
 
     const fetchDrills = async () => {
       setIsLoading(true)
-      const drills = await drillsService.getDrillsByCategory(category)
+      const drills = await drillsService.getDrills({ category, sport: sportFilter })
       if (isMounted) {
         setAllDrillsInCategory(drills)
         setIsLoading(false)
@@ -201,7 +215,7 @@ export function CategoryList({
     return () => {
       isMounted = false
     }
-  }, [category, dataVersion])
+  }, [category, dataVersion, sportFilter])
 
   // Get unique subcategories
   const subcategories = useMemo(() => {
@@ -255,7 +269,7 @@ export function CategoryList({
                 <Breadcrumb
                   items={[
                     { label: 'Training Hub', onClick: onBack },
-                    { label: categoryDisplay?.name ?? 'Category' }
+                    { label: pageTitle }
                   ]}
                   variant="glass"
                 />
@@ -266,11 +280,11 @@ export function CategoryList({
                   {categoryIcons[category]}
                 </div>
                 <h1 className="text-4xl font-black tracking-tight text-foreground uppercase">
-                  {categoryDisplay?.name}
+                  {pageTitle}
                 </h1>
               </div>
               <p className="text-muted-foreground text-sm mt-2 max-w-[320px] leading-relaxed">
-                {categoryDisplay?.description}
+                {pageDescription}
               </p>
             </div>
           </div>
@@ -364,7 +378,7 @@ export function CategoryList({
                 <EmptyState
                   icon={categoryIcons[category]}
                   title="No drills available yet"
-                  message={`No ${categoryDisplay?.name.toLowerCase() ?? 'category'} drills are currently available.`}
+                  message={`No ${pageTitle.toLowerCase()} are currently available.`}
                   actionText="Back"
                   onAction={onBack}
                 />

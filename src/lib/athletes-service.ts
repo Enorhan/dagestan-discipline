@@ -662,9 +662,20 @@ export class AthletesService {
     sport: SportType,
     category: ExerciseCategory
   ): Promise<EnhancedAthleteExerciseGroup[]> {
+    return this.getEnhancedExercisesByCategory(category, sport)
+  }
+
+  /**
+   * Get enhanced exercises with full details by category across all sports
+   * Optionally filter to a single sport while preserving the same grouped result shape.
+   */
+  async getEnhancedExercisesByCategory(
+    category: ExerciseCategory,
+    sport?: SportType
+  ): Promise<EnhancedAthleteExerciseGroup[]> {
     await this.refreshCacheIfPublishedUpdates()
 
-    const cacheKey = `enhanced-${sport}-${category}`
+    const cacheKey = `enhanced-${sport ?? 'all'}-${category}`
 
     // Check cache first
     const cached = cache.enhancedExercises.get(cacheKey)
@@ -706,15 +717,20 @@ export class AthletesService {
 
     try {
       // Fetch exercises with athlete data
-      const { data, error } = await supabase
+      let query = supabase
         .from('athlete_exercises')
         .select(`
           *,
           exercise:exercises!inner(*),
           athlete:athletes!inner(id, name, sport, achievements, image_url)
         `)
-        .eq('athlete.sport', sport)
         .order('priority', { ascending: false })
+
+      if (sport) {
+        query = query.eq('athlete.sport', sport)
+      }
+
+      const { data, error } = await query
 
       if (error || !data || data.length === 0) {
         console.debug('[AthletesService] No enhanced data for:', cacheKey)

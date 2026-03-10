@@ -163,6 +163,7 @@ const TRANSITION_OVERRIDES: Partial<Record<Screen, ReadonlySet<Screen>>> = {
   'athlete-detail': withCommonDestinations([
     'exercise-detail',
     'training-hub',
+    'sport-exercise-categories',
     'sport-category-exercises',
   ]),
   'sport-exercise-categories': withCommonDestinations([

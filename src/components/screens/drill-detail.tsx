@@ -68,6 +68,16 @@ const categoryThemes: Record<DrillCategory, { gradient: string; color: string; t
   }
 }
 
+function formatDrillEquipmentLabel(value: string): string {
+  if (value === 'none') return 'Solo drill'
+  if (value === 'partner') return 'Partner drill'
+
+  return value
+    .split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 // Map category to icon component with dynamic colors
 const getCategoryIcon = (category: DrillCategory, size: number = 18) => {
   const theme = categoryThemes[category]
@@ -409,7 +419,7 @@ export function DrillDetail({
                 )}
                 {drill.equipment && drill.equipment.length > 0 && (
                   <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-foreground/70">
-                    {drill.equipment.join(', ')}
+                    {drill.equipment.map(formatDrillEquipmentLabel).join(', ')}
                   </span>
                 )}
               </div>

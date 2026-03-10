@@ -23,6 +23,10 @@ const LOGIN_TIMEOUT_MS = 15000
 const MAX_LOGIN_ATTEMPTS = 5
 const LOCKOUT_DURATION_MS = 60000 // 1 minute
 
+const isLoginTimeoutError = (error: unknown): error is Error => (
+  error instanceof Error && error.message === 'Login timed out. Check your connection and try again.'
+)
+
 export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -69,10 +73,24 @@ export function AuthLogin({ onLogin, onNavigate, onSkip }: AuthLoginProps) {
         }, LOGIN_TIMEOUT_MS)
       })
 
-      const user = await Promise.race([
-        supabaseService.signIn(email.trim(), password),
-        timeoutPromise,
-      ])
+      let user: UserProfile
+      try {
+        user = await Promise.race([
+          supabaseService.signIn(email.trim(), password),
+          timeoutPromise,
+        ])
+      } catch (error) {
+        if (!isLoginTimeoutError(error)) {
+          throw error
+        }
+
+        const recoveredAuthState = await supabaseService.getAuthState()
+        if (!recoveredAuthState.isAuthenticated || !recoveredAuthState.user) {
+          throw error
+        }
+
+        user = recoveredAuthState.user
+      }
 
       // Reset rate limiting on success
       loginAttemptsRef.current = 0

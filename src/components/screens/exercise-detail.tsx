@@ -110,11 +110,17 @@ export function ExerciseDetail({
   const theme = sportThemes[exercise.sport] || sportThemes.bjj
   const athleteName = exercise.athleteName ?? (exercise as { athleteData?: Array<{ athleteName: string }> }).athleteData?.[0]?.athleteName
   const athleteAchievements = exercise.athleteAchievements ?? (exercise as { athleteData?: Array<{ athleteAchievements?: string[] }> }).athleteData?.[0]?.athleteAchievements
+  const athleteSourceNames = Array.from(new Set([
+    athleteName,
+    ...(((exercise as { athleteData?: Array<{ athleteName: string }> }).athleteData ?? []).map((item) => item.athleteName)),
+  ].filter(Boolean) as string[]))
+  const athleteSourceCount = athleteSourceNames.length
   const showAddWorkoutAction = Boolean(onAddToWorkout)
   const showAddAction = Boolean(onAddToToday)
   const showCompleteAction = !isCompleted && Boolean(onMarkComplete)
   const hasFooterActions = showAddWorkoutAction || showAddAction || showCompleteAction
   const hasAthleteMetrics = Boolean(exercise.sets || exercise.reps || exercise.weight || exercise.duration)
+  const hasEliteProof = athleteSourceCount > 0 || hasAthleteMetrics || Boolean(athleteAchievements?.length)
   const coachingContent = parseExerciseCoachingContent(exercise.description)
   const performanceTags = exercise.eliteStandard?.tags ?? []
   const loggableMetrics = exercise.eliteStandard?.loggable_metrics ?? exercise.loggableMetrics ?? []
@@ -222,173 +228,8 @@ export function ExerciseDetail({
             </div>
           )}
 
-          {(exercise.difficultyLevel || performanceTags.length > 0 || loggableMetrics.length > 0) && (
-            <div className="px-6 py-6">
-              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase mb-4">
-                Performance Profile
-              </h2>
-              <div className="card-elevated rounded-3xl p-5 bg-white/[0.03] border border-white/5 space-y-4">
-                {performanceTags.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-2">
-                      Focus Tags
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {performanceTags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/75"
-                        >
-                          <Tag size={11} />
-                          {formatDisplayLabel(tag)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {exercise.difficultyLevel && (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-1">
-                        Difficulty
-                      </p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {formatDisplayLabel(exercise.difficultyLevel)}
-                      </p>
-                    </div>
-                  )}
-                  {loggableMetrics.length > 0 && (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-1">
-                        Track Progress With
-                      </p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {loggableMetrics.map((metric) => formatDisplayLabel(metric)).join(', ')}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Sport-Specific Benefits - Tabbed */}
-          {availableBenefitTabs.length > 0 && activeBenefit && (
-            <div className="px-6 py-6">
-              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase mb-4">
-                Grappling Transfer
-              </h2>
-              {availableBenefitTabs.length > 1 ? (
-                <div className="flex gap-1 p-1 rounded-2xl bg-white/5 border border-white/10">
-                  {availableBenefitTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setBenefitTab(tab.id)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                        benefitTab === tab.id
-                          ? 'bg-white text-black shadow-lg'
-                          : 'text-white/50 hover:text-white/80'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
-                  {availableBenefitTabs[0]?.label}
-                </div>
-              )}
-              <p className="mt-4 text-sm text-white/80 leading-relaxed">
-                {activeBenefit}
-              </p>
-            </div>
-          )}
-
-          {/* Signature Athlete Card - Redesigned */}
-          <div className="px-6 py-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase">
-                Signature Athlete Data
-              </h2>
-              <Trophy size={14} className={theme.color} />
-            </div>
-            
-            <div className="relative group overflow-hidden">
-              {/* Card Background with Glow */}
-              <div className={`absolute -inset-1 bg-gradient-to-r ${theme.gradient} opacity-20 blur-xl group-hover:opacity-30 transition-opacity duration-500`} />
-              
-              <div className="relative card-elevated rounded-3xl p-6 bg-card/40 backdrop-blur-xl border border-white/10 shadow-2xl">
-                <div className={`flex items-center gap-4 ${hasAthleteMetrics ? 'mb-6' : 'mb-3'}`}>
-                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center border border-white/10 shadow-lg`}>
-                    <Trophy size={28} className="text-white/90" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-foreground tracking-tight">{athleteName ?? 'Elite Athlete'}</h3>
-                    {athleteAchievements && athleteAchievements.length > 0 && (
-                      <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${theme.color}`}>
-                        {athleteAchievements[0]}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {hasAthleteMetrics ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {exercise.sets && (
-                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Sets</span>
-                        <p className="text-xl font-black text-white">{exercise.sets}</p>
-                      </div>
-                    )}
-                    {exercise.reps && (
-                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Reps</span>
-                        <p className="text-xl font-black text-white">{exercise.reps}</p>
-                      </div>
-                    )}
-                    {exercise.weight && (
-                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Weight</span>
-                        <p className="text-xl font-black text-white">{exercise.weight}</p>
-                      </div>
-                    )}
-                    {exercise.duration && (
-                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Time</span>
-                        <p className="text-xl font-black text-white">{exercise.duration}</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-xs text-white/65 leading-relaxed">
-                      Elite athletes include this movement to build transferable fight performance. Use the protocol below to scale it to your level.
-                    </p>
-                  </div>
-                )}
-
-                {exercise.notes && (
-                  <div className="mt-6 flex gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
-                    <Info size={16} className="text-white/20 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-white/50 leading-relaxed italic">{exercise.notes}</p>
-                  </div>
-                )}
-
-                {exercise.frequency && (
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-white/50">
-                      Frequency: {exercise.frequency}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* User Recommendations Section */}
-          <div className="px-6 py-4">
+          <div className="px-6 py-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase">
                 Your Protocol
@@ -412,6 +253,10 @@ export function ExerciseDetail({
                 ))}
               </div>
             </div>
+
+            <p className="text-sm text-white/60 leading-relaxed mb-4 max-w-[34rem]">
+              Start here first. Pick the level that matches you today, then use the sections below for execution cues, transfer, and optional elite context.
+            </p>
 
             {/* Recommendation Card */}
             <div className="card-elevated rounded-3xl p-6 bg-white/[0.03] border border-white/5">
@@ -465,13 +310,33 @@ export function ExerciseDetail({
                   <p className="text-sm text-muted-foreground">Standard protocol for this exercise.</p>
                 </div>
               )}
+
+              {(exercise.frequency || exercise.notes) && (
+                <div className="mt-5 space-y-3 border-t border-white/5 pt-5">
+                  {exercise.frequency && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-white/40 mb-1">
+                        Use it this often
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">{exercise.frequency}</p>
+                    </div>
+                  )}
+
+                  {exercise.notes && (
+                    <div className="flex gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                      <Info size={16} className="mt-0.5 flex-shrink-0 text-white/20" />
+                      <p className="text-sm text-white/60 leading-relaxed">{exercise.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           {(coachingContent.executionPoints.length > 0 || coachingContent.commonMistakes.length > 0 || progressionGuidance || regressionGuidance) && (
             <div className="px-6 py-4 space-y-4">
               <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase">
-                Coaching Notes
+                How to Do It
               </h2>
 
               {coachingContent.executionPoints.length > 0 && (
@@ -542,6 +407,90 @@ export function ExerciseDetail({
             </div>
           )}
 
+          {/* Sport-Specific Benefits - Tabbed */}
+          {availableBenefitTabs.length > 0 && activeBenefit && (
+            <div className="px-6 py-6">
+              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase mb-4">
+                Grappling Transfer
+              </h2>
+              {availableBenefitTabs.length > 1 ? (
+                <div className="flex gap-1 p-1 rounded-2xl bg-white/5 border border-white/10">
+                  {availableBenefitTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setBenefitTab(tab.id)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                        benefitTab === tab.id
+                          ? 'bg-white text-black shadow-lg'
+                          : 'text-white/50 hover:text-white/80'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  {availableBenefitTabs[0]?.label}
+                </div>
+              )}
+              <p className="mt-4 text-sm text-white/80 leading-relaxed">
+                {activeBenefit}
+              </p>
+            </div>
+          )}
+
+          {(exercise.difficultyLevel || performanceTags.length > 0 || loggableMetrics.length > 0) && (
+            <div className="px-6 py-6">
+              <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase mb-4">
+                Performance Profile
+              </h2>
+              <div className="card-elevated rounded-3xl p-5 bg-white/[0.03] border border-white/5 space-y-4">
+                {performanceTags.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-2">
+                      Focus Tags
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {performanceTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/75"
+                        >
+                          <Tag size={11} />
+                          {formatDisplayLabel(tag)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {exercise.difficultyLevel && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-1">
+                        Difficulty
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {formatDisplayLabel(exercise.difficultyLevel)}
+                      </p>
+                    </div>
+                  )}
+                  {loggableMetrics.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/40 mb-1">
+                        Track Progress With
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {loggableMetrics.map((metric) => formatDisplayLabel(metric)).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Equipment & Muscles Section */}
           <div className="px-6 py-4 space-y-8">
             {exercise.equipment && exercise.equipment.length > 0 && (
@@ -586,6 +535,108 @@ export function ExerciseDetail({
               </div>
             )}
           </div>
+
+          {hasEliteProof && (
+            <div className="px-6 py-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-[10px] font-bold tracking-[0.2em] text-foreground/40 uppercase">
+                  Elite Proof
+                </h2>
+                <div className="flex items-center gap-2">
+                  {athleteSourceCount > 0 && (
+                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                      {athleteSourceCount} source{athleteSourceCount > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <Trophy size={14} className={theme.color} />
+                </div>
+              </div>
+
+              <p className="text-sm text-white/55 leading-relaxed mb-4 max-w-[34rem]">
+                Use this as supporting context after you already know how you want to perform and scale the movement.
+              </p>
+
+              <div className="relative group overflow-hidden">
+                <div className={`absolute -inset-1 bg-gradient-to-r ${theme.gradient} opacity-20 blur-xl group-hover:opacity-30 transition-opacity duration-500`} />
+
+                <div className="relative card-elevated rounded-3xl p-6 bg-card/40 backdrop-blur-xl border border-white/10 shadow-2xl space-y-5">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center border border-white/10 shadow-lg`}>
+                      <Trophy size={28} className="text-white/90" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground tracking-tight">
+                        {athleteSourceNames[0] ?? athleteName ?? 'Elite athlete reference'}
+                      </h3>
+                      {athleteAchievements && athleteAchievements.length > 0 && (
+                        <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${theme.color}`}>
+                          {athleteAchievements[0]}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {athleteSourceNames.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 mb-2">
+                        Referenced by
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {athleteSourceNames.map((sourceName) => (
+                          <span
+                            key={sourceName}
+                            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold text-white/75"
+                          >
+                            {sourceName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {hasAthleteMetrics ? (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 mb-3">
+                        Observed athlete loading
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {exercise.sets && (
+                          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Sets</span>
+                            <p className="text-xl font-black text-white">{exercise.sets}</p>
+                          </div>
+                        )}
+                        {exercise.reps && (
+                          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Reps</span>
+                            <p className="text-xl font-black text-white">{exercise.reps}</p>
+                          </div>
+                        )}
+                        {exercise.weight && (
+                          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Weight</span>
+                            <p className="text-xl font-black text-white">{exercise.weight}</p>
+                          </div>
+                        )}
+                        {exercise.duration && (
+                          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Time</span>
+                            <p className="text-xl font-black text-white">{exercise.duration}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                      <p className="text-sm text-white/65 leading-relaxed">
+                        This movement shows up in elite training because it transfers well to grappling performance, but your protocol should still be based on your level, recovery, and current session goals.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </ScreenShellContent>

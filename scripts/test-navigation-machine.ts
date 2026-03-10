@@ -175,6 +175,16 @@ const cases: NavigationTestCase[] = [
     },
   },
   {
+    name: 'Athlete detail can jump into sport exercise categories',
+    from: 'athlete-detail',
+    to: 'sport-exercise-categories',
+    context: contexts.ready,
+    expected: {
+      screen: 'sport-exercise-categories',
+      blocked: false,
+    },
+  },
+  {
     name: 'Exercise detail can return to user profile area',
     from: 'exercise-detail',
     to: 'user-profile',

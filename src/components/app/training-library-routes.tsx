@@ -36,6 +36,7 @@ interface TrainingLibraryRoutesProps {
   selectedAthlete: Athlete | null
   selectedCategory: DrillCategory | null
   selectedSubcategory: DrillSubcategory | null
+  selectedTrainingSport: SportType | null
   selectedRoutine: Routine | null
   selectedLearningPath: LearningPath | null
   selectedExerciseSport: SportType | null
@@ -59,6 +60,7 @@ interface TrainingLibraryRoutesProps {
   onStartAction: () => void
   onSelectTrainingDrill: (drill: Drill) => void
   onSelectTrainingCategory: (category: DrillCategory) => void
+  onOpenSportDrills: (sport: SportType) => void
   onSelectTrainingRoutine: (routine: Routine) => void
   onSelectLearningPath: (path: LearningPath) => void | Promise<void>
   onOpenBodyPartSelector: () => void
@@ -89,6 +91,7 @@ export function TrainingLibraryRoutes({
   selectedAthlete,
   selectedCategory,
   selectedSubcategory,
+  selectedTrainingSport,
   selectedRoutine,
   selectedLearningPath,
   selectedExerciseSport,
@@ -112,6 +115,7 @@ export function TrainingLibraryRoutes({
   onStartAction,
   onSelectTrainingDrill,
   onSelectTrainingCategory,
+  onOpenSportDrills,
   onSelectTrainingRoutine,
   onSelectLearningPath,
   onOpenBodyPartSelector,
@@ -140,10 +144,10 @@ export function TrainingLibraryRoutes({
           dataVersion={contentDataVersion}
           currentWorkoutFocus={displaySession?.focus}
           onNavigate={navigateTo}
-          backScreen='home'
           session={displaySession}
           onSelectDrill={onSelectTrainingDrill}
           onSelectCategory={onSelectTrainingCategory}
+          onOpenSportDrills={onOpenSportDrills}
           onSelectRoutine={onSelectTrainingRoutine}
           onSelectLearningPath={onSelectLearningPath}
           onSelectBodyPart={onOpenBodyPartSelector}
@@ -182,12 +186,18 @@ export function TrainingLibraryRoutes({
           userLevel={userExperienceLevel}
           dataVersion={contentDataVersion}
           onNavigate={navigateTo}
+          onBrowseSportLibrary={(sport) => {
+            onSelectExerciseSport(sport)
+            navigateTo('sport-exercise-categories')
+          }}
           onBack={() => goBack('training-hub')}
           onExerciseSelect={onSelectAthleteExercise}
           onAddToWorkout={onAddAthleteExerciseToWorkout}
           workoutExerciseIds={workoutExerciseIds}
           onStartAction={onStartAction}
           hasWorkoutToday={hasWorkoutToday}
+          initialScrollTop={screenScrollPositions['athlete-detail']}
+          onScrollChange={(scrollTop) => onScreenScrollChange('athlete-detail', scrollTop)}
         />
       ) : renderNavigationNotSet(
         'The selected athlete is missing from the current app state.',
@@ -199,6 +209,7 @@ export function TrainingLibraryRoutes({
       return selectedCategory ? (
         <CategoryList
           category={selectedCategory}
+          sportFilter={selectedTrainingSport ?? undefined}
           dataVersion={contentDataVersion}
           onBack={() => goBack('training-hub')}
           onNavigate={navigateTo}

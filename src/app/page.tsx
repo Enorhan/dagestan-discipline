@@ -340,6 +340,7 @@ export default function App() {
   const [selectedDrill, setSelectedDrill] = useState<Drill | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<DrillCategory | null>(null)
   const [selectedSubcategory, setSelectedSubcategory] = useState<DrillSubcategory | null>(null)
+  const [selectedTrainingSport, setSelectedTrainingSport] = useState<SportType | null>(null)
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null)
   const [selectedLearningPath, setSelectedLearningPath] = useState<LearningPath | null>(null)
   const [learningPathProgress, setLearningPathProgress] = useState<Record<string, number>>({})
@@ -2780,7 +2781,15 @@ export default function App() {
   }, [navigateTo])
 
   const handleSelectTrainingCategory = useCallback((category: DrillCategory) => {
+    setSelectedTrainingSport(null)
     setSelectedCategory(category)
+    setSelectedSubcategory(null)
+    navigateTo('category-list')
+  }, [navigateTo])
+
+  const handleOpenSportDrills = useCallback((sport: SportType) => {
+    setSelectedTrainingSport(sport)
+    setSelectedCategory('technique')
     setSelectedSubcategory(null)
     navigateTo('category-list')
   }, [navigateTo])
@@ -2827,6 +2836,7 @@ export default function App() {
   }, [navigateTo])
 
   const handleSelectBodyPart = useCallback((bodyPart: DrillSubcategory) => {
+    setSelectedTrainingSport(null)
     setSelectedCategory('injury-prevention')
     setSelectedSubcategory(bodyPart)
     navigateTo('category-list')
@@ -4680,6 +4690,7 @@ export default function App() {
           selectedAthlete={selectedAthlete}
           selectedCategory={selectedCategory}
           selectedSubcategory={selectedSubcategory}
+          selectedTrainingSport={selectedTrainingSport}
           selectedRoutine={selectedRoutine}
           selectedLearningPath={selectedLearningPath}
           selectedExerciseSport={selectedExerciseSport}
@@ -4705,6 +4716,7 @@ export default function App() {
           onStartAction={handleCenterAction}
           onSelectTrainingDrill={handleSelectTrainingDrill}
           onSelectTrainingCategory={handleSelectTrainingCategory}
+          onOpenSportDrills={handleOpenSportDrills}
           onSelectTrainingRoutine={handleSelectTrainingRoutine}
           onSelectLearningPath={handleSelectLearningPath}
           onOpenBodyPartSelector={handleOpenBodyPartSelector}

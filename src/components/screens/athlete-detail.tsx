@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Athlete, ExerciseWithGuidance, ExperienceLevel, Screen, SportType } from '@/lib/types'
 import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
@@ -41,6 +41,12 @@ const sportNames: Record<SportType, string> = {
   wrestling: 'Wrestling',
   judo: 'Judo',
   bjj: 'Jiu-Jitsu'
+}
+
+function formatDisplayLabel(value: string) {
+  return value
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase())
 }
 
 // Breadcrumb component matching other screens
@@ -87,6 +93,7 @@ interface AthleteDetailProps {
   userLevel: ExperienceLevel
   dataVersion?: number
   onNavigate: (screen: Screen) => void
+  onBrowseSportLibrary?: (sport: SportType) => void
   onBack: () => void
   onExerciseSelect?: (exercise: ExerciseWithGuidance) => void
   onAddToWorkout?: (exercise: ExerciseWithGuidance) => void
@@ -104,6 +111,7 @@ export function AthleteDetail({
   userLevel,
   dataVersion = 0,
   onNavigate,
+  onBrowseSportLibrary,
   onBack,
   onExerciseSelect,
   onAddToWorkout,
@@ -123,6 +131,36 @@ export function AthleteDetail({
 
   // Get sport theme
   const theme = sportThemes[athlete.sport] || sportThemes.wrestling
+  const athleteContext = [athlete.weightClass, athlete.region ?? athlete.nationality].filter(Boolean) as string[]
+
+  const signatureCategories = useMemo(() => {
+    const counts = new Map<string, number>()
+    exercises.forEach((exercise) => {
+      counts.set(exercise.category, (counts.get(exercise.category) ?? 0) + 1)
+    })
+
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([category]) => formatDisplayLabel(category))
+  }, [exercises])
+
+  const signatureTags = useMemo(() => {
+    const counts = new Map<string, number>()
+    exercises.forEach((exercise) => {
+      const tags = exercise.tags ?? exercise.eliteStandard?.tags ?? []
+      tags.forEach((tag) => {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1)
+      })
+    })
+
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([tag]) => formatDisplayLabel(tag))
+  }, [exercises])
+
+  const highlightedExercises = useMemo(() => exercises.slice(0, 3), [exercises])
 
   // Restore scroll position after loading completes
   useEffect(() => {
@@ -194,7 +232,7 @@ export function AthleteDetail({
                 <Breadcrumb
                   items={[
                     { label: 'Training Hub', onClick: () => onNavigate('training-hub') },
-                    { label: 'Athletes' },
+                    { label: 'Elite Inspiration' },
                     { label: athlete.name }
                   ]}
                   variant="glass"
@@ -231,8 +269,23 @@ export function AthleteDetail({
                     {athlete.name}
                   </h1>
                   <p className={`text-sm font-semibold ${theme.textColor} mt-1`}>
-                    {sportNames[athlete.sport]} Athlete
+                    {sportNames[athlete.sport]} inspiration
                   </p>
+                  <p className="mt-3 max-w-[28rem] text-sm leading-relaxed text-white/70">
+                    Use this page for ideas, not a full prescription. Borrow the patterns that fit your goals, then scale them to your level.
+                  </p>
+                  {athleteContext.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {athleteContext.map((item) => (
+                        <span
+                          key={item}
+                          className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/75"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -240,12 +293,40 @@ export function AthleteDetail({
 
           {/* Content Area */}
           <div className="px-6 -mt-4 relative z-20">
+            <div className={`card-glass rounded-2xl p-5 mb-6 border ${theme.borderColor} stagger-item`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className={`text-xs font-bold ${theme.color} uppercase tracking-[0.2em]`}>
+                    Inspiration first
+                  </p>
+                  <p className="mt-2 text-sm text-foreground/80 leading-relaxed max-w-[34rem]">
+                    Start with the exercise library when you want the best fit for today. Come here when you want elite context, proof, and ideas worth borrowing.
+                  </p>
+                </div>
+                {onBrowseSportLibrary && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="rounded-xl border-white/10 bg-white/5"
+                    onClick={() => {
+                      haptics.light()
+                      onBrowseSportLibrary(athlete.sport)
+                    }}
+                    withHaptic={false}
+                  >
+                    Browse Exercise Library
+                    <ChevronRight size={16} className="ml-1" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
             {/* Achievements Card - Glass Style */}
             {athlete.achievements && athlete.achievements.length > 0 && (
               <div className={`card-glass rounded-2xl p-5 mb-6 border ${theme.borderColor} stagger-item`}>
                 <h3 className={`text-xs font-bold ${theme.color} uppercase tracking-[0.2em] mb-3 flex items-center gap-2`}>
                   <Trophy size={14} />
-                  Achievements
+                  Why this athlete matters
                 </h3>
                 <ul className="space-y-2">
                   {athlete.achievements.map((achievement, index) => (
@@ -264,11 +345,72 @@ export function AthleteDetail({
               </div>
             )}
 
+            {(signatureCategories.length > 0 || signatureTags.length > 0 || highlightedExercises.length > 0) && (
+              <div className="grid gap-4 md:grid-cols-2 mb-6 stagger-item" style={{ animationDelay: '75ms' }}>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/60 uppercase mb-3">
+                    Signature themes
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {signatureCategories.map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white/75"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                    {signatureTags.map((item) => (
+                      <span
+                        key={item}
+                        className={`rounded-full border ${theme.borderColor} bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold ${theme.textColor}`}
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/60 uppercase mb-3">
+                    Start with these ideas
+                  </h3>
+                  <div className="space-y-2.5">
+                    {highlightedExercises.map((exercise) => (
+                      <button
+                        key={exercise.id}
+                        type="button"
+                        onClick={() => {
+                          if (!onExerciseSelect) return
+                          haptics.light()
+                          onExerciseSelect(exercise)
+                        }}
+                        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left transition-colors hover:bg-white/10"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{exercise.name}</p>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">
+                            {formatDisplayLabel(exercise.category)}
+                          </p>
+                        </div>
+                        <ChevronRight size={16} className="text-white/30" />
+                      </button>
+                    ))}
+                    {highlightedExercises.length === 0 && (
+                      <p className="text-sm text-white/55 leading-relaxed">
+                        Exercise ideas will appear here when athlete-linked references are available.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Training Philosophy */}
             {(athlete.trainingPhilosophy || athlete.bio) && (
               <div className="mb-6 stagger-item" style={{ animationDelay: '100ms' }}>
                 <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/60 uppercase mb-2">
-                  Training Philosophy
+                  What to borrow
                 </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {athlete.trainingPhilosophy || athlete.bio}
@@ -279,7 +421,7 @@ export function AthleteDetail({
             {/* Experience Level Selector - Sport Themed */}
             <div className="mb-6 stagger-item" style={{ animationDelay: '150ms' }}>
               <h3 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-3">
-                Your Level
+                Scale these ideas to your level
               </h3>
               <div className="flex gap-2">
                 {(['beginner', 'intermediate', 'advanced'] as ExperienceLevel[]).map(level => (
@@ -307,11 +449,16 @@ export function AthleteDetail({
             {/* Exercises Section */}
             <div className="stagger-item" style={{ animationDelay: '200ms' }}>
               <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase mb-4">
-                Training Program
+                Ideas to Borrow
               </h2>
-              <p className="text-xs text-muted-foreground mb-4">
-                {exercises.length} loggable exercises · Add any to your workout
-              </p>
+              <div className="flex flex-col gap-2 mb-4">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {athlete.name} is supporting context, not your whole plan. Use these references when they help, then add the ones that fit today.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {exercises.length} linked exercises · Add any to your workout
+                </p>
+              </div>
 
               {/* Loading State */}
               {isLoading ? (
@@ -323,8 +470,8 @@ export function AthleteDetail({
                 <EmptyState
                   variant="compact"
                   icon={<Target size={24} className="text-muted-foreground/50" />}
-                  title="No exercises yet"
-                  message="No athlete-linked exercises are available for this profile right now."
+                  title="No inspiration ideas yet"
+                  message="No athlete-linked exercises are available for this inspiration profile right now."
                 />
               ) : (
                 <div className="space-y-4">
@@ -337,7 +484,7 @@ export function AthleteDetail({
                       <ExerciseCardWithGuidance
                         exercise={exercise}
                         userLevel={selectedLevel}
-                        showAthleteData={true}
+                        showAthleteData={false}
                         showRecommendations={true}
                         showSportBenefits={true}
                         onAddToWorkout={onAddToWorkout}
@@ -350,6 +497,25 @@ export function AthleteDetail({
                       />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {onBrowseSportLibrary && !isLoading && (
+                <div className="mt-5">
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    fullWidth
+                    className="rounded-2xl border-white/10 bg-white/5"
+                    onClick={() => {
+                      haptics.light()
+                      onBrowseSportLibrary(athlete.sport)
+                    }}
+                    withHaptic={false}
+                  >
+                    Browse Full Exercise Library
+                    <ChevronRight size={16} className="ml-1" />
+                  </Button>
                 </div>
               )}
             </div>

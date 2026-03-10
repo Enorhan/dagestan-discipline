@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { ExerciseCategory, ExerciseCounts, Screen, SportType } from '@/lib/types'
 import { athletesService } from '@/lib/athletes-service'
 import { haptics } from '@/lib/haptics'
-import { ScreenShell, ScreenShellContent, ScreenShellFooter } from '@/components/ui/screen-shell'
+import { ScreenShell, ScreenShellFooter } from '@/components/ui/screen-shell'
 import { BottomNav } from '@/components/ui/bottom-nav'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
@@ -117,14 +117,8 @@ const categoryInfo: Record<ExerciseCategory, CategoryInfo> = {
   }
 }
 
-const sportNames: Record<SportType, string> = {
-  'wrestling': 'Wrestling',
-  'judo': 'Judo',
-  'bjj': 'Jiu-Jitsu'
-}
-
 interface SportExerciseCategoriesProps {
-  sport: SportType
+  sport?: SportType
   dataVersion?: number
   onNavigate: (screen: Screen) => void
   onBack: () => void
@@ -137,26 +131,8 @@ interface SportExerciseCategoriesProps {
   onScrollChange?: (scrollTop: number) => void
 }
 
-const sportThemes: Record<SportType, { gradient: string; color: string; bg: string }> = {
-  wrestling: {
-    gradient: 'from-red-950 via-red-900 to-background',
-    color: 'text-red-500',
-    bg: 'bg-red-500'
-  },
-  judo: {
-    gradient: 'from-blue-950 via-blue-900 to-background',
-    color: 'text-blue-500',
-    bg: 'bg-blue-500'
-  },
-  bjj: {
-    gradient: 'from-purple-950 via-purple-900 to-background',
-    color: 'text-purple-500',
-    bg: 'bg-purple-500'
-  }
-}
-
 export function SportExerciseCategories({
-  sport,
+  sport = 'wrestling',
   dataVersion = 0,
   onNavigate,
   onBack,
@@ -228,19 +204,13 @@ export function SportExerciseCategories({
 
   const visibleCategories = isLoadingCounts || !exerciseCounts
     ? categories
-    : categories.filter((category) => {
-      const key = `${sport}-${category}`
-      return (exerciseCounts.bySportAndCategory[key] || 0) > 0
-    })
+    : categories.filter((category) => (exerciseCounts.byCategory[category] || 0) > 0)
 
-  // Get exercise count for a specific sport/category
+  // Get global exercise count for a specific category
   const getCategoryCount = (category: ExerciseCategory): number | null => {
     if (!exerciseCounts) return null
-    const key = `${sport}-${category}`
-    return exerciseCounts.bySportAndCategory[key] || 0
+    return exerciseCounts.byCategory[category] || 0
   }
-
-  const theme = sportThemes[sport]
 
   return (
     <ScreenShell>
@@ -253,7 +223,7 @@ export function SportExerciseCategories({
           {/* Hero Header */}
           <div className={`relative safe-area-top pb-8 px-6 overflow-hidden`}>
             {/* Background Gradient */}
-            <div className={`absolute inset-0 bg-gradient-to-b ${theme.gradient} opacity-50`} />
+            <div className="absolute inset-0 bg-gradient-to-b from-primary/25 via-background/95 to-background opacity-90" />
             <div className="absolute inset-0 bg-grid-white/[0.02]" />
             
             <div className="relative z-10">
@@ -265,17 +235,17 @@ export function SportExerciseCategories({
                 <Breadcrumb
                   items={[
                     { label: 'Training Hub', onClick: () => onNavigate('training-hub') },
-                    { label: sportNames[sport] }
+                    { label: 'Exercises' }
                   ]}
                   variant="glass"
                 />
               </div>
 
               <h1 className="text-4xl font-black tracking-tight text-foreground mt-2 uppercase">
-                {sportNames[sport]}
+                Exercises
               </h1>
               <p className="text-muted-foreground text-sm mt-2 max-w-[280px] leading-relaxed">
-                Elite physical preparation and technical drills for modern {sportNames[sport]}.
+                One combined exercise library across all sports, broken into muscle groups so it is easy to browse and track.
               </p>
             </div>
           </div>
@@ -284,11 +254,11 @@ export function SportExerciseCategories({
           <div className="px-6 -mt-4 relative z-20">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-bold tracking-[0.2em] text-foreground/70 uppercase">
-                Targeted Training
+                By Muscle Group
               </h2>
             </div>
             <p className="text-xs text-muted-foreground/80 mb-4">
-              Choose a body area to view athlete-recommended exercises.
+              Choose a body area to open all-sports exercise results. Drill browsing stays on the sport-specific drill pages.
             </p>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

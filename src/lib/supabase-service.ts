@@ -53,6 +53,61 @@ interface TrainingProgramData {
   sessions: Session[]
 }
 
+export interface AuthenticatedProfileRetryOptions {
+  attempts?: number
+  attemptTimeoutMs?: number
+  retryDelayMs?: number
+}
+
+const AUTHENTICATED_PROFILE_TIMEOUT = Symbol('authenticated-profile-timeout')
+const DEFAULT_AUTH_PROFILE_ATTEMPTS = 4
+const DEFAULT_AUTH_PROFILE_ATTEMPT_TIMEOUT_MS = 2500
+const DEFAULT_AUTH_PROFILE_RETRY_DELAY_MS = 250
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const withProfileTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | typeof AUTHENTICATED_PROFILE_TIMEOUT> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<typeof AUTHENTICATED_PROFILE_TIMEOUT>((resolve) => {
+        timeoutId = setTimeout(() => {
+          resolve(AUTHENTICATED_PROFILE_TIMEOUT)
+        }, ms)
+      }),
+    ])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
+export async function resolveAuthenticatedProfileWithRetry(
+  loadProfile: () => Promise<UserProfile | null>,
+  options: AuthenticatedProfileRetryOptions = {}
+): Promise<UserProfile | null> {
+  const attempts = Math.max(1, Math.floor(options.attempts ?? DEFAULT_AUTH_PROFILE_ATTEMPTS))
+  const attemptTimeoutMs = Math.max(250, Math.floor(options.attemptTimeoutMs ?? DEFAULT_AUTH_PROFILE_ATTEMPT_TIMEOUT_MS))
+  const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs ?? DEFAULT_AUTH_PROFILE_RETRY_DELAY_MS))
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const profile = await withProfileTimeout(loadProfile(), attemptTimeoutMs)
+      if (profile && profile !== AUTHENTICATED_PROFILE_TIMEOUT) {
+        return profile
+      }
+    } catch {
+      // Retry a fresh profile request on the next loop.
+    }
+
+    if (attempt < attempts - 1 && retryDelayMs > 0) {
+      await sleep(retryDelayMs)
+    }
+  }
+
+  return null
+}
+
 // ============================================
 // TYPE CONVERTERS
 // ============================================
@@ -239,8 +294,14 @@ export const supabaseService = {
     }
     if (!data.user) throw new Error('Failed to sign in')
 
-    const profile = await this.getProfile(data.user.id)
-    if (!profile) throw new Error('Profile not found')
+    const profile = await resolveAuthenticatedProfileWithRetry(() => this.getProfile(data.user.id))
+    if (!profile) {
+      captureException('supabase-sign-in', new Error('Profile did not load after successful sign-in'), {
+        step: 'profile.load',
+        userId: data.user.id,
+      }, 'warning')
+      throw new Error('We signed you in, but loading your profile took too long. Please wait a moment and try again.')
+    }
 
     return profile
   },
@@ -303,7 +364,7 @@ export const supabaseService = {
         return { isAuthenticated: false, user: null, isLoading: false, error: null, emailVerified: false }
       }
 
-      const profile = await this.getProfile(user.id)
+      const profile = await resolveAuthenticatedProfileWithRetry(() => this.getProfile(user.id))
       const emailVerified = !!user.email_confirmed_at
       return {
         isAuthenticated: true,
