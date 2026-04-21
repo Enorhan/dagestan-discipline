@@ -1,56 +1,67 @@
-// ============================================
-// SUPABASE SERVICE - Comprehensive backend service
-// ============================================
-
-import { supabase } from './supabase'
-import type { Database } from './database.types'
-import type { User, AuthChangeEvent, Session as AuthSession } from '@supabase/supabase-js'
-import {
-  UserProfile,
-  CustomWorkout,
-  WorkoutBuilderState,
-  CustomWorkoutExercise,
-  AuthState,
-  WorkoutFocus,
-} from './social-types'
+import type { AuthChangeEvent, Session as AuthSession, User } from '@supabase/supabase-js'
+import { getStoredSupabaseSession, supabase } from './supabase'
 import { captureException } from './monitoring'
-import type { SportType, Drill, Routine, LearningPath, ActivityLog, SessionLog, DrillDifficulty, Equipment, WeightUnit, Session, WeekDay, ExperienceLevel, PrimaryGoal } from './types'
-
-// Type aliases for database rows - used for return type annotations
-type DbProfile = Database['public']['Tables']['profiles']['Row']
-type DbUserStats = Database['public']['Tables']['user_stats']['Row']
-type DbCustomWorkout = Database['public']['Tables']['custom_workouts']['Row']
-type DbCustomWorkoutExercise = Database['public']['Tables']['custom_workout_exercises']['Row']
-type DbSessionLog = Database['public']['Tables']['session_logs']['Row']
-type DbActivityLog = Database['public']['Tables']['activity_logs']['Row']
-type DbDrill = Database['public']['Tables']['drills']['Row']
-type DbRoutine = Database['public']['Tables']['routines']['Row']
-type DbRoutineDrill = Database['public']['Tables']['routine_drills']['Row']
-type DbLearningPath = Database['public']['Tables']['learning_paths']['Row']
-type DbLearningPathDrill = Database['public']['Tables']['learning_path_drills']['Row']
-type DbUserLearningProgress = Database['public']['Tables']['user_learning_progress']['Row']
-type DbUserRecentlyViewed = Database['public']['Tables']['user_recently_viewed']['Row']
-type DbSubscription = Database['public']['Tables']['subscriptions']['Row']
-type DbSubscriptionPlan = Database['public']['Tables']['subscription_plans']['Row']
-type DbTrainingProgram = Database['public']['Tables']['training_programs']['Row']
-type DbTrainingProgramVersion = Database['public']['Tables']['training_program_versions']['Row']
-type DbTrainingProgramState = Database['public']['Tables']['training_program_state']['Row']
-type DbExerciseFavorite = Database['public']['Tables']['exercise_favorites']['Row']
-type DbExerciseCompletion = Database['public']['Tables']['exercise_completions']['Row']
+import type {
+  AuthState,
+  Equipment,
+  ExperienceLevel,
+  PrimaryGoal,
+  SportType,
+  UserProfile,
+  WeightUnit,
+} from './user-profile-types'
 
 const db = supabase as any
 
-export interface TrainingProgramSnapshot {
-  programId: string
-  sport: SportType
-  trainingDays: number
-  currentVersionId: string | null
-  originalVersionId: string | null
-  sessions: Session[]
+type DbProfile = {
+  id: string
+  username: string
+  display_name: string
+  avatar_url?: string | null
+  bio?: string | null
+  sport: string
+  created_at?: string | null
+  training_days?: number | null
+  weight_unit?: string | null
+  equipment?: string | null
+  experience_level?: string | null
+  bodyweight_kg?: number | null
+  primary_goal?: string | null
+  combat_sessions_per_week?: number | null
+  session_minutes?: number | null
+  injury_notes?: string | null
+  is_premium?: boolean | null
+  first_active_at?: string | null
+  stripe_customer_id?: string | null
+  subscription_status?: string | null
+  subscription_period_end?: string | null
+  premium_source?: string | null
+  premium_provider_id?: string | null
+  premium_updated_at?: string | null
+  belt?: string | null
+  stripes?: number | null
+  gym_name?: string | null
+  privacy?: string | null
+  primary_discipline?: string | null
+  xp?: number | null
+  level?: number | null
+  favorite_content_types?: string[] | null
+  heard_from?: string | null
+  biggest_challenges?: string[] | null
+  onboarding_completed?: boolean | null
+  bjj_paywall_completed?: boolean | null
+  bjj_coach_marks_seen?: boolean | null
+  search_tutorial_seen?: boolean | null
 }
 
-interface TrainingProgramData {
-  sessions: Session[]
+type DbUserStats = {
+  user_id: string
+  workout_count?: number | null
+  follower_count?: number | null
+  following_count?: number | null
+  total_saves?: number | null
+  flow_streak?: number | null
+  training_streak?: number | null
 }
 
 export interface AuthenticatedProfileRetryOptions {
@@ -63,18 +74,44 @@ const AUTHENTICATED_PROFILE_TIMEOUT = Symbol('authenticated-profile-timeout')
 const DEFAULT_AUTH_PROFILE_ATTEMPTS = 4
 const DEFAULT_AUTH_PROFILE_ATTEMPT_TIMEOUT_MS = 2500
 const DEFAULT_AUTH_PROFILE_RETRY_DELAY_MS = 250
+const DEFAULT_PENDING_PROFILE_SPORT: SportType = 'bjj'
+const SIGN_IN_PROFILE_RETRY_OPTIONS: AuthenticatedProfileRetryOptions = {
+  attempts: 1,
+  attemptTimeoutMs: 1200,
+  retryDelayMs: 0,
+}
+const AUTH_STATE_PROFILE_RETRY_OPTIONS: AuthenticatedProfileRetryOptions = {
+  attempts: 2,
+  attemptTimeoutMs: 1200,
+  retryDelayMs: 150,
+}
+const OPTIONAL_BJJ_PROFILE_COLUMNS = new Set([
+  'belt',
+  'stripes',
+  'gym_name',
+  'privacy',
+  'primary_discipline',
+  'xp',
+  'level',
+  'favorite_content_types',
+  'heard_from',
+  'biggest_challenges',
+  'onboarding_completed',
+  'bjj_paywall_completed',
+  'bjj_coach_marks_seen',
+  'search_tutorial_seen',
+])
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const withProfileTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | typeof AUTHENTICATED_PROFILE_TIMEOUT> => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
+
   try {
     return await Promise.race([
       promise,
       new Promise<typeof AUTHENTICATED_PROFILE_TIMEOUT>((resolve) => {
-        timeoutId = setTimeout(() => {
-          resolve(AUTHENTICATED_PROFILE_TIMEOUT)
-        }, ms)
+        timeoutId = setTimeout(() => resolve(AUTHENTICATED_PROFILE_TIMEOUT), ms)
       }),
     ])
   } finally {
@@ -84,7 +121,7 @@ const withProfileTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<
 
 export async function resolveAuthenticatedProfileWithRetry(
   loadProfile: () => Promise<UserProfile | null>,
-  options: AuthenticatedProfileRetryOptions = {}
+  options: AuthenticatedProfileRetryOptions = {},
 ): Promise<UserProfile | null> {
   const attempts = Math.max(1, Math.floor(options.attempts ?? DEFAULT_AUTH_PROFILE_ATTEMPTS))
   const attemptTimeoutMs = Math.max(250, Math.floor(options.attemptTimeoutMs ?? DEFAULT_AUTH_PROFILE_ATTEMPT_TIMEOUT_MS))
@@ -97,7 +134,7 @@ export async function resolveAuthenticatedProfileWithRetry(
         return profile
       }
     } catch {
-      // Retry a fresh profile request on the next loop.
+      // Retry on the next loop.
     }
 
     if (attempt < attempts - 1 && retryDelayMs > 0) {
@@ -108,213 +145,648 @@ export async function resolveAuthenticatedProfileWithRetry(
   return null
 }
 
-// ============================================
-// TYPE CONVERTERS
-// ============================================
+const asSportType = (value: unknown): SportType | null => (
+  value === 'wrestling' || value === 'judo' || value === 'bjj' ? value : null
+)
 
-// Convert database profile to UserProfile
-function dbProfileToUserProfile(
-  profile: DbProfile,
-  stats?: DbUserStats | null
-): UserProfile {
+function toStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
+}
+
+function getUserMetadata(user: User): Record<string, unknown> {
+  return (user.user_metadata ?? {}) as Record<string, unknown>
+}
+
+function readStringField(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+
+  return null
+}
+
+function slugifyUsername(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function inferProfileHydrationPending(profile: Pick<UserProfile, 'displayName' | 'username' | 'onboardingCompleted'>): boolean {
+  if (profile.onboardingCompleted) return false
+
+  const displayName = profile.displayName.trim().toLowerCase()
+  const username = profile.username.trim().toLowerCase()
+
+  return (
+    displayName.length === 0
+    || displayName === username
+    || displayName === 'grappler'
+    || username === 'grappler'
+    || username.startsWith('user_')
+  )
+}
+
+function needsProfileCompletionFromAuthUser(user: User): boolean {
+  const metadata = getUserMetadata(user)
+  return !readStringField(metadata, ['display_name', 'full_name', 'name', 'given_name'])
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message
+  }
+  return String(error)
+}
+
+function isMissingSchemaError(error: unknown): boolean {
+  const message = getErrorMessage(error)
+  return /does not exist|Could not find the table|Could not find a relationship|column .* does not exist|Could not find the '.+' column.+schema cache/i.test(message)
+}
+
+function isUsernameConstraintError(error: unknown): boolean {
+  const message = getErrorMessage(error)
+  return /profiles_username_lower_uidx|profiles_username_format_check|duplicate key.*username|username.*violates/i.test(message)
+}
+
+function stripUnsupportedProfileColumns(payload: Record<string, unknown>, error: unknown): Record<string, unknown> | null {
+  const message = getErrorMessage(error)
+  const match = message.match(/Could not find the '([^']+)' column of 'profiles' in the schema cache/i)
+    ?? message.match(/column \"([^\"]+)\" of relation \"profiles\" does not exist/i)
+
+  if (match) {
+    const column = match[1]
+    if (!OPTIONAL_BJJ_PROFILE_COLUMNS.has(column) || !(column in payload)) {
+      return null
+    }
+
+    const nextPayload = { ...payload }
+    delete nextPayload[column]
+    return nextPayload
+  }
+
+  if (!isMissingSchemaError(error)) {
+    return null
+  }
+
+  const nextPayload = { ...payload }
+  let changed = false
+  for (const column of OPTIONAL_BJJ_PROFILE_COLUMNS) {
+    if (column in nextPayload) {
+      delete nextPayload[column]
+      changed = true
+    }
+  }
+
+  return changed ? nextPayload : null
+}
+
+async function updateProfileWithCompatibility(userId: string, payload: Record<string, unknown>): Promise<void> {
+  let candidatePayload = { ...payload }
+
+  for (;;) {
+    const { error } = await db
+      .from('profiles')
+      .update(candidatePayload)
+      .eq('id', userId)
+
+    if (!error) {
+      return
+    }
+
+    const nextPayload = stripUnsupportedProfileColumns(candidatePayload, error)
+    if (!nextPayload) {
+      if (isUsernameConstraintError(error)) {
+        throw new Error('That username is already taken or invalid. Try another.')
+      }
+      throw new Error(error.message)
+    }
+    candidatePayload = nextPayload
+    if (Object.keys(candidatePayload).length === 0) {
+      return
+    }
+  }
+}
+
+function extractBootstrapIdentity(user: User): { usernameBase: string; displayName: string; sport: SportType } {
+  const metadata = getUserMetadata(user)
+  const emailLocalPart = user.email?.split('@')[0]?.trim() || ''
+  const displayName = readStringField(metadata, [
+    'display_name',
+    'full_name',
+    'name',
+    'user_name',
+    'preferred_username',
+    'given_name',
+  ]) ?? (emailLocalPart || `grappler_${user.id.slice(0, 8)}`)
+
+  const usernameBase = slugifyUsername(
+    readStringField(metadata, ['username', 'preferred_username', 'user_name'])
+      ?? emailLocalPart
+      ?? displayName
+      ?? `grappler_${user.id.slice(0, 8)}`,
+  ) || slugifyUsername(`grappler_${user.id.slice(0, 8)}`)
+
   return {
+    usernameBase,
+    displayName,
+    sport: asSportType(metadata.sport) ?? DEFAULT_PENDING_PROFILE_SPORT,
+  }
+}
+
+function buildPendingUserProfile(user: User): UserProfile {
+  const { usernameBase, displayName, sport } = extractBootstrapIdentity(user)
+
+  return {
+    id: user.id,
+    username: usernameBase,
+    displayName,
+    sport,
+    createdAt: user.created_at,
+    workoutCount: 0,
+    followerCount: 0,
+    followingCount: 0,
+    totalSaves: 0,
+    profileHydrationPending: true,
+  }
+}
+
+function profileMatchesRequestedUpdates(profile: UserProfile, updates: Partial<UserProfile>): boolean {
+  if (updates.username !== undefined && profile.username !== updates.username.toLowerCase()) return false
+  if (updates.displayName !== undefined && profile.displayName !== updates.displayName) return false
+  if (updates.avatarUrl !== undefined && profile.avatarUrl !== updates.avatarUrl) return false
+  if (updates.bio !== undefined && profile.bio !== updates.bio) return false
+  if (updates.primaryGoal !== undefined && profile.primaryGoal !== updates.primaryGoal) return false
+  if (updates.belt !== undefined && profile.belt !== updates.belt) return false
+  if (updates.stripes !== undefined && profile.stripes !== updates.stripes) return false
+  if (updates.gymName !== undefined && profile.gymName !== updates.gymName) return false
+  if (updates.privacy !== undefined && profile.privacy !== updates.privacy) return false
+  if (updates.primaryDiscipline !== undefined && profile.primaryDiscipline !== updates.primaryDiscipline) return false
+  if (updates.xp !== undefined && profile.xp !== updates.xp) return false
+  if (updates.level !== undefined && profile.level !== updates.level) return false
+  if (updates.heardFrom !== undefined && profile.heardFrom !== updates.heardFrom) return false
+  if (updates.onboardingCompleted !== undefined && profile.onboardingCompleted !== updates.onboardingCompleted) return false
+  if (updates.paywallCompleted !== undefined && profile.paywallCompleted !== updates.paywallCompleted) return false
+  if (updates.coachMarksSeen !== undefined && profile.coachMarksSeen !== updates.coachMarksSeen) return false
+  if (updates.searchTutorialSeen !== undefined && profile.searchTutorialSeen !== updates.searchTutorialSeen) return false
+  if (updates.experienceLevel !== undefined && profile.experienceLevel !== updates.experienceLevel) return false
+  if (updates.favoriteContentTypes !== undefined) {
+    const left = JSON.stringify(profile.favoriteContentTypes ?? [])
+    const right = JSON.stringify(updates.favoriteContentTypes ?? [])
+    if (left !== right) return false
+  }
+  if (updates.biggestChallenges !== undefined) {
+    const left = JSON.stringify(profile.biggestChallenges ?? [])
+    const right = JSON.stringify(updates.biggestChallenges ?? [])
+    if (left !== right) return false
+  }
+  return true
+}
+
+async function getStoredSessionUser(): Promise<User | null> {
+  try {
+    const sessionResult = await withProfileTimeout<Awaited<ReturnType<typeof db.auth.getSession>>>(
+      db.auth.getSession(),
+      1800,
+    )
+
+    if (sessionResult !== AUTHENTICATED_PROFILE_TIMEOUT) {
+      const { data: { session }, error } = sessionResult
+      if (error) throw error
+      return session?.user ?? null
+    }
+  } catch (error) {
+    captureException('supabase-session-user', error, {
+      step: 'auth.getSession',
+    }, 'warning')
+  }
+
+  const fallbackSession = await getStoredSupabaseSession()
+  return fallbackSession?.user ?? null
+}
+
+async function openOAuthUrl(url: string): Promise<void> {
+  if (typeof window === 'undefined') return
+
+  const { Capacitor } = await import('@capacitor/core')
+  if (Capacitor.isNativePlatform()) {
+    // Use system browser on iOS so custom-scheme returns can open the app reliably.
+    if (Capacitor.getPlatform() === 'ios') {
+      window.location.assign(url)
+      return
+    }
+
+    // Use Safari view for OAuth. Redirects must be http(s) (e.g. live reload callback page),
+    // since Safari view will show "address is invalid" for custom schemes.
+    const { Browser } = await import('@capacitor/browser')
+    await Browser.open({ url })
+    return
+  }
+
+  window.location.assign(url)
+}
+
+function getGoogleWebClientId(): string {
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim()
+  if (!clientId) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID. Add the Google Web Client ID to enable native Google sign-in.'
+    )
+  }
+  return clientId
+}
+
+async function signInWithNativeGoogle(): Promise<void> {
+  const { GoogleSignIn } = await import('@capawesome/capacitor-google-sign-in')
+
+  await GoogleSignIn.initialize({
+    // Capawesome iOS uses Info.plist GIDClientID as iOS client ID and this field as server/web client ID.
+    // Supabase validates Google ID token audience against configured Google provider client IDs.
+    clientId: getGoogleWebClientId(),
+  })
+
+  const result = await GoogleSignIn.signIn()
+  if (!result.idToken) {
+    throw new Error('Google sign-in did not return an ID token')
+  }
+
+  const { error } = await db.auth.signInWithIdToken({
+    provider: 'google',
+    token: result.idToken,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
+function toHttpAuthCallbackUrl(baseUrl: string | undefined): string | null {
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
+    return null
+  }
+
+  return `${baseUrl.replace(/\/$/, '')}/auth/callback`
+}
+
+async function getOAuthRedirectUrl(): Promise<string> {
+  const { Capacitor } = await import('@capacitor/core')
+
+  if (Capacitor.isNativePlatform()) {
+    const liveReloadRedirect = toHttpAuthCallbackUrl(process.env.CAPACITOR_LIVE_RELOAD_URL)
+    if (liveReloadRedirect) return liveReloadRedirect
+
+    const appUrlRedirect = toHttpAuthCallbackUrl(process.env.NEXT_PUBLIC_APP_URL)
+    if (appUrlRedirect) return appUrlRedirect
+
+    if (typeof window !== 'undefined') {
+      const originRedirect = toHttpAuthCallbackUrl(window.location.origin)
+      if (originRedirect) return originRedirect
+    }
+
+    throw new Error(
+      'Missing native OAuth callback URL. Set CAPACITOR_LIVE_RELOAD_URL or NEXT_PUBLIC_APP_URL to an http(s) origin so OAuth can return via /auth/callback.'
+    )
+  }
+
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+
+  return ''
+}
+
+async function getAuthRedirectUrl(): Promise<string> {
+  const { Capacitor } = await import('@capacitor/core')
+  if (Capacitor.isNativePlatform()) {
+    // Prefer an http(s) callback when available (live reload), because Safari view can't navigate
+    // to custom schemes without showing "address is invalid".
+    const liveReloadRedirect = toHttpAuthCallbackUrl(process.env.CAPACITOR_LIVE_RELOAD_URL)
+    if (liveReloadRedirect) return liveReloadRedirect
+
+    const appUrlRedirect = toHttpAuthCallbackUrl(process.env.NEXT_PUBLIC_APP_URL)
+    if (appUrlRedirect) return appUrlRedirect
+
+    if (typeof window !== 'undefined') {
+      const originRedirect = toHttpAuthCallbackUrl(window.location.origin)
+      if (originRedirect) return originRedirect
+    }
+    return 'dagestanidiscipline://auth/callback'
+  }
+
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+
+  return ''
+}
+
+function getSupabaseAuthCallbackUrl(): string | null {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) return null
+  try {
+    const origin = new URL(supabaseUrl).origin
+    return `${origin}/auth/v1/callback`
+  } catch {
+    return null
+  }
+}
+
+function formatOAuthErrorMessage(params: {
+  provider: 'google'
+  redirectTo: string
+  supabaseCallbackUrl: string | null
+  rawMessage: string
+}): string {
+  const { provider, redirectTo, supabaseCallbackUrl, rawMessage } = params
+  const message = rawMessage || 'OAuth sign in failed'
+
+  const isSupabaseRedirectNotAllowed =
+    /redirect url not allowed|disallowed redirect|not in the list of allowed redirect urls/i.test(message)
+
+  const isProviderRedirectMismatch =
+    /redirect_uri_mismatch|redirect uri mismatch|invalid redirect/i.test(message)
+
+  if (isSupabaseRedirectNotAllowed) {
+    return [
+      message,
+      '',
+      `Fix: add this to Supabase Auth → URL Configuration → Additional Redirect URLs:`,
+      `- ${redirectTo}`,
+    ].join('\n')
+  }
+
+  if (isProviderRedirectMismatch) {
+    const callbackLine = supabaseCallbackUrl ? `- ${supabaseCallbackUrl}` : '- (could not derive Supabase callback URL)'
+    return [
+      message,
+      '',
+      `Fix: ensure ${provider} provider allows Supabase callback URL:`,
+      callbackLine,
+      '',
+      `Also ensure Supabase allows the app redirect:`,
+      `- ${redirectTo}`,
+    ].join('\n')
+  }
+
+  return message
+}
+
+function dbProfileToUserProfile(profile: DbProfile, stats?: DbUserStats | null): UserProfile {
+  const nextProfile: UserProfile = {
     id: profile.id,
     username: profile.username,
     displayName: profile.display_name,
     avatarUrl: profile.avatar_url ?? undefined,
     bio: profile.bio ?? undefined,
-    sport: profile.sport as SportType,
+    sport: asSportType(profile.sport) ?? DEFAULT_PENDING_PROFILE_SPORT,
     createdAt: profile.created_at ?? new Date().toISOString(),
     trainingDays: profile.training_days ?? undefined,
-    weightUnit: (profile.weight_unit as WeightUnit) ?? undefined,
+    weightUnit: (profile.weight_unit as WeightUnit | null) ?? undefined,
     equipment: (profile.equipment as Equipment | null) ?? null,
-    onboardingCompleted: profile.onboarding_completed ?? null,
-    experienceLevel: (profile.experience_level as ExperienceLevel) ?? undefined,
+    experienceLevel: (profile.experience_level as ExperienceLevel | null) ?? undefined,
     bodyweightKg: profile.bodyweight_kg ?? null,
-    primaryGoal: (profile.primary_goal as PrimaryGoal) ?? undefined,
+    primaryGoal: (profile.primary_goal as PrimaryGoal | null) ?? undefined,
     combatSessionsPerWeek: profile.combat_sessions_per_week ?? 0,
     sessionMinutes: profile.session_minutes ?? 45,
     injuryNotes: profile.injury_notes ?? null,
-    // Subscription (Stripe)
-    isPremium: (profile as any).is_premium ?? false,
-    firstActiveAt: (profile as any).first_active_at ?? null,
-    stripeCustomerId: (profile as any).stripe_customer_id ?? null,
-    subscriptionStatus: (profile as any).subscription_status ?? null,
-    subscriptionPeriodEnd: (profile as any).subscription_period_end ?? null,
-    // Stats
+    isPremium: profile.is_premium ?? false,
+    firstActiveAt: profile.first_active_at ?? null,
+    stripeCustomerId: profile.stripe_customer_id ?? null,
+    subscriptionStatus: profile.subscription_status ?? null,
+    subscriptionPeriodEnd: profile.subscription_period_end ?? null,
+    premiumSource: profile.premium_source ?? undefined,
+    premiumProviderId: profile.premium_provider_id ?? undefined,
+    premiumUpdatedAt: profile.premium_updated_at ?? undefined,
+    belt: (profile.belt as UserProfile['belt'] | null) ?? undefined,
+    stripes: profile.stripes ?? undefined,
+    gymName: profile.gym_name ?? undefined,
+    privacy: (profile.privacy as UserProfile['privacy'] | null) ?? undefined,
+    primaryDiscipline: profile.primary_discipline ?? undefined,
+    xp: profile.xp ?? undefined,
+    level: profile.level ?? undefined,
+    flowStreak: stats?.flow_streak ?? undefined,
+    trainingStreak: stats?.training_streak ?? undefined,
+    favoriteContentTypes: toStringArray(profile.favorite_content_types),
+    heardFrom: profile.heard_from ?? undefined,
+    biggestChallenges: toStringArray(profile.biggest_challenges),
+    onboardingCompleted: profile.onboarding_completed ?? undefined,
+    paywallCompleted: profile.bjj_paywall_completed ?? undefined,
+    coachMarksSeen: Boolean(profile.bjj_coach_marks_seen),
+    searchTutorialSeen: Boolean(profile.search_tutorial_seen),
     workoutCount: stats?.workout_count ?? 0,
     followerCount: stats?.follower_count ?? 0,
     followingCount: stats?.following_count ?? 0,
     totalSaves: stats?.total_saves ?? 0,
   }
-}
 
-// Convert database workout to CustomWorkout
-function dbWorkoutToCustomWorkout(
-  workout: DbCustomWorkout,
-  exercises: DbCustomWorkoutExercise[],
-  creator?: UserProfile
-): CustomWorkout {
   return {
-    id: workout.id,
-    creatorId: workout.creator_id,
-    creator,
-    name: workout.name,
-    description: workout.description ?? '',
-    focus: workout.focus as WorkoutFocus,
-    difficulty: workout.difficulty as DrillDifficulty,
-    estimatedDuration: workout.estimated_duration ?? 30,
-    sportRelevance: (workout.sport_relevance ?? []) as SportType[],
-    exercises: exercises
-      .sort((a, b) => a.order_index - b.order_index)
-      .map((e) => ({
-        id: e.id,
-        name: e.name,
-        sets: e.sets,
-        reps: e.reps ?? undefined,
-        duration: e.duration ?? undefined,
-        restTime: e.rest_time,
-        notes: e.notes ?? undefined,
-        videoUrl: e.video_url ?? undefined,
-        order: e.order_index,
-      })),
-    visibility: workout.visibility as 'private' | 'public',
-    saveCount: workout.save_count ?? 0,
-    createdAt: workout.created_at ?? new Date().toISOString(),
-    updatedAt: workout.updated_at ?? new Date().toISOString(),
-    originalWorkoutId: workout.original_workout_id ?? undefined,
+    ...nextProfile,
+    profileHydrationPending: inferProfileHydrationPending(nextProfile),
   }
 }
 
-// Convert database drill to Drill type
-function dbDrillToDrill(drill: DbDrill): Drill {
-  return {
-    id: drill.id,
-    name: drill.name,
-    category: drill.category as Drill['category'],
-    subcategory: (drill.subcategory ?? 'general') as Drill['subcategory'],
-    videoUrl: drill.video_url ?? '',
-    duration: drill.duration ?? 60,
-    difficulty: (drill.difficulty ?? 'beginner') as DrillDifficulty,
-    sportRelevance: (drill.sport_relevance ?? []) as SportType[],
-    equipment: drill.equipment ?? undefined,
-    description: drill.description ?? '',
-    benefits: drill.benefits ?? [],
-    musclesWorked: drill.muscles_worked ?? undefined,
-    injuryPrevention: drill.injury_prevention ?? undefined,
-    instructions: drill.instructions ?? [],
-    commonMistakes: drill.common_mistakes ?? undefined,
-    coachingCues: drill.coaching_cues ?? undefined,
-    relatedDrills: drill.related_drills ?? undefined,
+async function ensureUserStatsRow(userId: string): Promise<void> {
+  const { error } = await db
+    .from('user_stats')
+    .upsert({ user_id: userId }, { onConflict: 'user_id' })
+
+  if (error) {
+    throw new Error(error.message)
   }
 }
 
-// ============================================
-// SUPABASE SERVICE
-// ============================================
+async function bootstrapProfileForUser(user: User): Promise<UserProfile> {
+  const existingProfile = await supabaseService.getProfile(user.id)
+  if (existingProfile) {
+    await ensureUserStatsRow(user.id)
+    return {
+      ...existingProfile,
+      profileHydrationPending: needsProfileCompletionFromAuthUser(user) || inferProfileHydrationPending(existingProfile),
+    }
+  }
+
+  const { error: ensureError } = await db.rpc('ensure_profile_from_auth')
+  if (ensureError && !isMissingSchemaError(ensureError)) {
+    captureException('supabase-ensure-profile', ensureError, { step: 'ensure_profile_from_auth' }, 'warning')
+  }
+
+  await ensureUserStatsRow(user.id)
+
+  const profile = await supabaseService.getProfile(user.id)
+  if (!profile) {
+    throw new Error('Profile bootstrap failed')
+  }
+
+  return {
+    ...profile,
+    profileHydrationPending: needsProfileCompletionFromAuthUser(user) || inferProfileHydrationPending(profile),
+  }
+}
 
 export const supabaseService = {
-  // ============================================
-  // AUTHENTICATION
-  // ============================================
-
   async signUp(
     email: string,
     password: string,
     username: string,
     displayName: string,
-    sport: SportType
+    sport: SportType,
   ): Promise<UserProfile> {
-    // Sign up with Supabase Auth
-    // Pass user metadata - the database trigger will create the profile automatically
-    const { data: authData, error: authError } = await db.auth.signUp({
+    const normalizedUsername = username.toLowerCase().trim()
+    if (!normalizedUsername) {
+      throw new Error('Choose a username.')
+    }
+
+    const usernameFree = await supabaseService.checkUsernameAvailable(normalizedUsername)
+    if (!usernameFree) {
+      throw new Error('That username is already taken. Try another.')
+    }
+
+    const { data, error } = await db.auth.signUp({
       email,
       password,
       options: {
         data: {
-          username: username.toLowerCase(),
+          username: normalizedUsername,
           display_name: displayName,
-          sport: sport,
+          sport,
         },
       },
     })
 
-    if (authError) {
-      captureException('supabase-sign-up', authError, {
-        step: 'auth.signUp',
-      })
-      throw new Error(authError.message)
+    if (error) {
+      captureException('supabase-sign-up', error, { step: 'auth.signUp' })
+      throw new Error(error.message)
     }
-    if (!authData.user) throw new Error('Failed to create user')
 
-    // Profile is created automatically by database trigger (handle_new_user)
-    // The trigger reads username, display_name, sport from raw_user_meta_data
+    if (!data.user) {
+      throw new Error('Failed to create user')
+    }
 
-    // Create initial user stats (this may fail due to RLS, but that's okay -
-    // we can create stats on first use if needed)
     try {
-      const { error: statsError } = await db.from('user_stats').insert({
-        user_id: authData.user.id,
-      })
-      if (statsError) {
-        captureException('supabase-sign-up', statsError, {
-          step: 'user_stats.insert',
-        }, 'warning')
-      }
-    } catch (e) {
-      captureException('supabase-sign-up', e, {
-        step: 'user_stats.insert.exception',
+      await ensureUserStatsRow(data.user.id)
+    } catch (error) {
+      captureException('supabase-sign-up', error, {
+        step: 'user_stats.ensure',
       }, 'warning')
     }
 
+    if (data.session) {
+      try {
+        return await bootstrapProfileForUser(data.user)
+      } catch (error) {
+        captureException('supabase-sign-up', error, {
+          step: 'profile.bootstrap',
+          userId: data.user.id,
+        }, 'warning')
+      }
+    }
+
     return {
-      id: authData.user.id,
-      username: username.toLowerCase(),
+      ...buildPendingUserProfile(data.user),
+      username: normalizedUsername,
       displayName,
       sport,
-      createdAt: new Date().toISOString(),
-      workoutCount: 0,
-      followerCount: 0,
-      followingCount: 0,
-      totalSaves: 0,
     }
   },
 
   async signIn(email: string, password: string): Promise<UserProfile> {
-    const { data, error } = await db.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { data, error } = await db.auth.signInWithPassword({ email, password })
 
     if (error) {
-      captureException('supabase-sign-in', error, {
-        step: 'auth.signInWithPassword',
-      }, 'warning')
+      captureException('supabase-sign-in', error, { step: 'auth.signInWithPassword' }, 'warning')
       throw new Error(error.message)
     }
-    if (!data.user) throw new Error('Failed to sign in')
 
-    const profile = await resolveAuthenticatedProfileWithRetry(() => this.getProfile(data.user.id))
+    if (!data.user) {
+      throw new Error('Failed to sign in')
+    }
+
+    const profile = await resolveAuthenticatedProfileWithRetry(
+      () => bootstrapProfileForUser(data.user),
+      SIGN_IN_PROFILE_RETRY_OPTIONS,
+    )
+
     if (!profile) {
       captureException('supabase-sign-in', new Error('Profile did not load after successful sign-in'), {
         step: 'profile.load',
         userId: data.user.id,
       }, 'warning')
-      throw new Error('We signed you in, but loading your profile took too long. Please wait a moment and try again.')
+      return buildPendingUserProfile(data.user)
     }
 
     return profile
   },
 
+  async signInWithOAuth(provider: 'google'): Promise<void> {
+    const { Capacitor } = await import('@capacitor/core')
+
+    if (provider === 'google' && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+      try {
+        await signInWithNativeGoogle()
+        return
+      } catch (error) {
+        captureException('supabase-native-google-sign-in', error, {
+          step: 'auth.signInWithIdToken',
+        }, 'warning')
+        throw error
+      }
+    }
+
+    const redirectTo = await getOAuthRedirectUrl()
+    const supabaseCallbackUrl = getSupabaseAuthCallbackUrl()
+    const { data, error } = await db.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+        queryParams: {
+          response_type: 'code',
+        },
+      },
+    })
+
+    if (error) {
+      captureException('supabase-oauth-sign-in', error, {
+        step: 'auth.signInWithOAuth',
+        provider,
+        redirectTo,
+        supabaseCallbackUrl,
+      }, 'warning')
+      throw new Error(
+        formatOAuthErrorMessage({
+          provider,
+          redirectTo,
+          supabaseCallbackUrl,
+          rawMessage: error.message,
+        }),
+      )
+    }
+
+    if (data?.url) {
+      await openOAuthUrl(data.url)
+    }
+  },
+
   async signOut(): Promise<void> {
     const { error } = await db.auth.signOut()
-    if (error) throw new Error(error.message)
+    if (error) {
+      throw new Error(error.message)
+    }
   },
 
   async resetPassword(email: string): Promise<void> {
+    const redirectTo = await getAuthRedirectUrl()
     const { error } = await db.auth.resetPasswordForEmail(email, {
-      redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`,
+      redirectTo: redirectTo.startsWith('dagestanidiscipline://')
+        ? redirectTo
+        : `${redirectTo}/reset-password`,
     })
+
     if (error) {
       captureException('supabase-reset-password', error, {
         step: 'auth.resetPasswordForEmail',
@@ -328,6 +800,7 @@ export const supabaseService = {
       type: 'signup',
       email,
     })
+
     if (error) {
       captureException('supabase-resend-verification', error, {
         step: 'auth.resend',
@@ -336,42 +809,64 @@ export const supabaseService = {
     }
   },
 
-  async checkUsernameAvailable(username: string): Promise<boolean> {
-    const { data, error } = await db
-      .from('profiles')
-      .select('id')
-      .eq('username', username.toLowerCase())
-      .maybeSingle()
+  async checkUsernameAvailable(username: string, excludeUserId?: string): Promise<boolean> {
+    const normalized = username.toLowerCase().trim()
+    if (!normalized) {
+      return false
+    }
+
+    const { data, error } = await db.rpc('username_is_available', {
+      p_username: normalized,
+      p_exclude_user_id: excludeUserId ?? null,
+    })
 
     if (error) {
       captureException('supabase-username-check', error, {
-        step: 'profiles.select',
+        step: 'username_is_available',
       }, 'warning')
       return false
     }
-    return data === null
+
+    return Boolean(data)
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const { data: { user } } = await db.auth.getUser()
-    return user
+    try {
+      return await getStoredSessionUser()
+    } catch (error) {
+      captureException('supabase-current-user', error, {
+        step: 'auth.getSession',
+      }, 'warning')
+      return null
+    }
   },
 
   async getAuthState(): Promise<AuthState> {
     try {
-      const { data: { user } } = await db.auth.getUser()
+      const user = await getStoredSessionUser()
       if (!user) {
         return { isAuthenticated: false, user: null, isLoading: false, error: null, emailVerified: false }
       }
 
-      const profile = await resolveAuthenticatedProfileWithRetry(() => this.getProfile(user.id))
-      const emailVerified = !!user.email_confirmed_at
+      let profile: UserProfile | null = null
+      try {
+        profile = await resolveAuthenticatedProfileWithRetry(
+          () => bootstrapProfileForUser(user),
+          AUTH_STATE_PROFILE_RETRY_OPTIONS,
+        )
+      } catch (error) {
+        captureException('supabase-auth-state', error, {
+          step: 'profile.resolve',
+          userId: user.id,
+        }, 'warning')
+      }
+
       return {
         isAuthenticated: true,
-        user: profile,
+        user: profile ?? buildPendingUserProfile(user),
         isLoading: false,
         error: null,
-        emailVerified,
+        emailVerified: Boolean(user.email_confirmed_at),
       }
     } catch (error) {
       return {
@@ -388,1304 +883,148 @@ export const supabaseService = {
     return db.auth.onAuthStateChange(callback)
   },
 
-  // ============================================
-  // PROFILES
-  // ============================================
+  async getOrBootstrapProfile(user: User): Promise<UserProfile> {
+    return bootstrapProfileForUser(user)
+  },
 
   async getProfile(userId: string): Promise<UserProfile | null> {
-    const { data: profile, error } = await db
+    let { data: profile, error } = await db
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
-
-    if (error || !profile) return null
-
-    const { data: stats } = await db
-      .from('user_stats')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
-
-    return dbProfileToUserProfile(profile, stats)
-  },
-
-  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    const dbUpdates: Record<string, unknown> = {}
-
-    if (updates.username) dbUpdates.username = updates.username.toLowerCase()
-    if (updates.displayName) dbUpdates.display_name = updates.displayName
-    if (updates.avatarUrl !== undefined) dbUpdates.avatar_url = updates.avatarUrl
-    if (updates.bio !== undefined) dbUpdates.bio = updates.bio
-    if (updates.sport) dbUpdates.sport = updates.sport
-    if (updates.trainingDays !== undefined) dbUpdates.training_days = updates.trainingDays
-    if (updates.weightUnit) dbUpdates.weight_unit = updates.weightUnit
-    if (updates.equipment !== undefined) dbUpdates.equipment = updates.equipment
-    if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted
-    if (updates.experienceLevel) dbUpdates.experience_level = updates.experienceLevel
-    if (updates.bodyweightKg !== undefined) dbUpdates.bodyweight_kg = updates.bodyweightKg
-    if (updates.primaryGoal) dbUpdates.primary_goal = updates.primaryGoal
-    if (updates.combatSessionsPerWeek !== undefined) dbUpdates.combat_sessions_per_week = updates.combatSessionsPerWeek
-    if (updates.sessionMinutes !== undefined) dbUpdates.session_minutes = updates.sessionMinutes
-    if (updates.injuryNotes !== undefined) dbUpdates.injury_notes = updates.injuryNotes
-
-    const { error } = await db
-      .from('profiles')
-      .update(dbUpdates)
-      .eq('id', userId)
-
-    if (error) throw new Error(error.message)
-
-    const profile = await this.getProfile(userId)
-    if (!profile) throw new Error('Profile not found after update')
-
-    return profile
-  },
-
-  async setFirstActiveIfMissing(): Promise<string | null> {
-    const { data, error } = await db.rpc('set_first_active_if_missing')
-    if (error) throw new Error(error.message)
-    return typeof data === 'string' ? data : null
-  },
-
-  async getFeatureUsage(feature: string): Promise<number> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return 0
-
-    const { data, error } = await db.rpc('get_feature_usage', { p_feature: feature })
-    if (error) throw new Error(error.message)
-
-    if (typeof data === 'number') return data
-    if (typeof data === 'string') {
-      const parsed = parseInt(data, 10)
-      return Number.isFinite(parsed) ? parsed : 0
-    }
-
-    return 0
-  },
-
-  async getLearningPathUsage(): Promise<number> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return 0
-
-    const { count, error } = await db
-      .from('user_learning_progress')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', currentUser.id)
-
-    if (error) throw new Error(error.message)
-    return count ?? 0
-  },
-
-  async getLearningPathProgress(): Promise<Record<string, number>> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return {}
-
-    const { data, error } = await db
-      .from('user_learning_progress')
-      .select('learning_path_id, current_drill_index')
-      .eq('user_id', currentUser.id)
-
-    if (error) throw new Error(error.message)
-
-    const progress: Record<string, number> = {}
-    ;((data ?? []) as Array<Pick<DbUserLearningProgress, 'learning_path_id' | 'current_drill_index'>>).forEach((row) => {
-      const pathId = row.learning_path_id
-      if (!pathId) return
-      const index = Number.isFinite(row.current_drill_index)
-        ? Math.max(0, Math.floor(row.current_drill_index ?? 0))
-        : 0
-      progress[pathId] = index
-    })
-
-    return progress
-  },
-
-  async upsertLearningPathProgress(
-    learningPathId: string,
-    currentDrillIndex: number,
-    completed = false
-  ): Promise<number> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const safeIndex = Number.isFinite(currentDrillIndex)
-      ? Math.max(0, Math.floor(currentDrillIndex))
-      : 0
-    const completedAt = completed ? new Date().toISOString() : null
-
-    const { data, error } = await db
-      .from('user_learning_progress')
-      .upsert(
-        {
-          user_id: currentUser.id,
-          learning_path_id: learningPathId,
-          current_drill_index: safeIndex,
-          completed,
-          completed_at: completedAt,
-        },
-        { onConflict: 'user_id,learning_path_id' }
-      )
-      .select('current_drill_index')
-      .single()
-
-    if (error) throw new Error(error.message)
-
-    if (Number.isFinite(data?.current_drill_index)) {
-      return Math.max(0, Math.floor(data.current_drill_index))
-    }
-    return safeIndex
-  },
-
-  // ============================================
-  // WORKOUTS
-  // ============================================
-
-  calculateDuration(exercises: CustomWorkoutExercise[]): number {
-    let totalSeconds = 0
-    for (const ex of exercises) {
-      const exerciseTime = ex.duration || (ex.reps || 10) * 3
-      totalSeconds += (exerciseTime * ex.sets) + (ex.restTime * (ex.sets - 1))
-    }
-    return Math.ceil(totalSeconds / 60)
-  },
-
-  async createWorkout(state: WorkoutBuilderState): Promise<CustomWorkout> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const estimatedDuration = this.calculateDuration(state.exercises)
-
-    // Create the workout
-    const { data: workout, error: workoutError } = await db
-      .from('custom_workouts')
-      .insert({
-        creator_id: currentUser.id,
-        name: state.name,
-        description: state.description,
-        focus: state.focus,
-        difficulty: state.difficulty,
-        estimated_duration: estimatedDuration,
-        sport_relevance: state.sportRelevance,
-        visibility: 'private',
-        save_count: 0,
-      })
-      .select()
-      .single()
-
-    if (workoutError || !workout) throw new Error(workoutError?.message ?? 'Failed to create workout')
-
-    // Replace exercises atomically in the database (delete + insert in one transaction).
-    const { error: replaceExercisesError } = await db.rpc('replace_custom_workout_exercises', {
-      p_workout_id: workout.id,
-      p_exercises: state.exercises,
-    })
-
-    if (replaceExercisesError) {
-      // Best-effort cleanup: remove the parent workout if exercise replacement fails.
-      await db
-        .from('custom_workouts')
-        .delete()
-        .eq('id', workout.id)
-        .eq('creator_id', currentUser.id)
-      throw new Error(`Failed to save workout exercises: ${replaceExercisesError.message}`)
-    }
-
-    const { data: exercises, error: exercisesLoadError } = await db
-      .from('custom_workout_exercises')
-      .select('*')
-      .eq('workout_id', workout.id)
-      .order('order_index')
-
-    if (exercisesLoadError) throw new Error(exercisesLoadError.message)
-
-    // Update user workout count
-    const { data: currentStats } = await db
-      .from('user_stats')
-      .select('workout_count')
-      .eq('user_id', currentUser.id)
-      .single()
-
-    await db
-      .from('user_stats')
-      .upsert({
-        user_id: currentUser.id,
-        workout_count: (currentStats?.workout_count ?? 0) + 1,
-      })
-
-    const profile = await this.getProfile(currentUser.id)
-
-    return dbWorkoutToCustomWorkout(workout, exercises ?? [], profile ?? undefined)
-  },
-
-  async updateWorkout(
-    workoutId: string,
-    updates: Partial<WorkoutBuilderState>
-  ): Promise<CustomWorkout> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-
-    if (updates.name) dbUpdates.name = updates.name
-    if (updates.description !== undefined) dbUpdates.description = updates.description
-    if (updates.focus) dbUpdates.focus = updates.focus
-    if (updates.difficulty) dbUpdates.difficulty = updates.difficulty
-    if (updates.sportRelevance) dbUpdates.sport_relevance = updates.sportRelevance
-    dbUpdates.visibility = 'private'
-    if (updates.exercises) {
-      dbUpdates.estimated_duration = this.calculateDuration(updates.exercises)
-    }
-
-    const { error } = await db
-      .from('custom_workouts')
-      .update(dbUpdates)
-      .eq('id', workoutId)
-      .eq('creator_id', currentUser.id)
-
-    if (error) throw new Error(error.message)
-
-    // Update exercises atomically if provided
-    if (updates.exercises) {
-      const { error: replaceExercisesError } = await db.rpc('replace_custom_workout_exercises', {
-        p_workout_id: workoutId,
-        p_exercises: updates.exercises,
-      })
-
-      if (replaceExercisesError) throw new Error(`Failed to update workout exercises: ${replaceExercisesError.message}`)
-    }
-
-    const workout = await this.getWorkout(workoutId)
-    if (!workout) throw new Error('Workout not found after update')
-
-    return workout
-  },
-
-  async deleteWorkout(workoutId: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    // Delete exercises first (cascade should handle this, but being explicit)
-    await db
-      .from('custom_workout_exercises')
-      .delete()
-      .eq('workout_id', workoutId)
-
-    // Delete the workout
-    const { error } = await db
-      .from('custom_workouts')
-      .delete()
-      .eq('id', workoutId)
-      .eq('creator_id', currentUser.id)
-
-    if (error) throw new Error(error.message)
-  },
-
-  async getWorkout(workoutId: string): Promise<CustomWorkout | null> {
-    const { data: workout, error } = await db
-      .from('custom_workouts')
-      .select('*')
-      .eq('id', workoutId)
-      .single()
-
-    if (error || !workout) return null
-
-    const { data: exercises } = await db
-      .from('custom_workout_exercises')
-      .select('*')
-      .eq('workout_id', workoutId)
-      .order('order_index')
-
-    const creator = await this.getProfile(workout.creator_id)
-
-    return dbWorkoutToCustomWorkout(workout, exercises ?? [], creator ?? undefined)
-  },
-
-  async getUserWorkouts(userId: string): Promise<CustomWorkout[]> {
-    const { data: workouts, error } = await db
-      .from('custom_workouts')
-      .select('*')
-      .eq('creator_id', userId)
-      .order('created_at', { ascending: false })
-
-    if (error || !workouts) return []
-
-    const workoutIds = (workouts as DbCustomWorkout[]).map((w: DbCustomWorkout) => w.id)
-    const { data: allExercises } = await db
-      .from('custom_workout_exercises')
-      .select('*')
-      .in('workout_id', workoutIds)
-
-    const exercisesMap = new Map<string, DbCustomWorkoutExercise[]>()
-    ;(allExercises as DbCustomWorkoutExercise[] | null)?.forEach((e: DbCustomWorkoutExercise) => {
-      const list = exercisesMap.get(e.workout_id) ?? []
-      list.push(e)
-      exercisesMap.set(e.workout_id, list)
-    })
-
-    const creator = await this.getProfile(userId)
-
-    return (workouts as DbCustomWorkout[]).map((w: DbCustomWorkout) => dbWorkoutToCustomWorkout(w, exercisesMap.get(w.id) ?? [], creator ?? undefined))
-  },
-
-  // ============================================
-  // TRAINING PROGRAMS
-  // ============================================
-
-  async getActiveProgram(): Promise<TrainingProgramSnapshot | null> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return null
-
-    const { data: program, error } = await db
-      .from('training_programs')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .eq('status', 'active')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (error || !program) return null
-
-    let version: DbTrainingProgramVersion | null = null
-    if (program.current_version_id) {
-      const { data: currentVersion } = await db
-        .from('training_program_versions')
-        .select('*')
-        .eq('id', program.current_version_id)
-        .single()
-      version = currentVersion ?? null
-    }
-
-    const data = (version?.data as TrainingProgramData | null) ?? null
-    const sessions = Array.isArray(data?.sessions) ? (data?.sessions as Session[]) : []
-
-    return {
-      programId: program.id,
-      sport: program.sport as SportType,
-      trainingDays: program.training_days,
-      currentVersionId: program.current_version_id ?? null,
-      originalVersionId: program.original_version_id ?? null,
-      sessions,
-    }
-  },
-
-  async createProgram(params: {
-    sport: SportType
-    trainingDays: number
-    sessions: Session[]
-    label?: string
-  }): Promise<TrainingProgramSnapshot> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data: program, error: programError } = await db
-      .from('training_programs')
-      .insert({
-        user_id: currentUser.id,
-        sport: params.sport,
-        training_days: params.trainingDays,
-        status: 'inactive',
-      })
-      .select()
-      .single()
-
-    if (programError || !program) throw new Error(programError?.message ?? 'Failed to create program')
-
-    const { data: version, error: versionError } = await db
-      .from('training_program_versions')
-      .insert({
-        program_id: program.id,
-        version_number: 1,
-        is_original: true,
-        label: params.label ?? 'Original',
-        data: { sessions: params.sessions },
-        created_by: currentUser.id,
-      })
-      .select()
-      .single()
-
-    if (versionError || !version) throw new Error(versionError?.message ?? 'Failed to create program version')
-
-    const { error: pointersError } = await db
-      .from('training_programs')
-      .update({
-        current_version_id: version.id,
-        original_version_id: version.id,
-      })
-      .eq('id', program.id)
-
-    if (pointersError) throw new Error(`Failed to link program versions: ${pointersError.message}`)
-
-    const { error: activateError } = await db.rpc('activate_training_program_for_user', {
-      p_program_id: program.id,
-    })
-
-    if (activateError) {
-      // Best-effort cleanup if activation fails after creating a program/version pair.
-      await db
-        .from('training_programs')
-        .delete()
-        .eq('id', program.id)
-        .eq('user_id', currentUser.id)
-      throw new Error(`Failed to activate program: ${activateError.message}`)
-    }
-
-    return {
-      programId: program.id,
-      sport: program.sport as SportType,
-      trainingDays: program.training_days,
-      currentVersionId: version.id,
-      originalVersionId: version.id,
-      sessions: params.sessions,
-    }
-  },
-
-  /**
-   * Best-effort resolver: takes blueprint sessions (exercise names + placeholder ids)
-   * and replaces exercises with real `exercises.id` UUIDs from Supabase when possible.
-   *
-   * This is important because exercise completion logging has an FK to `exercises(id)`.
-   */
-  async resolveProgramSessionsToLibraryExercises(params: {
-    sport: SportType
-    sessions: Session[]
-    equipment?: Equipment | null
-  }): Promise<Session[]> {
-    const sport = params.sport
-    const equipment = params.equipment ?? null
-
-    // Fetch a pool of exercises for this sport + general exercises.
-    const { data, error } = await db
-      .from('exercises')
-      .select('id, name, sport, category, equipment, is_weighted, video_url')
-      .or(`sport.eq.${sport},sport.is.null`)
-      .limit(2000)
-
-    if (error || !Array.isArray(data) || data.length === 0) {
-      return params.sessions
-    }
-
-    type DbExerciseRow = {
-      id: string
-      name: string
-      sport: string | null
-      category: string
-      equipment: string[] | null
-      is_weighted: boolean | null
-      video_url: string | null
-    }
-
-    const normalize = (value: string) =>
-      value
-        .toLowerCase()
-        .replace(/\([^)]*\)/g, ' ')
-        .replace(/[^a-z0-9]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-    const tokenSet = (value: string) => new Set(normalize(value).split(' ').filter(Boolean))
-
-    const scoreNameMatch = (needle: string, candidate: string): number => {
-      if (!needle || !candidate) return 0
-      if (needle === candidate) return 100
-      if (candidate.includes(needle)) return 85
-      if (needle.includes(candidate)) return 75
-
-      const needleTokens = tokenSet(needle)
-      const candTokens = tokenSet(candidate)
-      let overlap = 0
-      for (const t of needleTokens) {
-        if (candTokens.has(t)) overlap++
-      }
-      const denom = Math.max(needleTokens.size, 1)
-      return Math.round((overlap / denom) * 60)
-    }
-
-    const pool = (data as DbExerciseRow[]).map((row) => ({
-      ...row,
-      norm: normalize(row.name),
-      tokens: tokenSet(row.name),
-    }))
-
-    const isBodyweightMode = equipment === 'bodyweight'
-
-    const pickBest = (targetName: string, usedIds: Set<string>): DbExerciseRow | null => {
-      const targetNorm = normalize(targetName)
-      if (!targetNorm) return null
-
-      let best: { score: number; row: DbExerciseRow } | null = null
-
-      for (const row of pool) {
-        if (usedIds.has(row.id)) continue
-
-        let score = scoreNameMatch(targetNorm, row.norm)
-        if (score <= 0) continue
-
-        // Prefer sport-specific exercises over "general" (null sport).
-        if (row.sport === sport) score += 6
-
-        // Prefer bodyweight-friendly options if the user has no gym access.
-        if (isBodyweightMode) {
-          const eq = row.equipment ?? []
-          const eqNorm = eq.map((e) => normalize(e))
-          const bodyweightTagged = eqNorm.some((e) => e.includes('bodyweight') || e === 'none')
-          const clearlyWeighted = row.is_weighted === true || eqNorm.some((e) => e.includes('barbell') || e.includes('dumbbell') || e.includes('kettlebell'))
-          if (bodyweightTagged) score += 10
-          if (clearlyWeighted) score -= 12
-        }
-
-        if (!best || score > best.score) {
-          best = { score, row }
-        }
-      }
-
-      // Require a minimum confidence to avoid bad matches.
-      if (!best || best.score < 55) return null
-      return best.row
-    }
-
-    return params.sessions.map((s) => {
-      const used = new Set<string>()
-      const resolvedExercises = s.exercises.map((e) => {
-        const match = pickBest(e.name, used)
-        if (!match) return e
-
-        used.add(match.id)
-        return {
-          ...e,
-          id: match.id,
-          name: match.name,
-          videoUrl: match.video_url ?? e.videoUrl,
-        }
-      })
-
-      return { ...s, exercises: resolvedExercises }
-    })
-  },
-
-  async saveProgramVersion(programId: string, sessions: Session[], label?: string): Promise<string> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data: latest } = await db
-      .from('training_program_versions')
-      .select('version_number')
-      .eq('program_id', programId)
-      .order('version_number', { ascending: false })
-      .limit(1)
-      .single()
-
-    const nextVersionNumber = (latest?.version_number ?? 0) + 1
-
-    const { data: version, error } = await db
-      .from('training_program_versions')
-      .insert({
-        program_id: programId,
-        version_number: nextVersionNumber,
-        is_original: false,
-        label: label ?? `Version ${nextVersionNumber}`,
-        data: { sessions },
-        created_by: currentUser.id,
-      })
-      .select()
-      .single()
-
-    if (error || !version) throw new Error(error?.message ?? 'Failed to save program version')
-
-    await db
-      .from('training_programs')
-      .update({ current_version_id: version.id, updated_at: new Date().toISOString() })
-      .eq('id', programId)
-
-    return version.id
-  },
-
-  async setProgramVersion(programId: string, versionId: string): Promise<Session[]> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data: version, error } = await db
-      .from('training_program_versions')
-      .select('*')
-      .eq('id', versionId)
-      .single()
-
-    if (error || !version) throw new Error(error?.message ?? 'Failed to load program version')
-
-    await db
-      .from('training_programs')
-      .update({ current_version_id: versionId, updated_at: new Date().toISOString() })
-      .eq('id', programId)
-
-    const data = (version.data as TrainingProgramData | null) ?? null
-    return Array.isArray(data?.sessions) ? (data?.sessions as Session[]) : []
-  },
-
-  async getOriginalProgramSessions(programId: string): Promise<Session[]> {
-    const { data: program } = await db
-      .from('training_programs')
-      .select('original_version_id')
-      .eq('id', programId)
-      .single()
-
-    if (!program?.original_version_id) return []
-    return this.setProgramVersion(programId, program.original_version_id)
-  },
-
-  async getProgramState(): Promise<WeekDay[] | null> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return null
-
-    const { data } = await db
-      .from('training_program_state')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .single()
-
-    if (!data) return null
-    const payload = data as DbTrainingProgramState
-    return (payload.week_progress as unknown as WeekDay[]) ?? null
-  },
-
-  async upsertProgramState(programId: string | null, weekProgress: WeekDay[]): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return
-
-    await db
-      .from('training_program_state')
-      .upsert({
-        user_id: currentUser.id,
-        program_id: programId,
-        week_progress: weekProgress,
-        updated_at: new Date().toISOString(),
-      })
-  },
-
-  // ============================================
-  // WORKOUT DAY OVERRIDES (AAA "TODAY" INSTANCES)
-  // ============================================
-
-  async getWorkoutDayOverride(workoutDate: string): Promise<{ data: any; updatedAt: string } | null> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return null
-
-    try {
-      const { data, error } = await db
-        .from('workout_day_overrides')
-        .select('data, updated_at')
-        .eq('user_id', currentUser.id)
-        .eq('workout_date', workoutDate)
+      .maybeSingle()
+
+    if (error && isMissingSchemaError(error)) {
+      const fallbackResult = await db
+        .from('profiles')
+        .select(
+          'id, username, display_name, avatar_url, bio, sport, created_at, training_days, weight_unit, equipment, experience_level, bodyweight_kg, primary_goal, combat_sessions_per_week, session_minutes, injury_notes, is_premium, first_active_at, stripe_customer_id, subscription_status, subscription_period_end, onboarding_completed, bjj_paywall_completed, bjj_coach_marks_seen, belt, stripes, gym_name, privacy, primary_discipline, xp, level, favorite_content_types, heard_from, biggest_challenges',
+        )
+        .eq('id', userId)
         .maybeSingle()
 
-      if (error || !data) return null
-      return {
-        data: (data as any).data,
-        updatedAt: (data as any).updated_at ?? new Date().toISOString(),
-      }
-    } catch (error) {
-      // Table may not exist yet (migration not applied) or network error.
-      captureException('supabase-workout-day-override', error, {
-        step: 'fetch',
+      profile = fallbackResult.data
+      error = fallbackResult.error
+    }
+
+    if (error) {
+      captureException('supabase-profile-load', error, {
+        step: 'profiles.select.by-id',
+        userId,
       }, 'warning')
       return null
     }
-  },
 
-  async upsertWorkoutDayOverride(workoutDate: string, payload: any): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return
+    if (!profile) {
+      return null
+    }
 
-    try {
-      await db
-        .from('workout_day_overrides')
-        .upsert(
-          {
-            user_id: currentUser.id,
-            workout_date: workoutDate,
-            data: payload,
-            // Use the payload's timestamp to avoid endless realtime update loops.
-            updated_at: payload?.updatedAt ?? new Date().toISOString(),
-          },
-          { onConflict: 'user_id,workout_date' }
-        )
-    } catch (error) {
-      captureException('supabase-workout-day-override', error, {
-        step: 'upsert',
+    const { data: stats, error: statsError } = await db
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (statsError) {
+      captureException('supabase-profile-load', statsError, {
+        step: 'user_stats.select.by-user-id',
+        userId,
       }, 'warning')
     }
+
+    return dbProfileToUserProfile(profile as DbProfile, (stats ?? null) as DbUserStats | null)
   },
 
-  async deleteWorkoutDayOverride(workoutDate: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return
-
-    try {
-      await db
-        .from('workout_day_overrides')
-        .delete()
-        .eq('user_id', currentUser.id)
-        .eq('workout_date', workoutDate)
-    } catch (error) {
-      captureException('supabase-workout-day-override', error, {
-        step: 'delete',
-      }, 'warning')
-    }
-  },
-
-  // ============================================
-  // EXERCISE FAVORITES & COMPLETIONS
-  // ============================================
-
-  async getExerciseFavorites(): Promise<Set<string>> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return new Set()
-
-    const { data } = await db
-      .from('exercise_favorites')
-      .select('exercise_id')
-      .eq('user_id', currentUser.id)
-
-    const ids = (data as DbExerciseFavorite[] | null)?.map((row) => row.exercise_id) ?? []
-    return new Set(ids)
-  },
-
-  async setExerciseFavorite(exerciseId: string, shouldFavorite: boolean): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    if (shouldFavorite) {
-      const { error } = await db
-        .from('exercise_favorites')
-        .insert({ user_id: currentUser.id, exercise_id: exerciseId })
-      if (error && !error.message.includes('duplicate')) throw new Error(error.message)
-    } else {
-      const { error } = await db
-        .from('exercise_favorites')
-        .delete()
-        .eq('user_id', currentUser.id)
-        .eq('exercise_id', exerciseId)
-      if (error) throw new Error(error.message)
-    }
-  },
-
-  async getExerciseCompletions(): Promise<Set<string>> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return new Set()
-
-    const { data } = await db
-      .from('exercise_completions')
-      .select('exercise_id')
-      .eq('user_id', currentUser.id)
-      .order('completed_at', { ascending: false })
-      .limit(200)
-
-    const ids = (data as DbExerciseCompletion[] | null)?.map((row) => row.exercise_id) ?? []
-    return new Set(ids)
-  },
-
-  async logExerciseCompletions(exerciseIds: string[], sessionLogId?: string, source?: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser || exerciseIds.length === 0) return
-
-    const inserts = exerciseIds.map((exerciseId) => ({
-      user_id: currentUser.id,
-      exercise_id: exerciseId,
-      session_log_id: sessionLogId ?? null,
-      source: source ?? null,
-      completed_at: new Date().toISOString(),
-    }))
-
-    const { error } = await db
-      .from('exercise_completions')
-      .insert(inserts)
-
-    if (error) {
-      captureException('supabase-exercise-completions', error, {
-        step: 'insert',
-      }, 'warning')
-    }
-  },
-
-  // ============================================
-  // PROGRESS (Session Logs & Activity Logs)
-  // ============================================
-
-  async logSession(sessionLog: Omit<SessionLog, 'id'>): Promise<SessionLog> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data, error } = await db
-      .from('session_logs')
-      .insert({
-        user_id: currentUser.id,
-        session_id: sessionLog.sessionId || null,
-        date: sessionLog.date,
-        completed: sessionLog.completed,
-        effort_rating: sessionLog.effortRating ?? null,
-        total_time: sessionLog.totalTime ?? null,
-        total_volume: sessionLog.volume ?? null,
-        notes: sessionLog.notes ?? null,
-      })
-      .select()
-      .single()
-
-    if (error || !data) throw new Error(error?.message ?? 'Failed to log session')
-
-    return {
-      id: data.id,
-      date: data.date,
-      sessionId: data.session_id ?? '',
-      completed: data.completed ?? false,
-      effortRating: data.effort_rating ?? undefined,
-      totalTime: data.total_time ?? undefined,
-      notes: data.notes ?? undefined,
-      volume: data.total_volume ?? undefined,
-    }
-  },
-
-  async updateSessionLog(
-    sessionLogId: string,
-    updates: Pick<Partial<SessionLog>, 'effortRating' | 'notes'>
-  ): Promise<SessionLog> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data, error } = await db
-      .from('session_logs')
-      .update({
-        effort_rating: updates.effortRating ?? null,
-        notes: updates.notes ?? null,
-      })
-      .eq('id', sessionLogId)
-      .eq('user_id', currentUser.id)
-      .select()
-      .single()
-
-    if (error || !data) throw new Error(error?.message ?? 'Failed to update session log')
-
-    return {
-      id: data.id,
-      date: data.date,
-      sessionId: data.session_id ?? '',
-      completed: data.completed ?? false,
-      effortRating: data.effort_rating ?? undefined,
-      totalTime: data.total_time ?? undefined,
-      notes: data.notes ?? undefined,
-      volume: data.total_volume ?? undefined,
-    }
-  },
-
-  async getSessionLogs(
-    startDate?: string,
-    endDate?: string,
-    limit = 50
-  ): Promise<SessionLog[]> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return []
-
-    let queryBuilder = db
-      .from('session_logs')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('date', { ascending: false })
-      .limit(limit)
-
-    if (startDate) {
-      queryBuilder = queryBuilder.gte('date', startDate)
-    }
-    if (endDate) {
-      queryBuilder = queryBuilder.lte('date', endDate)
-    }
-
-    const { data, error } = await queryBuilder
-
-    if (error || !data) return []
-
-    return (data as DbSessionLog[]).map((log: DbSessionLog) => ({
-      id: log.id,
-      date: log.date,
-      sessionId: log.session_id ?? '',
-      completed: log.completed ?? false,
-      effortRating: log.effort_rating ?? undefined,
-      totalTime: log.total_time ?? undefined,
-      notes: log.notes ?? undefined,
-      volume: log.total_volume ?? undefined,
-    }))
-  },
-
-  async logActivity(activity: Omit<ActivityLog, 'id'>): Promise<ActivityLog> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data, error } = await db
-      .from('activity_logs')
-      .insert({
-        user_id: currentUser.id,
-        type: activity.type,
-        date: activity.date,
-        duration: activity.duration,
-        intensity: activity.intensity?.toString() ?? null,
-        notes: activity.notes ?? null,
-      })
-      .select()
-      .single()
-
-    if (error || !data) throw new Error(error?.message ?? 'Failed to log activity')
-
-    return {
-      id: data.id,
-      date: data.date,
-      type: data.type as ActivityLog['type'],
-      duration: data.duration,
-      intensity: parseInt(data.intensity ?? '5', 10),
-      notes: data.notes ?? undefined,
-    }
-  },
-
-  async getActivityLogs(
-    startDate?: string,
-    endDate?: string,
-    limit = 50
-  ): Promise<ActivityLog[]> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return []
-
-    let queryBuilder = db
-      .from('activity_logs')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('date', { ascending: false })
-      .limit(limit)
-
-    if (startDate) {
-      queryBuilder = queryBuilder.gte('date', startDate)
-    }
-    if (endDate) {
-      queryBuilder = queryBuilder.lte('date', endDate)
-    }
-
-    const { data, error } = await queryBuilder
-
-    if (error || !data) return []
-
-    return (data as DbActivityLog[]).map((log: DbActivityLog) => ({
-      id: log.id,
-      date: log.date,
-      type: log.type as ActivityLog['type'],
-      duration: log.duration,
-      intensity: parseInt(log.intensity ?? '5', 10),
-      notes: log.notes ?? undefined,
-    }))
-  },
-
-  async updateActivity(activityId: string, activity: Omit<ActivityLog, 'id'>): Promise<ActivityLog> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { data, error } = await db
-      .from('activity_logs')
-      .update({
-        type: activity.type,
-        date: activity.date,
-        duration: activity.duration,
-        intensity: activity.intensity?.toString() ?? null,
-        notes: activity.notes ?? null,
-      })
-      .eq('id', activityId)
-      .eq('user_id', currentUser.id)
-      .select()
-      .single()
-
-    if (error || !data) throw new Error(error?.message ?? 'Failed to update activity')
-
-    return {
-      id: data.id,
-      date: data.date,
-      type: data.type as ActivityLog['type'],
-      duration: data.duration,
-      intensity: parseInt(data.intensity ?? '5', 10),
-      notes: data.notes ?? undefined,
-    }
-  },
-
-  async deleteActivity(activityId: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) throw new Error('Must be logged in')
-
-    const { error } = await db
-      .from('activity_logs')
-      .delete()
-      .eq('id', activityId)
-      .eq('user_id', currentUser.id)
-
-    if (error) throw new Error(error?.message ?? 'Failed to delete activity')
-  },
-
-  // ============================================
-  // DRILLS
-  // ============================================
-
-  async getDrills(filters?: {
-    category?: string
-    subcategory?: string
-    sport?: SportType
-    difficulty?: DrillDifficulty
-    search?: string
-    limit?: number
-  }): Promise<Drill[]> {
-    let queryBuilder = db
-      .from('drills')
-      .select('*')
-
-    if (filters?.category) {
-      queryBuilder = queryBuilder.eq('category', filters.category)
-    }
-    if (filters?.subcategory) {
-      queryBuilder = queryBuilder.eq('subcategory', filters.subcategory)
-    }
-    if (filters?.sport) {
-      queryBuilder = queryBuilder.contains('sport_relevance', [filters.sport])
-    }
-    if (filters?.difficulty) {
-      queryBuilder = queryBuilder.eq('difficulty', filters.difficulty)
-    }
-    if (filters?.search) {
-      queryBuilder = queryBuilder.or(
-        `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
-      )
-    }
-
-    const { data, error } = await queryBuilder.limit(filters?.limit ?? 100)
-
-    if (error || !data) return []
-
-    return data.map(dbDrillToDrill)
-  },
-
-  async getDrillById(drillId: string): Promise<Drill | null> {
-    const { data, error } = await db
-      .from('drills')
-      .select('*')
-      .eq('id', drillId)
-      .single()
-
-    if (error || !data) return null
-
-    return dbDrillToDrill(data)
-  },
-
-  async getRoutines(filters?: {
-    type?: 'warmup' | 'recovery' | 'mobility'
-    sport?: SportType
-    forWorkoutFocus?: string
-  }): Promise<Routine[]> {
-    let queryBuilder = db
-      .from('routines')
-      .select('*')
-
-    if (filters?.type) {
-      queryBuilder = queryBuilder.eq('type', filters.type)
-    }
-    if (filters?.sport) {
-      queryBuilder = queryBuilder.contains('for_sport', [filters.sport])
-    }
-    if (filters?.forWorkoutFocus) {
-      queryBuilder = queryBuilder.contains('for_workout_focus', [filters.forWorkoutFocus])
-    }
-
-    const { data: routines, error } = await queryBuilder
-
-    if (error || !routines) return []
-
-    const typedRoutines = routines as DbRoutine[]
-    // Get routine drills
-    const routineIds = typedRoutines.map((r: DbRoutine) => r.id)
-    const { data: routineDrills } = await db
-      .from('routine_drills')
-      .select('*')
-      .in('routine_id', routineIds)
-      .order('order_index')
-
-    const drillsMap = new Map<string, { drillId: string; duration: number | null }[]>()
-    ;(routineDrills as DbRoutineDrill[] | null)?.forEach((rd: DbRoutineDrill) => {
-      const list = drillsMap.get(rd.routine_id) ?? []
-      list.push({ drillId: rd.drill_id, duration: rd.duration })
-      drillsMap.set(rd.routine_id, list)
-    })
-
-    return typedRoutines.map((r: DbRoutine) => ({
-      id: r.id,
-      name: r.name,
-      type: r.type as 'warmup' | 'recovery' | 'mobility',
-      duration: r.duration ?? 10,
-      description: r.description ?? '',
-      forSport: (r.for_sport ?? []) as SportType[],
-      forWorkoutFocus: r.for_workout_focus ?? undefined,
-      drills: (drillsMap.get(r.id) ?? []).map(d => ({
-        drillId: d.drillId,
-        duration: d.duration ?? 30,
-      })),
-    }))
-  },
-
-  async getLearningPaths(filters?: {
-    sport?: SportType
-    difficulty?: DrillDifficulty
-  }): Promise<LearningPath[]> {
-    let queryBuilder = db
-      .from('learning_paths')
-      .select('*')
-
-    if (filters?.sport) {
-      queryBuilder = queryBuilder.eq('sport', filters.sport)
-    }
-    if (filters?.difficulty) {
-      queryBuilder = queryBuilder.eq('difficulty', filters.difficulty)
-    }
-
-    const { data: paths, error } = await queryBuilder
-
-    if (error || !paths) return []
-
-    const typedPaths = paths as DbLearningPath[]
-    // Get learning path drills
-    const pathIds = typedPaths.map((p: DbLearningPath) => p.id)
-    const { data: pathDrills } = await db
-      .from('learning_path_drills')
-      .select('*')
-      .in('learning_path_id', pathIds)
-      .order('order_index')
-
-    const drillsMap = new Map<string, string[]>()
-    ;(pathDrills as DbLearningPathDrill[] | null)?.forEach((pd: DbLearningPathDrill) => {
-      const list = drillsMap.get(pd.learning_path_id) ?? []
-      list.push(pd.drill_id)
-      drillsMap.set(pd.learning_path_id, list)
-    })
-
-    return typedPaths.map((p: DbLearningPath) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description ?? '',
-      sport: p.sport as SportType,
-      difficulty: (p.difficulty ?? 'beginner') as DrillDifficulty,
-      drills: drillsMap.get(p.id) ?? [],
-      estimatedWeeks: p.estimated_weeks ?? 4,
-    }))
-  },
-
-  async trackRecentlyViewed(drillId: string): Promise<void> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return
-
-    // Upsert - update viewed_at if exists, insert if not
-    const { error } = await db
-      .from('user_recently_viewed')
-      .upsert(
-        {
-          user_id: currentUser.id,
-          drill_id: drillId,
-          viewed_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_id,drill_id',
+  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
+    const profileUpdates: Record<string, unknown> = {}
+    const statsUpdates: Record<string, unknown> = {}
+
+    if (updates.username !== undefined) {
+      const nextUsername = updates.username.toLowerCase().trim()
+      if (!nextUsername) {
+        throw new Error('Username is required.')
+      }
+
+      const existing = await supabaseService.getProfile(userId)
+      const currentUsername = existing?.username?.toLowerCase().trim() ?? ''
+
+      if (nextUsername !== currentUsername) {
+        const available = await supabaseService.checkUsernameAvailable(nextUsername, userId)
+        if (!available) {
+          throw new Error('That username is already taken. Try another.')
         }
-      )
+      }
 
-    if (error) {
-      captureException('supabase-recently-viewed', error, {
-        step: 'upsert',
-      }, 'warning')
+      profileUpdates.username = nextUsername
     }
-  },
+    if (updates.displayName) profileUpdates.display_name = updates.displayName
+    if (updates.avatarUrl !== undefined) profileUpdates.avatar_url = updates.avatarUrl
+    if (updates.bio !== undefined) profileUpdates.bio = updates.bio
+    if (updates.sport) profileUpdates.sport = updates.sport
+    if (updates.trainingDays !== undefined) profileUpdates.training_days = updates.trainingDays
+    if (updates.weightUnit) profileUpdates.weight_unit = updates.weightUnit
+    if (updates.equipment !== undefined) profileUpdates.equipment = updates.equipment
+    if (updates.experienceLevel) profileUpdates.experience_level = updates.experienceLevel
+    if (updates.bodyweightKg !== undefined) profileUpdates.bodyweight_kg = updates.bodyweightKg
+    if (updates.primaryGoal) profileUpdates.primary_goal = updates.primaryGoal
+    if (updates.combatSessionsPerWeek !== undefined) profileUpdates.combat_sessions_per_week = updates.combatSessionsPerWeek
+    if (updates.sessionMinutes !== undefined) profileUpdates.session_minutes = updates.sessionMinutes
+    if (updates.injuryNotes !== undefined) profileUpdates.injury_notes = updates.injuryNotes
+    if (updates.belt) profileUpdates.belt = updates.belt
+    if (updates.stripes !== undefined) profileUpdates.stripes = updates.stripes
+    if (updates.gymName !== undefined) profileUpdates.gym_name = updates.gymName
+    if (updates.privacy !== undefined) profileUpdates.privacy = updates.privacy
+    if (updates.primaryDiscipline !== undefined) profileUpdates.primary_discipline = updates.primaryDiscipline
+    if (updates.xp !== undefined) profileUpdates.xp = updates.xp
+    if (updates.level !== undefined) profileUpdates.level = updates.level
+    if (updates.favoriteContentTypes !== undefined) profileUpdates.favorite_content_types = updates.favoriteContentTypes
+    if (updates.heardFrom !== undefined) profileUpdates.heard_from = updates.heardFrom
+    if (updates.biggestChallenges !== undefined) profileUpdates.biggest_challenges = updates.biggestChallenges
+    if (updates.onboardingCompleted !== undefined) profileUpdates.onboarding_completed = updates.onboardingCompleted
+    if (updates.paywallCompleted !== undefined) profileUpdates.bjj_paywall_completed = updates.paywallCompleted
+    if (updates.coachMarksSeen !== undefined) profileUpdates.bjj_coach_marks_seen = updates.coachMarksSeen
+    if (updates.searchTutorialSeen !== undefined) profileUpdates.search_tutorial_seen = updates.searchTutorialSeen
 
-  async getRecentlyViewed(limit = 10): Promise<Drill[]> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) return []
+    if (updates.flowStreak !== undefined) statsUpdates.flow_streak = updates.flowStreak
+    if (updates.trainingStreak !== undefined) statsUpdates.training_streak = updates.trainingStreak
+    if (updates.workoutCount !== undefined) statsUpdates.workout_count = updates.workoutCount
+    if (updates.followerCount !== undefined) statsUpdates.follower_count = updates.followerCount
+    if (updates.followingCount !== undefined) statsUpdates.following_count = updates.followingCount
+    if (updates.totalSaves !== undefined) statsUpdates.total_saves = updates.totalSaves
 
-    const { data: recent, error } = await db
-      .from('user_recently_viewed')
-      .select('drill_id')
-      .eq('user_id', currentUser.id)
-      .order('viewed_at', { ascending: false })
-      .limit(limit)
-
-    if (error || !recent || recent.length === 0) return []
-
-    const drillIds = (recent as {drill_id: string}[]).map((r: {drill_id: string}) => r.drill_id)
-    const { data: drills } = await db
-      .from('drills')
-      .select('*')
-      .in('id', drillIds)
-
-    if (!drills) return []
-
-    // Maintain order
-    const drillsMap = new Map((drills as DbDrill[]).map((d: DbDrill) => [d.id, d]))
-    return drillIds
-      .map((id: string) => drillsMap.get(id))
-      .filter((d: DbDrill | undefined): d is DbDrill => !!d)
-      .map(dbDrillToDrill)
-  },
-
-  // ============================================
-  // SUBSCRIPTIONS
-  // ============================================
-
-  async getSubscriptionStatus(): Promise<{
-    isActive: boolean
-    subscription: {
-      id: string
-      status: string
-      planName: string
-      currentPeriodEnd: string | null
-      cancelAtPeriodEnd: boolean
-      trialEnd: string | null
-    } | null
-  }> {
-    const currentUser = await this.getCurrentUser()
-    if (!currentUser) {
-      return { isActive: false, subscription: null }
+    if (Object.keys(profileUpdates).length > 0) {
+      await updateProfileWithCompatibility(userId, profileUpdates)
     }
 
-    const { data: subscription, error } = await db
-      .from('subscriptions')
-      .select('*, subscription_plans!inner(*)')
-      .eq('user_id', currentUser.id)
-      .in('status', ['active', 'trialing'])
-      .single()
+    if (Object.keys(statsUpdates).length > 0) {
+      const { error } = await db
+        .from('user_stats')
+        .upsert({
+          user_id: userId,
+          ...statsUpdates,
+        }, { onConflict: 'user_id' })
 
-    if (error || !subscription) {
-      return { isActive: false, subscription: null }
+      if (error) {
+        throw new Error(error.message)
+      }
     }
 
-    const plan = subscription.subscription_plans as unknown as DbSubscriptionPlan
-
-    const isActive =
-      subscription.status === 'active' ||
-      (subscription.status === 'trialing' &&
-        subscription.trial_end &&
-        new Date(subscription.trial_end) > new Date())
-
-    return {
-      isActive,
-      subscription: {
-        id: subscription.id,
-        status: subscription.status,
-        planName: plan?.name ?? 'Premium',
-        currentPeriodEnd: subscription.current_period_end,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
-        trialEnd: subscription.trial_end,
-      },
+    let profile = await supabaseService.getProfile(userId)
+    if (!profile) {
+      throw new Error('Profile not found after update')
     }
-  },
 
-  async hasActiveSubscription(): Promise<boolean> {
-    const { isActive } = await this.getSubscriptionStatus()
-    return isActive
+    if (Object.keys(profileUpdates).length > 0 && !profileMatchesRequestedUpdates(profile, updates)) {
+      await updateProfileWithCompatibility(userId, profileUpdates)
+      profile = await supabaseService.getProfile(userId)
+      if (!profile) {
+        throw new Error('Profile not found after retry')
+      }
+      if (!profileMatchesRequestedUpdates(profile, updates)) {
+        throw new Error('Profile update did not persist')
+      }
+    }
+
+    return profile
   },
 }
-
-// Export type for the service
-export type SupabaseService = typeof supabaseService

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1179" height="2556" viewBox="0 0 1179 2556" fill="none">
+  <rect width="1179" height="2556" fill="url(#bg)"/>
+  <g filter="url(#blurA)" opacity=".92">
+    <circle cx="589" cy="214" r="300" fill="#2F76FF"/>
+    <circle cx="948" cy="1848" r="256" fill="#15345C"/>
+  </g>
+  <circle cx="589" cy="930" r="168" fill="#07153A" stroke="#3F7DFF" stroke-width="10"/>
+  <circle cx="589" cy="930" r="120" fill="#0A183E" stroke="#6EA3FF" stroke-opacity=".36" stroke-width="4"/>
+  <path d="M132 2142c208-141 416-183 625-126 118 32 228 91 330 177" stroke="#9ABEFF" stroke-opacity=".14" stroke-width="5"/>
+  <defs>
+    <linearGradient id="bg" x1="589.5" y1="0" x2="589.5" y2="2556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07143A"/>
+      <stop offset=".58" stop-color="#041027"/>
+      <stop offset="1" stop-color="#030A16"/>
+    </linearGradient>
+    <filter id="blurA" x="-170" y="-412" width="1488" height="2540" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0"/>
+      <feGaussianBlur stdDeviation="100"/>
+    </filter>
+  </defs>
+</svg>

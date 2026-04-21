@@ -54,7 +54,7 @@ export function getActivitySyncFallbackFeedback(isEditing: boolean): ActionFeedb
 export function getWorkoutSaveFeedback(isEditing: boolean): ActionFeedback {
   return {
     variant: 'success',
-    message: isEditing ? 'Workout updated.' : 'Workout saved.',
+    message: isEditing ? 'Template updated.' : 'Template saved.',
   }
 }
 
@@ -76,4 +76,31 @@ export function getTodayExerciseSaveFeedback(exerciseName?: string | null): Acti
     variant: 'success',
     message: exerciseName ? `${exerciseName} updated for today.` : 'Exercise updated for today.',
   }
+}
+
+export function getAuthErrorMessage(error: unknown, fallbackMessage: string): string {
+  const message = error instanceof Error ? error.message : fallbackMessage
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes('invalid login credentials')) {
+    return 'Email or password is incorrect.'
+  }
+
+  if (normalized.includes('email not confirmed')) {
+    return 'Confirm your email before signing in.'
+  }
+
+  if (normalized.includes('nonce')) {
+    return 'Google sign-in could not be completed. Please try again.'
+  }
+
+  if (normalized.includes('unacceptable audience')) {
+    return 'Google sign-in is temporarily unavailable. Please try again shortly.'
+  }
+
+  if (normalized.includes('network') || normalized.includes('fetch')) {
+    return 'Network issue detected. Check your connection and try again.'
+  }
+
+  return message
 }

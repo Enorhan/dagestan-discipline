@@ -34,8 +34,8 @@ export function LegalDocumentModal({ isOpen, title, url, onClose }: LegalDocumen
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="legal-document-title">
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden="true" />
-      <div className="relative z-10 flex h-[min(88vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-elevated animate-scale-in">
-        <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3 sm:px-5">
+      <div className="relative z-10 flex h-[min(88vh,900px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-card shadow-elevated animate-scale-in">
+        <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3 sm:px-5">
           <div>
             <h2 id="legal-document-title" className="text-base font-bold text-foreground sm:text-lg">{title}</h2>
             <p className="text-xs text-muted-foreground">Review this document without leaving the app.</p>

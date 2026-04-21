@@ -20,7 +20,6 @@ body {
   /* Prevent iOS rubber-banding/bounce effect */
   overscroll-behavior: none;
   overscroll-behavior-y: none;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Prevent over-scrolling on all scroll containers */
@@ -31,8 +30,9 @@ body {
   scroll-padding-bottom: 0;
 }
 
-/* Eliminate 300ms tap delay on iOS */
-* {
+/* Eliminate 300ms tap delay on iOS — scoped to interactive elements
+   to avoid conflicting with scroll-container touch-action values */
+a, button, input, select, textarea, [role="button"] {
   touch-action: manipulation;
 }
 
@@ -78,20 +78,24 @@ html {
   --color-warning-muted: rgba(234, 179, 8, 0.15);
   --color-gold: #d4af37;
   --color-gold-muted: rgba(212, 175, 55, 0.2);
+  --color-info: #3b82f6;
+  --color-info-muted: rgba(59, 130, 246, 0.15);
 
-  /* Layout spacing for bottom nav clearance */
-  --bottom-nav-height: 80px;
-  --bottom-nav-clearance: 112px; /* nav height + safe area padding */
 }
 
-/* ============================================
-   LAYOUT CONVENTIONS
-   ============================================
-   Bottom padding values:
-   - pb-28 (112px): Standard content clearance for bottom nav
-   - pb-32 (128px): Extended clearance for content with FAB
-   Bottom nav is ~80px + safe area inset
-   ============================================ */
+/* Tailwind v4 does not reliably emit custom z-index keys from the legacy config.
+   Keep app overlays above the main shell, fixed nav, and social feed content. */
+.z-modal {
+  z-index: 90;
+}
+
+.z-popover {
+  z-index: 100;
+}
+
+.z-toast {
+  z-index: 110;
+}
 
 /* ============================================
    BORDER RADIUS CONVENTIONS
@@ -480,35 +484,100 @@ html {
 
 /* Elevated Card - for featured/highlighted content */
 .card-elevated {
-  background: linear-gradient(145deg, #1a1a1a 0%, #141414 100%);
+  background: linear-gradient(145deg, rgba(29, 29, 31, 0.96) 0%, rgba(18, 18, 20, 0.98) 100%);
   box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.03);
+    0 12px 32px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 /* Glass Card - for overlays and modals */
 .card-glass {
-  background: rgba(20, 20, 20, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(18, 18, 20, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.panel-surface {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.025) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+}
+
+.panel-surface-strong {
+  background: linear-gradient(160deg, rgba(139, 0, 0, 0.18) 0%, rgba(24, 24, 27, 0.96) 36%, rgba(10, 10, 11, 1) 100%);
+  border: 1px solid rgba(139, 0, 0, 0.22);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28);
+}
+
+.panel-surface-muted {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.section-kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  min-height: 2.625rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.glance-number {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 0.95;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.action-tile {
+  min-height: 104px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.025) 100%);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+}
+
+.action-tile:active {
+  transform: scale(0.98);
+}
+
+.session-resume-rail {
+  border: 1px solid rgba(139, 0, 0, 0.28);
+  background:
+    linear-gradient(135deg, rgba(139, 0, 0, 0.22) 0%, rgba(22, 22, 24, 0.95) 45%, rgba(10, 10, 12, 0.98) 100%);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
 }
 
 /* Primary Glow Effect */
 .glow-primary {
   box-shadow:
-    0 0 20px var(--color-primary-glow),
-    0 0 40px rgba(139, 0, 0, 0.2);
+    0 0 18px rgba(139, 0, 0, 0.18),
+    0 12px 28px rgba(139, 0, 0, 0.12);
 }
 
 .glow-primary-subtle {
-  box-shadow: 0 0 30px var(--color-primary-glow);
+  box-shadow: 0 10px 24px rgba(139, 0, 0, 0.16);
 }
 
 /* Gold Glow for achievements/streaks */
 .glow-gold {
   box-shadow:
-    0 0 20px var(--color-gold-muted),
-    0 0 40px rgba(212, 175, 55, 0.15);
+    0 0 16px rgba(212, 175, 55, 0.14),
+    0 10px 24px rgba(212, 175, 55, 0.1);
 }
 
 /* Streak Ring Animation */
@@ -548,7 +617,12 @@ html {
 }
 
 .card-interactive {
-  transition: all 150ms ease-out;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.card-interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
 }
 
 .card-interactive:active {
@@ -732,42 +806,6 @@ html {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-primary);
 }
-
-/* ============================================
-   ONBOARDING AAA ANIMATIONS
-   Premium animations for onboarding flow
-   ============================================ */
-
-/* Content entrance animation - fade up */
-@keyframes onboarding-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.onboarding-fade-up {
-  animation: onboarding-fade-up 0.5s ease-out forwards;
-}
-
-/* Staggered children animation */
-.onboarding-stagger > * {
-  opacity: 0;
-  animation: onboarding-fade-up 0.4s ease-out forwards;
-}
-
-.onboarding-stagger > *:nth-child(1) { animation-delay: 0.05s; }
-.onboarding-stagger > *:nth-child(2) { animation-delay: 0.1s; }
-.onboarding-stagger > *:nth-child(3) { animation-delay: 0.15s; }
-.onboarding-stagger > *:nth-child(4) { animation-delay: 0.2s; }
-.onboarding-stagger > *:nth-child(5) { animation-delay: 0.25s; }
-.onboarding-stagger > *:nth-child(6) { animation-delay: 0.3s; }
-.onboarding-stagger > *:nth-child(7) { animation-delay: 0.35s; }
-.onboarding-stagger > *:nth-child(8) { animation-delay: 0.4s; }
 
 /* Selection card glow effect */
 @keyframes selection-glow {

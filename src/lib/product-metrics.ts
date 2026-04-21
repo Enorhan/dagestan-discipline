@@ -7,10 +7,6 @@ export interface ProductMetricsSummary {
   lastEventAt: string | null
   activeDaysLast7: number
   activeDaysLast28: number
-  onboardingStarts: number
-  onboardingCompletions: number
-  onboardingFailures: number
-  onboardingCompletionRate: number | null
   workoutStarts: number
   workoutCompletions: number
   workoutCompletionRate: number | null
@@ -22,6 +18,11 @@ export interface ProductMetricsSummary {
   portalOpens: number
   portalFailures: number
   refreshFailures: number
+  socialUploadIntents: number
+  socialReelStarts: number
+  socialReelCompletions: number
+  socialReelCompletionRate: number | null
+  socialNegativeFeedback: number
 }
 
 function countEvents(entries: AnalyticsEntry[], event: AnalyticsEvent) {
@@ -58,9 +59,6 @@ function getLastEventAt(entries: AnalyticsEntry[]) {
 }
 
 export function buildProductMetricsSummary(entries: AnalyticsEntry[], now = Date.now()): ProductMetricsSummary {
-  const onboardingStarts = countEvents(entries, 'onboarding_started')
-  const onboardingCompletions = countEvents(entries, 'onboarding_completed')
-  const onboardingFailures = countEvents(entries, 'onboarding_generation_failed')
   const workoutStarts = countEvents(entries, 'workout_started')
   const workoutCompletions = countEvents(entries, 'session_completed')
   const checkoutStarts = countEvents(entries, 'subscription_checkout_started')
@@ -70,16 +68,16 @@ export function buildProductMetricsSummary(entries: AnalyticsEntry[], now = Date
   const portalOpens = countEvents(entries, 'subscription_portal_opened')
   const portalFailures = countEvents(entries, 'subscription_portal_failed')
   const refreshFailures = countEvents(entries, 'subscription_status_refresh_failed')
+  const socialUploadIntents = countEvents(entries, 'social_video_upload_intent_created')
+  const socialReelStarts = countEvents(entries, 'social_reel_watch_started')
+  const socialReelCompletions = countEvents(entries, 'social_reel_watch_completed')
+  const socialNegativeFeedback = countEvents(entries, 'social_negative_feedback')
 
   return {
     bufferedEvents: entries.length,
     lastEventAt: getLastEventAt(entries),
     activeDaysLast7: countActiveDays(entries, now, 7),
     activeDaysLast28: countActiveDays(entries, now, 28),
-    onboardingStarts,
-    onboardingCompletions,
-    onboardingFailures,
-    onboardingCompletionRate: toRate(onboardingCompletions, onboardingStarts),
     workoutStarts,
     workoutCompletions,
     workoutCompletionRate: toRate(workoutCompletions, workoutStarts),
@@ -91,5 +89,10 @@ export function buildProductMetricsSummary(entries: AnalyticsEntry[], now = Date
     portalOpens,
     portalFailures,
     refreshFailures,
+    socialUploadIntents,
+    socialReelStarts,
+    socialReelCompletions,
+    socialReelCompletionRate: toRate(socialReelCompletions, socialReelStarts),
+    socialNegativeFeedback,
   }
 }

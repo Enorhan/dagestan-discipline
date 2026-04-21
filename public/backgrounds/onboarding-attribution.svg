@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1179" height="2556" viewBox="0 0 1179 2556" fill="none">
+  <rect width="1179" height="2556" fill="url(#bg)"/>
+  <g filter="url(#blurA)" opacity=".9">
+    <circle cx="590" cy="224" r="292" fill="#6B6CFF"/>
+    <circle cx="1000" cy="1888" r="254" fill="#312361"/>
+  </g>
+  <g fill="#A8A3FF" fill-opacity=".34">
+    <rect x="430" y="1140" width="22" height="66" rx="11"/>
+    <rect x="502" y="1114" width="22" height="92" rx="11"/>
+    <rect x="574" y="1088" width="22" height="118" rx="11"/>
+    <rect x="646" y="1062" width="22" height="144" rx="11"/>
+  </g>
+  <path d="M148 2226c196-140 399-181 607-122 117 33 228 93 332 179" stroke="#B6B2FF" stroke-opacity=".14" stroke-width="5"/>
+  <defs>
+    <linearGradient id="bg" x1="589.5" y1="0" x2="589.5" y2="2556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D1438"/>
+      <stop offset=".58" stop-color="#060E26"/>
+      <stop offset="1" stop-color="#030915"/>
+    </linearGradient>
+    <filter id="blurA" x="-120" y="-388" width="1412" height="2584" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0"/>
+      <feGaussianBlur stdDeviation="96"/>
+    </filter>
+  </defs>
+</svg>

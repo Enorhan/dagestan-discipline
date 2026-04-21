@@ -22,8 +22,16 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>GIDClientID</key>
+	<string>1087045605663-40qsffnsrvfcintp67171s3hc36phirh.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Capture photos for stories, posts, and social creation.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select photos from your library for stories, posts, and social creation.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save generated creative media back to your library when you choose to export it.</string>
 	<!-- Debug-only: allow loading http://localhost for live-reload. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -70,6 +78,24 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.dagestani.disciple</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dagestanidiscipline</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.googleusercontent.apps</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.1087045605663-40qsffnsrvfcintp67171s3hc36phirh</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
-

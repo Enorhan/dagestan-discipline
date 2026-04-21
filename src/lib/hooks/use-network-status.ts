@@ -10,12 +10,18 @@ export interface NetworkStatus {
 export function useNetworkStatus(): NetworkStatus {
   const [isOnline, setIsOnline] = useState(() => {
     if (typeof navigator === 'undefined') return true
+    if (typeof navigator.onLine !== 'boolean') return true
     return navigator.onLine
   })
   const [wasOffline, setWasOffline] = useState(false)
   const offlineResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    if (typeof navigator.onLine === 'boolean') {
+      // Ensure client state is aligned with the real browser network status.
+      setIsOnline(navigator.onLine)
+    }
+
     const handleOnline = () => {
       setIsOnline(true)
       setWasOffline(true)

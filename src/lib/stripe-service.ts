@@ -267,7 +267,7 @@ export const stripeService = {
   /**
    * Subscribe to premium plan (25 SEK/month)
    */
-  async subscribeToPremium(email?: string): Promise<void> {
+  async subscribeToPremium(priceId?: string, email?: string): Promise<void> {
     const checkoutAvailability = getBillingCheckoutAvailability()
     if (!checkoutAvailability.enabled) {
       throw new Error(checkoutAvailability.message ?? 'Premium upgrades are temporarily unavailable right now.')
@@ -277,7 +277,7 @@ export const stripeService = {
     try {
       const session = await this.createCheckoutSession({
         mode: 'subscription',
-        priceId: process.env.NEXT_PUBLIC_STRIPE_PREMIUM_PRICE_ID,
+        priceId: priceId ?? process.env.NEXT_PUBLIC_STRIPE_PREMIUM_PRICE_ID,
         successUrl,
         cancelUrl,
         email,
@@ -287,21 +287,6 @@ export const stripeService = {
     } catch (error) {
       throw error instanceof Error ? error : new Error('Unable to start checkout right now.')
     }
-  },
-
-  /**
-   * Purchase a premium workout program (one-time)
-   */
-  async purchaseProgram(programId: string, email?: string): Promise<void> {
-    const session = await this.createCheckoutSession({
-      mode: 'payment',
-      programId,
-      successUrl: buildCheckoutRedirectUrl({ status: 'success', type: 'purchase', program: programId }),
-      cancelUrl: buildCheckoutRedirectUrl({ status: 'canceled', type: 'purchase' }),
-      email,
-    })
-
-    await this.redirectToCheckout(session.url)
   },
 
   /**

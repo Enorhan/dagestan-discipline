@@ -2,16 +2,20 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabaseService } from '@/lib/supabase-service'
-import { UserProfile } from '@/lib/social-types'
-import { SportType } from '@/lib/types'
+import { getAuthErrorMessage } from '@/lib/action-feedback'
+import { captureException } from '@/lib/monitoring'
+import { type SportType, type UserProfile } from '@/lib/user-profile-types'
 
 interface AuthContextType {
   user: UserProfile | null
+  isInitializing: boolean
   isLoading: boolean
   isAuthenticated: boolean
   error: string | null
   signIn: (email: string, password: string) => Promise<UserProfile>
   signUp: (email: string, password: string, username: string, displayName: string, sport: SportType) => Promise<UserProfile>
+  signInWithOAuth: (provider: 'google') => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<UserProfile>) => Promise<UserProfile>
   clearError: () => void
@@ -21,7 +25,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isInitializing, setIsInitializing] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Initialize auth state on mount
@@ -34,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to initialize auth')
       } finally {
-        setIsLoading(false)
+        setIsInitializing(false)
       }
     }
 
@@ -42,11 +47,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Listen to auth state changes
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') && session?.user) {
         try {
-          const profile = await supabaseService.getProfile(session.user.id)
-          setUser(profile)
-          setError(null)
+          const authState = await supabaseService.getAuthState()
+          setUser(authState.user)
+          setError(authState.error)
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Failed to load profile')
         }
@@ -56,10 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         // Re-fetch profile on token refresh to ensure data is current
         try {
-          const profile = await supabaseService.getProfile(session.user.id)
-          setUser(profile)
-        } catch (e) {
-          // Silent fail on token refresh profile fetch
+          const authState = await supabaseService.getAuthState()
+          setUser(authState.user)
+        } catch (error) {
+          captureException('auth-context-token-refresh', error, {
+            step: 'onAuthStateChange.TOKEN_REFRESHED',
+          }, 'warning')
         }
       }
     })
@@ -77,9 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(profile)
       return profile
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Sign in failed'
+      const message = getAuthErrorMessage(e, 'Sign in failed')
       setError(message)
-      throw e
+      throw new Error(message)
     } finally {
       setIsLoading(false)
     }
@@ -96,12 +103,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null)
     try {
       const profile = await supabaseService.signUp(email, password, username, displayName, sport)
-      setUser(profile)
+      const authState = await supabaseService.getAuthState()
+      setUser(authState.isAuthenticated ? authState.user : null)
       return profile
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Sign up failed'
+      const message = getAuthErrorMessage(e, 'Sign up failed')
       setError(message)
-      throw e
+      throw new Error(message)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const signInWithOAuth = useCallback(async (provider: 'google'): Promise<void> => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      await supabaseService.signInWithOAuth(provider)
+    } catch (e) {
+      const message = getAuthErrorMessage(e, 'OAuth sign in failed')
+      setError(message)
+      throw new Error(message)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const requestPasswordReset = useCallback(async (email: string): Promise<void> => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      await supabaseService.resetPassword(email)
+    } catch (e) {
+      const message = getAuthErrorMessage(e, 'Password reset failed')
+      setError(message)
+      throw new Error(message)
     } finally {
       setIsLoading(false)
     }
@@ -114,9 +150,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabaseService.signOut()
       setUser(null)
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Sign out failed'
+      const message = getAuthErrorMessage(e, 'Sign out failed')
       setError(message)
-      throw e
+      throw new Error(message)
     } finally {
       setIsLoading(false)
     }
@@ -131,9 +167,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(updatedProfile)
       return updatedProfile
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Profile update failed'
+      const message = getAuthErrorMessage(e, 'Profile update failed')
       setError(message)
-      throw e
+      throw new Error(message)
     }
   }, [user])
 
@@ -143,11 +179,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value: AuthContextType = {
     user,
+    isInitializing,
     isLoading,
     isAuthenticated: !!user,
     error,
     signIn,
     signUp,
+    signInWithOAuth,
+    requestPasswordReset,
     signOut,
     updateProfile,
     clearError,
@@ -163,4 +202,3 @@ export function useAuth(): AuthContextType {
   }
   return context
 }
-

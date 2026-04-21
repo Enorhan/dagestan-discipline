@@ -1,5 +1,6 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
+import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -10,8 +11,13 @@ import { ToastProvider } from '@/contexts/toast-context'
 
 export const metadata: Metadata = {
   title: 'Dagestan Discipline',
-  description: 'Discipline-first training execution',
-  generator: 'v0.app',
+  description: 'Combat sports training tracker — log, track, and improve your training.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Dagestan Discipline',
+  },
   icons: {
     icon: [
       {
@@ -59,6 +65,9 @@ export default function RootLayout({
           </RuntimeFlagsProvider>
         </ErrorBoundary>
         <Analytics />
+        {process.env.NEXT_PUBLIC_FIGMA_CAPTURE === '1' ? (
+          <Script src="https://mcp.figma.com/mcp/html-to-design/capture.js" strategy="lazyOnload" />
+        ) : null}
       </body>
     </html>
   )

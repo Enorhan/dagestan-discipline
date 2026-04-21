@@ -29,12 +29,11 @@ export const getStripe = (): Promise<Stripe | null> => {
 // STRIPE TYPES
 // ============================================
 
-export type CheckoutMode = 'subscription' | 'payment'
+export type CheckoutMode = 'subscription'
 
 export interface CreateCheckoutParams {
   mode: CheckoutMode
   priceId?: string // For subscriptions with existing Stripe price
-  programId?: string // For one-time premium program purchases
   successUrl: string
   cancelUrl: string
   // Deprecated: user identity is derived from the authenticated session on the server.
@@ -57,6 +56,3 @@ export type SubscriptionStatus =
   | 'trialing'
   | 'unpaid'
   | 'paused'
-
-// Purchase status types
-export type PurchaseStatus = 'pending' | 'completed' | 'failed' | 'refunded'

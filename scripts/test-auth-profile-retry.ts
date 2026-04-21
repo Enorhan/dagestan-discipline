@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import type { UserProfile } from '../src/lib/social-types'
+import type { UserProfile } from '../src/lib/user-profile-types'
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= 'test-anon-key'

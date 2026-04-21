@@ -30,7 +30,7 @@ export const AnimatedCard = forwardRef<HTMLButtonElement, AnimatedCardProps>(
       default: 'bg-card border border-border hover:bg-card/80',
       elevated: 'card-elevated hover:translate-y-[-2px]',
       featured: 'card-elevated border border-primary/20 glow-primary-subtle',
-      glass: 'card-glass border border-white/10'
+      glass: 'card-glass border border-white/[0.08]'
     }
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {

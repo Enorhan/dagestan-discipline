@@ -10,8 +10,8 @@ const entries: AnalyticsEntry[] = [
   { event: 'workout_started', payload: {}, ts: '2026-03-06T10:00:00.000Z' },
   { event: 'session_completed', payload: {}, ts: '2026-03-06T10:45:00.000Z' },
   { event: 'app_opened', payload: {}, ts: '2026-03-07T10:00:00.000Z' },
-  { event: 'onboarding_started', payload: { source: 'schedule' }, ts: '2026-03-07T10:01:00.000Z' },
-  { event: 'onboarding_completed', payload: { source: 'schedule' }, ts: '2026-03-07T10:05:00.000Z' },
+  { event: 'workout_started', payload: { source: 'today' }, ts: '2026-03-07T10:01:00.000Z' },
+  { event: 'session_completed', payload: { source: 'today' }, ts: '2026-03-07T10:05:00.000Z' },
 ]
 
 const summary = buildProductMetricsSummary(entries, Date.parse('2026-03-07T12:00:00.000Z'))
@@ -19,7 +19,6 @@ const summary = buildProductMetricsSummary(entries, Date.parse('2026-03-07T12:00
 assert.equal(summary.bufferedEvents, 9)
 assert.equal(summary.activeDaysLast7, 4)
 assert.equal(summary.activeDaysLast28, 5)
-assert.equal(summary.onboardingCompletionRate, 100)
 assert.equal(summary.workoutCompletionRate, 100)
 assert.equal(summary.checkoutConversionRate, 100)
 assert.equal(summary.refreshFailures, 1)

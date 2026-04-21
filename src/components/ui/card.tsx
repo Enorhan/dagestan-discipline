@@ -1,6 +1,6 @@
 'use client'
 
-import { HTMLAttributes, forwardRef } from 'react'
+import { type HTMLAttributes, forwardRef, type KeyboardEvent, type MouseEvent } from 'react'
 import { haptics } from '@/lib/haptics'
 
 export type CardVariant = 'default' | 'elevated' | 'outlined' | 'ghost'
@@ -12,10 +12,10 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const variantStyles: Record<CardVariant, string> = {
-  default: 'bg-card border border-border/50',
-  elevated: 'bg-card shadow-elevated',
-  outlined: 'bg-transparent border border-border',
-  ghost: 'bg-card/50',
+  default: 'border border-white/[0.08] bg-card/90 shadow-[0_12px_30px_rgba(0,0,0,0.18)]',
+  elevated: 'border border-white/[0.08] bg-[linear-gradient(160deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_40px_rgba(0,0,0,0.26)]',
+  outlined: 'border border-white/12 bg-transparent',
+  ghost: 'border border-white/[0.04] bg-white/[0.03]',
 }
 
 const paddingStyles = {
@@ -26,21 +26,33 @@ const paddingStyles = {
 }
 
 export const Card = forwardRef<HTMLDivElement, CardProps>(
-  ({ variant = 'default', interactive = false, padding = 'md', className = '', onClick, children, ...props }, ref) => {
-    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  ({ variant = 'default', interactive = false, padding = 'md', className = '', onClick, onKeyDown, children, ...props }, ref) => {
+    const handleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (interactive) haptics.light()
       onClick?.(e)
+    }
+
+    const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+      onKeyDown?.(e)
+
+      if (!interactive || e.defaultPrevented) return
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        e.currentTarget.click()
+      }
     }
 
     return (
       <div
         ref={ref}
         onClick={interactive ? handleClick : onClick}
+        onKeyDown={interactive ? handleKeyDown : onKeyDown}
         className={[
-          'rounded-xl',
+          'rounded-2xl transition-[transform,background-color,border-color,box-shadow] duration-150 ease-out',
           variantStyles[variant],
           paddingStyles[padding],
-          interactive ? 'cursor-pointer transition-all duration-normal active:scale-[0.98] hover:border-border' : '',
+          interactive ? 'card-interactive cursor-pointer hover:border-white/15 focus-visible:ring-2 focus-visible:ring-primary/55 focus-visible:ring-offset-0 active:scale-[0.99]' : '',
           className,
         ].filter(Boolean).join(' ')}
         role={interactive ? 'button' : undefined}
@@ -65,8 +77,8 @@ export function CardHeader({ title, subtitle, action, className = '', ...props }
   return (
     <div className={`flex items-start justify-between gap-4 ${className}`} {...props}>
       <div className="flex-1 min-w-0">
-        <h3 className="text-base font-bold text-foreground truncate">{title}</h3>
-        {subtitle && <p className="text-sm text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
+        <h3 className="text-lg font-black text-foreground truncate">{title}</h3>
+        {subtitle && <p className="mt-1 text-sm text-muted-foreground truncate">{subtitle}</p>}
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
     </div>
@@ -78,6 +90,5 @@ export function CardContent({ children, className = '', ...props }: HTMLAttribut
 }
 
 export function CardFooter({ children, className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={`mt-4 pt-3 border-t border-border/50 flex items-center gap-3 ${className}`} {...props}>{children}</div>
+  return <div className={`mt-4 pt-3 border-t border-white/[0.08] flex items-center gap-3 ${className}`} {...props}>{children}</div>
 }
-

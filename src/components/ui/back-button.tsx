@@ -8,7 +8,7 @@ import { ChevronLeft, X } from './icons'
  *
  * Consistent back/close navigation button.
  * Features:
- * - Meets 44pt minimum touch target
+ * - Exceeds 48px minimum touch target
  * - Haptic feedback
  * - Two variants: back (chevron) and close (X)
  * - Accessible with proper ARIA labels
@@ -41,7 +41,7 @@ export function BackButton({
   const ariaLabel = variant === 'close' ? 'Close' : `Go back${label !== 'Back' ? `: ${label}` : ''}`
 
   const variantStyles = styleVariant === 'glass'
-    ? 'text-white/70 hover:text-white bg-white/10 backdrop-blur-md px-3 border border-white/10 active:bg-white/20'
+    ? 'text-white/70 hover:text-white bg-white/10 backdrop-blur-md px-3 border border-white/[0.08] active:bg-white/20'
     : 'text-muted-foreground hover:text-foreground active:bg-card/50'
 
   return (
@@ -49,12 +49,12 @@ export function BackButton({
       onClick={handleClick}
       className={[
         // Touch target
-        'min-h-[44px]',
-        styleVariant === 'default' ? 'min-w-[44px] -ml-2 px-2' : 'px-3 rounded-2xl',
+        'min-h-[48px]',
+        styleVariant === 'default' ? 'min-w-[48px] -ml-2 px-2' : 'px-4 rounded-2xl',
         // Layout
         'flex items-center gap-1',
         // Typography
-        'text-sm font-bold tracking-tight uppercase',
+        'text-base font-bold tracking-tight',
         // Colors & transitions
         variantStyles,
         'transition-all duration-normal',
@@ -88,4 +88,3 @@ export function CloseButton({ onClick, className = '' }: CloseButtonProps) {
     />
   )
 }
-

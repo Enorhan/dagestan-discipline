@@ -8,6 +8,8 @@ out/
 # Local pipeline artifacts / scratch
 .pipeline_artifacts/
 tmp/
+screenshots/runtime/*
+!screenshots/runtime/.gitkeep
 
 # Build outputs
 build/
@@ -18,6 +20,9 @@ ios/App/App/public/
 ios/App/Pods/
 ios/build/
 ios/DerivedData/
+ios/App/build/
+ios/App/build-simulator/
+ios/App/DerivedData/
 *.xcworkspace
 !ios/App/App.xcworkspace
 
@@ -36,6 +41,8 @@ android/.gradle/
 # IDE
 .idea/
 .vscode/
+.cursor/
+.playwright-cli/
 *.swp
 *.swo
 .DS_Store

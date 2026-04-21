@@ -74,7 +74,7 @@ export function ListGroup({ title, children, className = '', ...props }: ListGro
   return (
     <div className={`mb-6 ${className}`} {...props}>
       {title && <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-4">{title}</h3>}
-      <div className="bg-card rounded-xl border border-border/50 overflow-hidden">{children}</div>
+      <div className="bg-card rounded-xl border border-white/[0.08] overflow-hidden">{children}</div>
     </div>
   )
 }

@@ -1,0 +1,2 @@
+-- Placeholder migration file.
+-- This version exists on the remote migration history but the original file is not present locally.

@@ -1,6 +1,6 @@
 // ============================================================================
 // DAGESTAN DISCIPLINE - STRIPE CHECKOUT EDGE FUNCTION
-// Creates Stripe Checkout sessions for subscriptions and one-time payments
+// Creates Stripe Checkout sessions for the monthly Premium subscription.
 // ============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -107,9 +107,8 @@ async function hasOpenSubscription(supabaseAdmin: any, userId: string): Promise<
 }
 
 interface CheckoutRequest {
-  mode: 'subscription' | 'payment'
+  mode: string
   priceId?: string
-  programId?: string
   successUrl: string
   cancelUrl: string
   email?: string
@@ -174,7 +173,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: CheckoutRequest = await req.json()
-    const { mode, priceId, programId, successUrl, cancelUrl, email } = body
+    const { mode, priceId, successUrl, cancelUrl, email } = body
 
     if (!mode || !successUrl || !cancelUrl) {
       throw new Error('Missing required fields: mode, successUrl, cancelUrl')
@@ -185,87 +184,51 @@ Deno.serve(async (req) => {
     const customerEmail = email ?? user.email ?? undefined
     let sessionParams: Stripe.Checkout.SessionCreateParams
 
-    if (mode === 'subscription') {
-      const alreadySubscribed = await hasOpenSubscription(supabaseAdmin, user.id)
-      if (alreadySubscribed) {
-        throw new Error('You already have an active subscription. Use Manage Subscription to update billing.')
-      }
+    if (mode !== 'subscription') {
+      throw new Error('Premium is only available as a 25 SEK/month subscription')
+    }
 
-      const allowedPriceIds = getAllowedSubscriptionPriceIds()
-      const selectedPriceId = priceId
-        ? (allowedPriceIds.has(priceId) ? priceId : null)
-        : (allowedPriceIds.size > 0 ? [...allowedPriceIds][0] : null)
+    const alreadySubscribed = await hasOpenSubscription(supabaseAdmin, user.id)
+    if (alreadySubscribed) {
+      throw new Error('You already have an active subscription. Use Manage Subscription to update billing.')
+    }
 
-      if (priceId && !selectedPriceId) {
-        throw new Error('Invalid subscription price ID')
-      }
+    const allowedPriceIds = getAllowedSubscriptionPriceIds()
+    const selectedPriceId = priceId
+      ? (allowedPriceIds.has(priceId) ? priceId : null)
+      : (allowedPriceIds.size > 0 ? [...allowedPriceIds][0] : null)
 
-      sessionParams = {
-        mode: 'subscription',
-        payment_method_types: ['card'],
-        line_items: selectedPriceId
-          ? [{ price: selectedPriceId, quantity: 1 }]
-          : [{
-              price_data: {
-                currency: 'sek',
-                product_data: {
-                  name: 'Dagestan Discipline Premium',
-                  description: 'Access all premium workout programs and features',
-                },
-                unit_amount: PREMIUM_PRICE_SEK,
-                recurring: { interval: 'month' },
+    if (priceId && !selectedPriceId) {
+      throw new Error('Invalid subscription price ID')
+    }
+
+    sessionParams = {
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: selectedPriceId
+        ? [{ price: selectedPriceId, quantity: 1 }]
+        : [{
+            price_data: {
+              currency: 'sek',
+              product_data: {
+                name: 'Dagestan Discipline Premium',
+                description: 'Access all premium workout programs and features',
               },
-              quantity: 1,
-            }],
-        success_url: validatedSuccessUrl,
-        cancel_url: validatedCancelUrl,
-        customer_email: customerEmail,
-        metadata: {
-          userId: user.id,
-          mode: 'subscription',
-        },
-        subscription_data: {
-          metadata: { userId: user.id },
-        },
-      }
-    } else if (mode === 'payment' && programId) {
-      // Fetch program details from Supabase
-      const { data: program, error: programError } = await supabaseAdmin
-        .from('programs')
-        .select('id, name, description, price_sek')
-        .eq('id', programId)
-        .eq('is_premium', true)
-        .single()
-
-      if (programError || !program) {
-        throw new Error('Program not found')
-      }
-
-      sessionParams = {
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'sek',
-            product_data: {
-              name: program.name,
-              description: program.description || 'Premium workout program',
+              unit_amount: PREMIUM_PRICE_SEK,
+              recurring: { interval: 'month' },
             },
-            unit_amount: (program.price_sek || 99) * 100,
-          },
-          quantity: 1,
-        }],
-        success_url: validatedSuccessUrl,
-        cancel_url: validatedCancelUrl,
-        customer_email: customerEmail,
-        metadata: {
-          userId: user.id,
-          programId,
-          mode: 'payment',
-        },
-      }
-    } else {
-      throw new Error('Invalid checkout mode or missing programId')
+            quantity: 1,
+          }],
+      success_url: validatedSuccessUrl,
+      cancel_url: validatedCancelUrl,
+      customer_email: customerEmail,
+      metadata: {
+        userId: user.id,
+        mode: 'subscription',
+      },
+      subscription_data: {
+        metadata: { userId: user.id },
+      },
     }
 
     const session = await stripe.checkout.sessions.create(sessionParams)

@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useNetworkStatus } from '@/lib/hooks/use-network-status'
 
 interface OfflineBannerProps {
@@ -8,6 +9,15 @@ interface OfflineBannerProps {
 
 export function OfflineBanner({ className = '' }: OfflineBannerProps) {
   const { isOnline, wasOffline } = useNetworkStatus()
+  const [isHydrated, setIsHydrated] = useState(false)
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
+
+  if (!isHydrated) {
+    return null
+  }
 
   // Show nothing if online and wasn't recently offline
   if (isOnline && !wasOffline) {

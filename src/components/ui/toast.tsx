@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect } from 'react'
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { haptics } from '@/lib/haptics'
 import { Button } from './button'
+import { cn } from '@/lib/utils'
 
 export type ToastVariant = 'success' | 'error' | 'warning' | 'info'
 
@@ -12,6 +14,54 @@ interface ToastProps {
   isOpen: boolean
   onClose: () => void
   duration?: number
+  /** Only the top toast should trigger haptic (avoids buzz when several appear). */
+  playHaptic?: boolean
+  /** Only the top item should be exposed to assistive tech as a live region. */
+  announce?: boolean
+}
+
+const variantSurface: Record<ToastVariant, string> = {
+  success: cn(
+    'border-[color:var(--color-success)]/35',
+    'bg-[color:color-mix(in_oklab,var(--color-card-elevated)_88%,var(--color-success-muted))]',
+    'shadow-[0_12px_40px_-12px_rgba(34,197,94,0.35)]',
+  ),
+  error: cn(
+    'border-[color:var(--color-destructive)]/45',
+    'bg-[color:color-mix(in_oklab,var(--color-card-elevated)_82%,rgba(127,29,29,0.55))]',
+    'shadow-[0_12px_40px_-12px_rgba(127,29,29,0.45)]',
+  ),
+  warning: cn(
+    'border-[color:var(--color-warning)]/40',
+    'bg-[color:color-mix(in_oklab,var(--color-card-elevated)_88%,var(--color-warning-muted))]',
+    'shadow-[0_12px_40px_-12px_rgba(234,179,8,0.25)]',
+  ),
+  info: cn(
+    'border-[color:var(--color-info)]/40',
+    'bg-[color:color-mix(in_oklab,var(--color-card-elevated)_88%,var(--color-info-muted))]',
+    'shadow-[0_12px_40px_-12px_rgba(59,130,246,0.22)]',
+  ),
+}
+
+const variantIcon: Record<ToastVariant, string> = {
+  success: 'text-[var(--color-success)]',
+  error: 'text-[var(--color-destructive-foreground)]',
+  warning: 'text-[var(--color-warning)]',
+  info: 'text-[var(--color-info)]',
+}
+
+function ToastIcon({ variant }: { variant: ToastVariant }) {
+  const className = cn('h-5 w-5 shrink-0', variantIcon[variant])
+  switch (variant) {
+    case 'success':
+      return <CheckCircle2 className={className} strokeWidth={2.25} aria-hidden />
+    case 'error':
+      return <XCircle className={className} strokeWidth={2.25} aria-hidden />
+    case 'warning':
+      return <AlertTriangle className={className} strokeWidth={2.25} aria-hidden />
+    default:
+      return <Info className={className} strokeWidth={2.25} aria-hidden />
+  }
 }
 
 export function Toast({
@@ -19,66 +69,61 @@ export function Toast({
   variant = 'info',
   isOpen,
   onClose,
-  duration = 3000
+  duration = 3000,
+  playHaptic = true,
+  announce = true,
 }: ToastProps) {
   useEffect(() => {
     if (!isOpen) return
 
-    // Trigger haptic based on variant
-    if (variant === 'success') {
-      haptics.success()
-    } else if (variant === 'error') {
-      haptics.error()
-    } else if (variant === 'warning') {
-      haptics.warning()
-    } else {
-      haptics.light()
+    if (playHaptic) {
+      if (variant === 'success') {
+        haptics.success()
+      } else if (variant === 'error') {
+        haptics.error()
+      } else if (variant === 'warning') {
+        haptics.warning()
+      } else {
+        haptics.light()
+      }
     }
 
-    // Auto-dismiss after duration
     const timer = setTimeout(() => {
       onClose()
     }, duration)
 
     return () => clearTimeout(timer)
-  }, [isOpen, variant, duration, onClose])
+  }, [isOpen, variant, duration, onClose, playHaptic])
 
   if (!isOpen) return null
 
-  const variantStyles = {
-    success: 'bg-green-600 text-white',
-    error: 'bg-destructive text-destructive-foreground',
-    warning: 'bg-primary text-primary-foreground',
-    info: 'bg-foreground text-background'
-  }
-
-  const iconMap = {
-    success: '✓',
-    error: '✕',
-    warning: '⚠',
-    info: 'ℹ'
-  }
+  const live = announce ? (variant === 'error' ? ('assertive' as const) : ('polite' as const)) : undefined
 
   return (
-    <div className="fixed top-[calc(env(safe-area-inset-top)+16px)] left-1/2 -translate-x-1/2 z-toast px-4 animate-slide-down">
-      <div className={`flex items-center gap-3 px-4 py-3 min-h-[48px] rounded-xl shadow-elevated ${variantStyles[variant]}`}>
-        <span className="text-lg font-bold flex-shrink-0" aria-hidden="true">
-          {iconMap[variant]}
-        </span>
-        <span className="text-sm font-semibold flex-1">
-          {message}
-        </span>
-        <Button
-          onClick={onClose}
-          variant="ghost"
-          size="icon"
-          withHaptic={false}
-          className="min-w-[44px] min-h-[44px] h-11 w-11 text-lg opacity-70 hover:opacity-100 transition-opacity rounded-full active:bg-white/10"
-          aria-label="Close notification"
-        >
-          ×
-        </Button>
-      </div>
+    <div
+      role={variant === 'error' ? 'alert' : 'status'}
+      aria-live={live}
+      aria-atomic="true"
+      {...(!announce ? { 'aria-hidden': true as const } : {})}
+      className={cn(
+        'flex w-full min-h-12 items-center gap-3 rounded-2xl border px-3.5 py-3 backdrop-blur-xl',
+        'text-[15px] font-semibold leading-snug tracking-tight text-foreground',
+        variantSurface[variant],
+      )}
+    >
+      <ToastIcon variant={variant} />
+      <p className="min-w-0 flex-1">{message}</p>
+      <Button
+        type="button"
+        onClick={onClose}
+        variant="ghost"
+        size="icon"
+        withHaptic={false}
+        className="h-11 w-11 shrink-0 rounded-full text-foreground/70 hover:bg-white/10 hover:text-foreground"
+        aria-label="Dismiss notification"
+      >
+        <X className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+      </Button>
     </div>
   )
 }

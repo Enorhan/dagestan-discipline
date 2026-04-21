@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1179" height="2556" viewBox="0 0 1179 2556" fill="none">
+  <rect width="1179" height="2556" fill="url(#bg)"/>
+  <g filter="url(#blurA)" opacity=".9">
+    <circle cx="589" cy="238" r="286" fill="#3D6CFF"/>
+    <circle cx="170" cy="1034" r="248" fill="#1B2B52"/>
+    <circle cx="1028" cy="2108" r="260" fill="#11203C"/>
+  </g>
+  <ellipse cx="589" cy="1410" rx="254" ry="336" fill="#0A1325" fill-opacity=".82"/>
+  <rect x="121" y="1138" width="938" height="812" rx="68" fill="#B9C9F9" fill-opacity=".07" stroke="#88A6FF" stroke-opacity=".24" stroke-width="2"/>
+  <rect x="164" y="1190" width="851" height="324" rx="50" fill="url(#heroSweep)"/>
+  <path d="M124 2212C332 2042 548 1982 772 2030c130 28 256 94 378 198" stroke="#8AACFF" stroke-opacity=".12" stroke-width="5"/>
+  <defs>
+    <linearGradient id="bg" x1="589.5" y1="0" x2="589.5" y2="2556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#061130"/>
+      <stop offset=".52" stop-color="#040B1E"/>
+      <stop offset="1" stop-color="#030814"/>
+    </linearGradient>
+    <linearGradient id="heroSweep" x1="184" y1="1190" x2="987" y2="1518" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E6EEFF" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#E6EEFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="blurA" x="-258" y="-392" width="1788" height="3000" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="110" result="effect1_foregroundBlur_0_1"/>
+    </filter>
+  </defs>
+</svg>

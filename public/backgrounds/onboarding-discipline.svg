@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1179" height="2556" viewBox="0 0 1179 2556" fill="none">
+  <rect width="1179" height="2556" fill="url(#bg)"/>
+  <g filter="url(#blurA)" opacity=".88">
+    <circle cx="609" cy="266" r="286" fill="#2F8BFF"/>
+    <circle cx="1020" cy="1662" r="246" fill="#132A45"/>
+  </g>
+  <rect x="120" y="1024" width="940" height="1160" rx="40" fill="#E8F0FF" fill-opacity=".03"/>
+  <g stroke="#9CC0FF" stroke-opacity=".16" stroke-width="2">
+    <path d="M120 1168h940"/>
+    <path d="M120 1312h940"/>
+    <path d="M120 1456h940"/>
+    <path d="M120 1600h940"/>
+    <path d="M120 1744h940"/>
+    <path d="M120 1888h940"/>
+    <path d="M120 2032h940"/>
+  </g>
+  <defs>
+    <linearGradient id="bg" x1="589.5" y1="0" x2="589.5" y2="2556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#09163A"/>
+      <stop offset=".6" stop-color="#040D24"/>
+      <stop offset="1" stop-color="#030915"/>
+    </linearGradient>
+    <filter id="blurA" x="-120" y="-340" width="1496" height="2350" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0"/>
+      <feGaussianBlur stdDeviation="92"/>
+    </filter>
+  </defs>
+</svg>

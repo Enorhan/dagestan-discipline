@@ -2,11 +2,23 @@ export interface RuntimeFlags {
   billingCheckoutEnabled: boolean
   billingPortalEnabled: boolean
   premiumUpsellEnabled: boolean
+  socialFeedEnabled: boolean
+  socialStoriesEnabled: boolean
+  socialReelsEnabled: boolean
+  socialExploreEnabled: boolean
+  socialCreatorDraftsEnabled: boolean
+  socialSchedulingEnabled: boolean
+  socialModerationEnabled: boolean
+  socialVideoUploadsEnabled: boolean
+  socialFeedRankingV2Enabled: boolean
+  socialTrustSafetyStrictModeEnabled: boolean
+  socialExpandedNotificationsEnabled: boolean
   billingCheckoutDisabledMessage: string
   billingPortalDisabledMessage: string
 }
 
-const STORAGE_KEY = 'dagestaniDiscipline.runtimeFlags'
+// Bump when cached shape/semantics change so stale values (e.g. socialFeedEnabled stuck false) are not reused.
+const STORAGE_KEY = 'dagestaniDiscipline.runtimeFlags.v2'
 const DEFAULT_BILLING_CHECKOUT_DISABLED_MESSAGE = 'Premium upgrades are temporarily unavailable right now. Use Billing Help in Settings if you need purchase or access support.'
 const DEFAULT_BILLING_PORTAL_DISABLED_MESSAGE = 'Subscription management is temporarily unavailable right now. Use Billing Help in Settings for cancellation or billing help.'
 
@@ -35,6 +47,17 @@ export const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {
   billingCheckoutEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_BILLING_CHECKOUT_ENABLED, true),
   billingPortalEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_BILLING_PORTAL_ENABLED, true),
   premiumUpsellEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_PREMIUM_UPSELL_ENABLED, true),
+  socialFeedEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_FEED_ENABLED, false),
+  socialStoriesEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_STORIES_ENABLED, false),
+  socialReelsEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_REELS_ENABLED, false),
+  socialExploreEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_EXPLORE_ENABLED, false),
+  socialCreatorDraftsEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_CREATOR_DRAFTS_ENABLED, false),
+  socialSchedulingEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_SCHEDULING_ENABLED, false),
+  socialModerationEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_MODERATION_ENABLED, false),
+  socialVideoUploadsEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_VIDEO_UPLOADS_ENABLED, false),
+  socialFeedRankingV2Enabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_FEED_RANKING_V2_ENABLED, false),
+  socialTrustSafetyStrictModeEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_TRUST_SAFETY_STRICT_MODE_ENABLED, false),
+  socialExpandedNotificationsEnabled: parseBooleanFlag(process.env.NEXT_PUBLIC_SOCIAL_EXPANDED_NOTIFICATIONS_ENABLED, false),
   billingCheckoutDisabledMessage: trimEnv(process.env.NEXT_PUBLIC_BILLING_CHECKOUT_DISABLED_MESSAGE) ?? DEFAULT_BILLING_CHECKOUT_DISABLED_MESSAGE,
   billingPortalDisabledMessage: trimEnv(process.env.NEXT_PUBLIC_BILLING_PORTAL_DISABLED_MESSAGE) ?? DEFAULT_BILLING_PORTAL_DISABLED_MESSAGE,
 }
@@ -48,6 +71,38 @@ export function resolveRuntimeFlags(input: unknown): RuntimeFlags {
     billingCheckoutEnabled: parseBooleanFlag(candidate.billingCheckoutEnabled, DEFAULT_RUNTIME_FLAGS.billingCheckoutEnabled),
     billingPortalEnabled: parseBooleanFlag(candidate.billingPortalEnabled, DEFAULT_RUNTIME_FLAGS.billingPortalEnabled),
     premiumUpsellEnabled: parseBooleanFlag(candidate.premiumUpsellEnabled, DEFAULT_RUNTIME_FLAGS.premiumUpsellEnabled),
+    socialFeedEnabled: parseBooleanFlag(candidate.socialFeedEnabled, DEFAULT_RUNTIME_FLAGS.socialFeedEnabled),
+    socialStoriesEnabled: parseBooleanFlag(candidate.socialStoriesEnabled, DEFAULT_RUNTIME_FLAGS.socialStoriesEnabled),
+    socialReelsEnabled: parseBooleanFlag(candidate.socialReelsEnabled, DEFAULT_RUNTIME_FLAGS.socialReelsEnabled),
+    socialExploreEnabled: parseBooleanFlag(candidate.socialExploreEnabled, DEFAULT_RUNTIME_FLAGS.socialExploreEnabled),
+    socialCreatorDraftsEnabled: parseBooleanFlag(
+      candidate.socialCreatorDraftsEnabled,
+      DEFAULT_RUNTIME_FLAGS.socialCreatorDraftsEnabled,
+    ),
+    socialSchedulingEnabled: parseBooleanFlag(
+      candidate.socialSchedulingEnabled,
+      DEFAULT_RUNTIME_FLAGS.socialSchedulingEnabled,
+    ),
+    socialModerationEnabled: parseBooleanFlag(
+      candidate.socialModerationEnabled,
+      DEFAULT_RUNTIME_FLAGS.socialModerationEnabled,
+    ),
+    socialVideoUploadsEnabled: parseBooleanFlag(
+      candidate.socialVideoUploadsEnabled,
+      DEFAULT_RUNTIME_FLAGS.socialVideoUploadsEnabled,
+    ),
+    socialFeedRankingV2Enabled: parseBooleanFlag(
+      candidate.socialFeedRankingV2Enabled,
+      DEFAULT_RUNTIME_FLAGS.socialFeedRankingV2Enabled,
+    ),
+    socialTrustSafetyStrictModeEnabled: parseBooleanFlag(
+      candidate.socialTrustSafetyStrictModeEnabled,
+      DEFAULT_RUNTIME_FLAGS.socialTrustSafetyStrictModeEnabled,
+    ),
+    socialExpandedNotificationsEnabled: parseBooleanFlag(
+      candidate.socialExpandedNotificationsEnabled,
+      DEFAULT_RUNTIME_FLAGS.socialExpandedNotificationsEnabled,
+    ),
     billingCheckoutDisabledMessage: sanitizeMessage(
       candidate.billingCheckoutDisabledMessage,
       DEFAULT_RUNTIME_FLAGS.billingCheckoutDisabledMessage

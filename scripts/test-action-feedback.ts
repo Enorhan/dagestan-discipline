@@ -29,7 +29,7 @@ assert.equal(settingsWarning.message, 'Preferences updated on this device, but c
 
 assert.equal(getActivitySaveFeedback(false).message, 'Activity logged.')
 assert.equal(getActivitySyncFallbackFeedback(true).variant, 'warning')
-assert.equal(getWorkoutSaveFeedback(true).message, 'Workout updated.')
+assert.equal(getWorkoutSaveFeedback(true).message, 'Template updated.')
 assert.equal(getProgramDraftSaveFeedback(false).variant, 'error')
 assert.equal(getProgramSessionSaveFeedback().message, 'Session changes saved to your draft.')
 assert.equal(getTodayExerciseSaveFeedback('Armbar chain').message, 'Armbar chain updated for today.')

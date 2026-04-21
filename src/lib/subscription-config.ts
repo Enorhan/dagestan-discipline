@@ -2,7 +2,7 @@ const DEFAULT_FALLBACK_CHECKOUT_REDIRECT_URL = 'https://enorhan.github.io/dagest
 
 export const SUBSCRIPTION_REQUIRED_AFTER_DAYS = 7
 export const SUBSCRIPTION_REQUIRED_AFTER_MS = SUBSCRIPTION_REQUIRED_AFTER_DAYS * 24 * 60 * 60 * 1000
-export const PREMIUM_SUBSCRIPTION_PRICE_LABEL = '25 SEK / month'
+export const PREMIUM_SUBSCRIPTION_PRICE_LABEL = '25 SEK/month'
 
 function trimEnv(value: string | undefined): string | null {
   const trimmed = value?.trim()

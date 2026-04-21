@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1179" height="2556" viewBox="0 0 1179 2556" fill="none">
+  <rect width="1179" height="2556" fill="url(#bg)"/>
+  <g filter="url(#blurA)" opacity=".92">
+    <circle cx="592" cy="210" r="306" fill="#396EFF"/>
+    <circle cx="1002" cy="2034" r="268" fill="#17375A"/>
+    <circle cx="186" cy="1930" r="248" fill="#121F3A"/>
+  </g>
+  <circle cx="590" cy="920" r="180" fill="#08173C" stroke="#4B84FF" stroke-width="8"/>
+  <circle cx="590" cy="920" r="128" fill="#0C1C46" stroke="#9BC0FF" stroke-opacity=".28" stroke-width="3"/>
+  <path d="M128 2218c208-140 419-182 632-126 119 32 232 92 338 178" stroke="#9FBFFF" stroke-opacity=".14" stroke-width="5"/>
+  <defs>
+    <linearGradient id="bg" x1="589.5" y1="0" x2="589.5" y2="2556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07143A"/>
+      <stop offset=".56" stop-color="#040F26"/>
+      <stop offset="1" stop-color="#030A16"/>
+    </linearGradient>
+    <filter id="blurA" x="-198" y="-424" width="1572" height="2786" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0"/>
+      <feGaussianBlur stdDeviation="102"/>
+    </filter>
+  </defs>
+</svg>

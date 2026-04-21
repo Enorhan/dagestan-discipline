@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1179" height="2556" viewBox="0 0 1179 2556" fill="none">
+  <rect width="1179" height="2556" fill="url(#bg)"/>
+  <g filter="url(#blurA)" opacity=".9">
+    <circle cx="594" cy="236" r="270" fill="#2A76FF"/>
+    <circle cx="262" cy="1650" r="284" fill="#142244"/>
+  </g>
+  <g stroke="#8CB5FF" stroke-opacity=".16" stroke-width="6">
+    <path d="M154 1018h872"/>
+    <path d="M154 1180h872"/>
+    <path d="M154 1342h872"/>
+    <path d="M154 1504h872"/>
+  </g>
+  <path d="M144 2122c184-130 370-171 557-123 146 38 281 116 404 232" stroke="#9DB7FF" stroke-opacity=".12" stroke-width="5"/>
+  <defs>
+    <linearGradient id="bg" x1="589.5" y1="0" x2="589.5" y2="2556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#081338"/>
+      <stop offset=".58" stop-color="#040B21"/>
+      <stop offset="1" stop-color="#030914"/>
+    </linearGradient>
+    <filter id="blurA" x="-206" y="-358" width="1428" height="2434" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0"/>
+      <feGaussianBlur stdDeviation="94"/>
+    </filter>
+  </defs>
+</svg>

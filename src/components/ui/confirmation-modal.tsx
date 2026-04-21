@@ -71,7 +71,7 @@ export function ConfirmationModal({
 
   return (
     <div
-      className="fixed inset-0 z-modal flex items-center justify-center p-6"
+      className="fixed inset-0 z-modal flex items-center justify-center p-4 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -84,19 +84,20 @@ export function ConfirmationModal({
       />
 
       {/* Modal content */}
-      <div className="relative z-10 w-full max-w-sm bg-card border border-border/50 rounded-2xl p-6 shadow-elevated animate-scale-in">
-        <h2 id="modal-title" className="text-lg font-bold text-foreground mb-2">
+      <div className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/[0.08] bg-card p-5 shadow-elevated animate-scale-in sm:p-6">
+        <h2 id="modal-title" className="mb-2 text-[1.6rem] font-black tracking-tight text-foreground">
           {title}
         </h2>
-        <p className="text-sm text-muted-foreground mb-6">
+        <p className="mb-6 text-base leading-relaxed text-muted-foreground">
           {message}
         </p>
 
-        <div className="flex gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Button
             variant="secondary"
             onClick={handleCancel}
             fullWidth
+            className="min-w-0"
           >
             {cancelText}
           </Button>
@@ -104,6 +105,7 @@ export function ConfirmationModal({
             variant={confirmVariant}
             onClick={handleConfirm}
             fullWidth
+            className="min-w-0"
           >
             {confirmText}
           </Button>
@@ -112,4 +114,3 @@ export function ConfirmationModal({
     </div>
   )
 }
-

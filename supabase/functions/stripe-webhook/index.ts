@@ -1,6 +1,6 @@
 // ============================================================================
 // DAGESTAN DISCIPLINE - STRIPE WEBHOOK EDGE FUNCTION
-// Canonical payment webhook handler: subscriptions + one-time purchases
+// Canonical payment webhook handler: monthly premium subscriptions.
 // ============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -205,6 +205,9 @@ async function syncProfileFromSubscription(
       stripe_subscription_id: subscription.id,
       subscription_status: getProfileSubscriptionStatus(subscription),
       subscription_period_end: currentPeriodEnd,
+      premium_source: 'stripe',
+      premium_provider_id: subscription.id,
+      premium_updated_at: new Date().toISOString(),
     })
     .eq('id', userId)
 
@@ -249,58 +252,6 @@ async function syncSubscriptionRecord(
   }
 }
 
-async function grantProgramPurchase(
-  userId: string,
-  programId: string,
-  session: Stripe.Checkout.Session
-): Promise<void> {
-  const paymentIntentId =
-    typeof session.payment_intent === 'string'
-      ? session.payment_intent
-      : (session.payment_intent as any)?.id ?? null
-
-  if (paymentIntentId) {
-    const { data: existingPurchase } = await supabaseAdmin
-      .from('purchases')
-      .select('id')
-      .eq('stripe_payment_intent_id', paymentIntentId)
-      .maybeSingle()
-
-    if (!(existingPurchase as any)?.id) {
-      const { error: purchaseError } = await supabaseAdmin
-        .from('purchases')
-        .insert({
-          user_id: userId,
-          program_id: programId,
-          stripe_payment_intent_id: paymentIntentId,
-          amount_sek: Math.max(0, Math.round((session.amount_total ?? 0) / 100)),
-          status: 'completed',
-          purchased_at: new Date().toISOString(),
-        })
-
-      if (purchaseError) {
-        throw new Error(`Failed to create purchase record: ${purchaseError.message}`)
-      }
-    }
-  }
-
-  const { error: grantError } = await supabaseAdmin
-    .from('user_programs')
-    .upsert(
-      {
-        user_id: userId,
-        program_id: programId,
-        is_active: true,
-        purchased_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,program_id' }
-    )
-
-  if (grantError) {
-    throw new Error(`Failed to grant program access: ${grantError.message}`)
-  }
-}
-
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
   const userId = session.metadata?.userId
   if (!userId) {
@@ -310,25 +261,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   const mode = session.metadata?.mode ?? session.mode
 
   if (mode === 'payment') {
-    const programId = session.metadata?.programId
-    if (!programId) {
-      throw new Error(`Checkout ${session.id} payment mode is missing programId`)
-    }
-
-    await grantProgramPurchase(userId, programId, session)
-
-    const customerId = getCustomerId(session.customer)
-    if (customerId) {
-      const { error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .update({ stripe_customer_id: customerId })
-        .eq('id', userId)
-
-      if (profileError) {
-        throw new Error(`Failed to update profile customer ID: ${profileError.message}`)
-      }
-    }
-
+    console.warn(`Ignoring unsupported non-subscription checkout ${session.id}; Premium is subscription-only.`)
     return
   }
 
