@@ -51,6 +51,7 @@ import {
   renderSocialCreativeVideoPosterToBlob,
 } from '@/lib/social-creative-editor'
 import { socialFeedService } from '@/lib/social-feed-service'
+import { supabase } from '@/lib/supabase'
 import type {
   CreateSocialPostResult,
   SocialCreatorDraft,
@@ -676,9 +677,15 @@ export function SocialCreationStudio({
       formData.set('overlayImage', new File([overlayBlob], 'overlay.png', { type: 'image/png' }))
     }
 
+    const { data: { session: renderSession } } = await supabase.auth.getSession()
+    const renderAccessToken = renderSession?.access_token
+    if (!renderAccessToken) {
+      throw new Error('You must be signed in to render media')
+    }
     const response = await fetch('/api/social/creative-render', {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${renderAccessToken}` },
     })
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}))
@@ -763,9 +770,15 @@ export function SocialCreationStudio({
     formData.set('startMs', String(creativeEdit.music.startMs))
     formData.set('volume', String(creativeEdit.music.volume))
 
+    const { data: { session: imageRenderSession } } = await supabase.auth.getSession()
+    const imageRenderAccessToken = imageRenderSession?.access_token
+    if (!imageRenderAccessToken) {
+      throw new Error('You must be signed in to render media')
+    }
     const response = await fetch('/api/social/creative-render', {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${imageRenderAccessToken}` },
     })
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}))

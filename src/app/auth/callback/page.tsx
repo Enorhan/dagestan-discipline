@@ -55,6 +55,8 @@ export default function OAuthCallbackPage() {
   const [payload, setPayload] = useState<{ query: string; fragment: string }>({ query: '', fragment: '' })
 
   useEffect(() => {
+    // Read window.location post-mount to avoid SSR/client hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPayload(extractAuthPayload())
   }, [])
 

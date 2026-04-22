@@ -37,6 +37,12 @@
   - preview/staging web origin
   - native iOS deep-link callback
 
+### `external_google_skip_nonce_check` is intentionally enabled
+
+Supabase auth has `external_google_skip_nonce_check = true` on the DagestanDiscipline project. This is **required** for the native iOS Sign in with Google flow via `@capacitor-community/capacitor-firebase-authentication` / Capawesome plugins: the ID token Google returns to the native SDK does not always include the nonce that Supabase's JS SDK embedded in the original request, so strict verification would fail every native sign-in.
+
+Do not revert this flag without first validating the native Google Sign-In path end-to-end on both simulator and device. If you move to a different native auth library that propagates the nonce correctly, flip it back to `false` and verify the full flow before release.
+
 ## Optional runtime flag variables
 
 - `NEXT_PUBLIC_RUNTIME_FLAGS_URL` - remote JSON document for kill switches that should update without a rebuild
@@ -89,6 +95,19 @@ The optional remote JSON payload currently supports:
 - `NEXT_PUBLIC_MONITORING_WEBHOOK_URL`
 
 If set, the client monitoring helper posts buffered error reports to this public ingest endpoint in addition to Vercel Analytics event tracking.
+
+### Production observability checklist
+
+1. **Pick an ingest endpoint** — Sentry (`/api/{project}/store/`), Highlight, or a self-hosted POST endpoint that accepts the `BufferedErrorReport` JSON shape from `src/lib/monitoring.ts`.
+2. **Set** `NEXT_PUBLIC_MONITORING_WEBHOOK_URL` in Vercel and in `.env.local` for development.
+3. **Verify** one forced error post-deploy by calling `captureException('smoke-test', new Error('hello'))` from the browser console and confirming it lands in the sink.
+4. **Audit trail strategy**: Postgres-level audit is disabled on the Supabase project (`audit_log_disable_postgres = true`) to keep costs predictable. Multi-user audit coverage is provided at the application layer instead:
+   - Stripe payment events — `public.processed_stripe_events` (idempotency + replay log)
+   - App Store notifications — `public.processed_app_store_notifications`
+   - Moderation actions — `public.social_reports` (+ moderator identity on each row)
+   - Account deletions — server-side `supabase/functions/delete-account` logs `[delete-account]` diagnostics via `console.error/warn`, which feed into Supabase function logs.
+
+   Revisit enabling Postgres audit logs if compliance requirements change.
 
 ## CI / GitHub secrets
 

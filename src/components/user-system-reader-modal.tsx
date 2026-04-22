@@ -1,9 +1,8 @@
 'use client'
 
-import { ArrowLeft, BookOpen, Link2, Sparkles } from 'lucide-react'
+import { ArrowLeft, BookOpen, GitFork, Link2, MessageCircle, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { SystemGraphCanvas } from '@/components/system-graph-canvas'
-import { Button } from '@/components/ui/button'
 import { useReducedMotion } from '@/lib/hooks/use-reduced-motion'
 import { useModalFocusTrap } from '@/lib/hooks/use-modal-focus-trap'
 import type { BjjSystem, BjjTechnique } from '@/lib/bjj-types'
@@ -14,16 +13,22 @@ export function UserSystemReaderModal({
   system,
   libraryTechniques,
   isOwner,
+  forkCount,
   onClose,
   onOpenTechnique,
-  onPractice,
+  onDelete,
+  onOpenForkers,
+  onOpenComments,
 }: {
   system: BjjSystem
   libraryTechniques: BjjTechnique[]
   isOwner: boolean
+  forkCount?: number
   onClose: () => void
   onOpenTechnique: (techniqueId: string) => void
-  onPractice?: () => void
+  onDelete?: () => void
+  onOpenForkers?: () => void
+  onOpenComments?: () => void
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const reduceMotion = useReducedMotion()
@@ -98,6 +103,20 @@ export function UserSystemReaderModal({
             <ArrowLeft className="h-5 w-5" />
             System
           </button>
+          {isOwner && onDelete ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined' && !window.confirm(`Delete “${system.title}”?`)) return
+                onDelete()
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-200"
+              aria-label={`Delete ${system.title}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
+          ) : null}
         </header>
 
         <div className="shrink-0 space-y-1">
@@ -107,6 +126,32 @@ export function UserSystemReaderModal({
             {system.nodes.length} steps · {system.edges.length} links
             {system.visibility === 'public' ? ' · Public' : ' · Private'}
           </p>
+          {system.visibility === 'public' && (onOpenForkers || onOpenComments) ? (
+            <div className="!mt-2.5 flex flex-wrap items-center gap-1.5">
+              {onOpenForkers ? (
+                <button
+                  type="button"
+                  onClick={onOpenForkers}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-bold text-white/78 hover:bg-white/[0.08]"
+                  aria-label={typeof forkCount === 'number' ? `View ${forkCount} forks` : 'View forks'}
+                >
+                  <GitFork className="h-3.5 w-3.5" />
+                  <span>{typeof forkCount === 'number' ? `${forkCount} ${forkCount === 1 ? 'fork' : 'forks'}` : 'Forks'}</span>
+                </button>
+              ) : null}
+              {onOpenComments ? (
+                <button
+                  type="button"
+                  onClick={onOpenComments}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-bold text-white/78 hover:bg-white/[0.08]"
+                  aria-label="Open comments"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span>Comments</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
@@ -233,13 +278,6 @@ export function UserSystemReaderModal({
           </div>
         </div>
 
-        {onPractice ? (
-          <div className="mt-3 shrink-0 border-t border-white/10 pt-4">
-            <Button type="button" variant="primary" className="w-full" onClick={onPractice} leftIcon={<Sparkles className="h-4 w-4" />}>
-              Practice this system
-            </Button>
-          </div>
-        ) : null}
       </div>
     </div>
   )

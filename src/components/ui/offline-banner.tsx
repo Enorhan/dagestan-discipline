@@ -1,19 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { useNetworkStatus } from '@/lib/hooks/use-network-status'
 
 interface OfflineBannerProps {
   className?: string
 }
 
+const EMPTY_SUBSCRIBE = () => () => undefined
+
 export function OfflineBanner({ className = '' }: OfflineBannerProps) {
   const { isOnline, wasOffline } = useNetworkStatus()
-  const [isHydrated, setIsHydrated] = useState(false)
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
+  // Suppress render until hydration completes. Server snapshot returns false so the
+  // banner never renders on the server, avoiding mismatch with navigator.onLine.
+  const isHydrated = useSyncExternalStore(EMPTY_SUBSCRIBE, () => true, () => false)
 
   if (!isHydrated) {
     return null

@@ -342,6 +342,7 @@ function mapDiscoverTechnique(row: any): BjjTechnique {
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.updated_at ?? row.created_at ?? new Date().toISOString(),
     ownership: 'discover',
+    viewerHasForked: row.viewer_has_forked == null ? undefined : Boolean(row.viewer_has_forked),
   }
 }
 
@@ -958,6 +959,7 @@ function mapPublicSystemRpcRow(row: any, ownerId: string): BjjSystem {
       to: String(edge?.to ?? ''),
       label: typeof edge?.label === 'string' && edge.label.trim() ? edge.label.trim() : undefined,
     })),
+    viewerHasForked: row.viewer_has_forked == null ? undefined : Boolean(row.viewer_has_forked),
   }
 }
 
@@ -2133,6 +2135,18 @@ export const bjjService = {
     return inviteUrl.toString()
   },
 
+  async resolveProfileByUsername(username: string): Promise<string | null> {
+    const handle = username.trim().replace(/^@/, '')
+    if (!handle) return null
+    const { data, error } = await db.rpc('resolve_public_profile_by_username', { p_username: handle })
+    if (error) {
+      if (isMissingSchemaError(error, 'resolve_public_profile_by_username')) return null
+      throw new Error(error.message)
+    }
+    if (data == null) return null
+    return String(data)
+  },
+
   async uploadProfilePhoto(userId: string, file: File): Promise<string> {
     const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`
     const filePath = `${userId}/${fileName}`
@@ -2202,5 +2216,23 @@ export const bjjService = {
 
   async deleteUserSystem(userId: string, systemId: string): Promise<void> {
     return removeUserSystem(userId, systemId)
+  },
+
+  /**
+   * Permanently delete the authenticated user's account and owned data.
+   * Calls the `delete-account` edge function which purges storage and
+   * invokes auth.admin.deleteUser (cascading to all owned tables).
+   */
+  async deleteAccount(): Promise<void> {
+    const { data, error } = await db.functions.invoke('delete-account', {
+      body: { confirm: 'DELETE' },
+    })
+    if (error) {
+      throw new Error(error.message || 'Account deletion failed')
+    }
+    const payload = data as { success?: boolean; error?: string } | null
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Account deletion failed')
+    }
   },
 }

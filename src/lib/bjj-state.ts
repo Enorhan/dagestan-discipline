@@ -12,7 +12,7 @@ export const BJJ_PROFILE_FLAGS_STORAGE_KEY = `${BJJ_STORAGE_KEY}:profile-flags`
 export const BJJ_UI_PREFS_STORAGE_KEY = `${BJJ_STORAGE_KEY}:ui-prefs`
 
 const BOTTOM_TABS = new Set<BjjPersistedState['selectedBottomTab']>(['sessions', 'social', 'techniques', 'you'])
-const SESSIONS_TABS = new Set<BjjPersistedState['selectedSessionsTab']>(['my-sessions', 'leaderboards'])
+const SESSIONS_TABS = new Set<BjjPersistedState['selectedSessionsTab']>(['my-sessions'])
 const TECHNIQUES_TABS = new Set<BjjPersistedState['selectedTechniquesTab']>(['my-library', 'systems', 'discover'])
 const SOCIAL_HOME_RAILS = new Set<BjjPersistedState['socialHomeRail']>(['for_you', 'following'])
 const SYSTEMS_HUB_FILTERS = new Set<BjjPersistedState['systemsHubFilter']>(['all', 'mine', 'curated', 'community'])

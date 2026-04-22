@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { NextResponse } from 'next/server'
 import { SOCIAL_MUSIC_TRACK_FALLBACKS } from '@/lib/social-creative'
+import { createServerSupabase } from '@/lib/supabase-server'
 import type {
   SocialCreativeAspectPreset,
   SocialCreativeFilterId,
@@ -15,6 +16,58 @@ const OUTPUT_SIZES: Record<SocialCreativeAspectPreset, { width: number; height: 
   '9:16': { width: 1080, height: 1920 },
   '4:5': { width: 1080, height: 1350 },
   '1:1': { width: 1080, height: 1080 },
+}
+
+const MAX_SOURCE_BYTES = 128 * 1024 * 1024
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024
+const MAX_OUTPUT_BYTES = 160 * 1024 * 1024
+const FFMPEG_TIMEOUT_MS = 60_000
+const MAX_GLOBAL_CONCURRENCY = 2
+const RATE_LIMIT_WINDOW_MS = 5 * 60_000
+const RATE_LIMIT_MAX_REQUESTS = 5
+
+let globalInFlight = 0
+const userRequestTimestamps = new Map<string, number[]>()
+
+function getSupabaseOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!raw) return null
+  try {
+    return new URL(raw).origin
+  } catch {
+    return null
+  }
+}
+
+function isAllowedRemoteUrl(rawUrl: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'https:') return false
+  const supabaseOrigin = getSupabaseOrigin()
+  if (supabaseOrigin && parsed.origin === supabaseOrigin) {
+    return parsed.pathname.startsWith('/storage/v1/object/public/')
+  }
+  const host = parsed.hostname.toLowerCase()
+  if (host === 'stream.mux.com' || host.endsWith('.mux.com')) return true
+  return false
+}
+
+function takeRateLimitSlot(userId: string): boolean {
+  const now = Date.now()
+  const timestamps = (userRequestTimestamps.get(userId) ?? []).filter(
+    (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
+  )
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    userRequestTimestamps.set(userId, timestamps)
+    return false
+  }
+  timestamps.push(now)
+  userRequestTimestamps.set(userId, timestamps)
+  return true
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -58,16 +111,44 @@ function buildVideoFilter(filterId: SocialCreativeFilterId, intensity: number): 
   }
 }
 
-async function writeFormFile(file: File, outputPath: string) {
+async function writeFormFile(file: File, outputPath: string, maxBytes: number) {
+  if (file.size > maxBytes) {
+    throw new Error('Uploaded file exceeds the maximum allowed size')
+  }
   await writeFile(outputPath, Buffer.from(await file.arrayBuffer()))
 }
 
-async function downloadToFile(url: string, outputPath: string) {
+async function downloadToFile(url: string, outputPath: string, maxBytes: number) {
+  if (!isAllowedRemoteUrl(url)) {
+    throw new Error('sourceUrl host is not allowed')
+  }
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Unable to download source media (${response.status})`)
   }
-  await writeFile(outputPath, Buffer.from(await response.arrayBuffer()))
+  const declaredLength = Number(response.headers.get('content-length') ?? '')
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error('Remote media exceeds the maximum allowed size')
+  }
+  const body = response.body
+  if (!body) {
+    throw new Error('Remote media response has no body')
+  }
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    if (!value) continue
+    received += value.byteLength
+    if (received > maxBytes) {
+      try { await reader.cancel() } catch {}
+      throw new Error('Remote media exceeds the maximum allowed size')
+    }
+    chunks.push(value)
+  }
+  await writeFile(outputPath, Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))))
 }
 
 async function resolveAudioInput(trackId: string, previewUrl: string | null, outputPath: string) {
@@ -83,7 +164,7 @@ async function resolveAudioInput(trackId: string, previewUrl: string | null, out
     return localPath
   }
 
-  await downloadToFile(candidateUrl, outputPath)
+  await downloadToFile(candidateUrl, outputPath, MAX_AUDIO_BYTES)
   return outputPath
 }
 
@@ -94,14 +175,26 @@ function runFfmpeg(args: string[]) {
       stdio: ['ignore', 'ignore', 'pipe'],
     })
     let errorOutput = ''
+    let timedOut = false
+
+    const timeout = setTimeout(() => {
+      timedOut = true
+      try { child.kill('SIGKILL') } catch {}
+    }, FFMPEG_TIMEOUT_MS)
 
     child.stderr.on('data', (chunk) => {
       errorOutput += chunk.toString()
     })
     child.on('error', (error) => {
+      clearTimeout(timeout)
       rejectPromise(error)
     })
     child.on('close', (code) => {
+      clearTimeout(timeout)
+      if (timedOut) {
+        rejectPromise(new Error('ffmpeg exceeded the maximum render time'))
+        return
+      }
       if (code === 0) {
         resolvePromise()
         return
@@ -109,6 +202,16 @@ function runFfmpeg(args: string[]) {
       rejectPromise(new Error(errorOutput.trim() || `ffmpeg exited with code ${code}`))
     })
   })
+}
+
+async function readOutputWithinLimit(outputPath: string): Promise<Blob> {
+  const info = await stat(outputPath)
+  if (info.size > MAX_OUTPUT_BYTES) {
+    throw new Error('Rendered output exceeds the maximum allowed size')
+  }
+  const buffer = await readFile(outputPath)
+  const body = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+  return new Blob([body], { type: 'video/mp4' })
 }
 
 async function renderImageWithMusic(formData: FormData, workingDirectory: string) {
@@ -130,7 +233,7 @@ async function renderImageWithMusic(formData: FormData, workingDirectory: string
   const audioPath = join(workingDirectory, 'track.m4a')
   const outputPath = join(workingDirectory, 'output.mp4')
 
-  await writeFormFile(sourceImage, sourcePath)
+  await writeFormFile(sourceImage, sourcePath, MAX_SOURCE_BYTES)
   const resolvedAudioPath = await resolveAudioInput(trackId, trackPreviewUrl, audioPath)
 
   await runFfmpeg([
@@ -165,7 +268,7 @@ async function renderImageWithMusic(formData: FormData, workingDirectory: string
     outputPath,
   ])
 
-  const outputBuffer = await readFile(outputPath)
+  const outputBuffer = await readOutputWithinLimit(outputPath)
   return new Response(outputBuffer, {
     status: 200,
     headers: {
@@ -180,15 +283,18 @@ async function renderEditedVideo(formData: FormData, workingDirectory: string) {
   if (!sourceUrl) {
     return NextResponse.json({ error: 'sourceUrl is required' }, { status: 400 })
   }
+  if (!isAllowedRemoteUrl(sourceUrl)) {
+    return NextResponse.json({ error: 'sourceUrl host is not allowed' }, { status: 400 })
+  }
 
   const sourcePath = join(workingDirectory, 'source.mp4')
-  await downloadToFile(sourceUrl, sourcePath)
+  await downloadToFile(sourceUrl, sourcePath, MAX_SOURCE_BYTES)
 
   const overlayImage = formData.get('overlayImage')
   const overlayPath = join(workingDirectory, 'overlay.png')
   const hasOverlay = overlayImage instanceof File && overlayImage.size > 0
   if (hasOverlay) {
-    await writeFormFile(overlayImage, overlayPath)
+    await writeFormFile(overlayImage, overlayPath, MAX_SOURCE_BYTES)
   }
 
   const outputSize = resolveOutputSize(formData.get('aspectPreset'))
@@ -282,7 +388,7 @@ async function renderEditedVideo(formData: FormData, workingDirectory: string) {
 
   await runFfmpeg(args)
 
-  const outputBuffer = await readFile(outputPath)
+  const outputBuffer = await readOutputWithinLimit(outputPath)
   return new Response(outputBuffer, {
     status: 200,
     headers: {
@@ -292,7 +398,38 @@ async function renderEditedVideo(formData: FormData, workingDirectory: string) {
   })
 }
 
+async function verifyRequest(request: Request): Promise<{ userId: string } | NextResponse> {
+  const header = request.headers.get('authorization') ?? request.headers.get('Authorization')
+  const match = header?.match(/^Bearer\s+(.+)$/i)
+  const token = match?.[1]?.trim()
+  if (!token) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  const client = createServerSupabase(token)
+  const { data, error } = await client.auth.getUser(token)
+  if (error || !data?.user) {
+    return NextResponse.json({ error: 'Authentication failed' }, { status: 401 })
+  }
+  return { userId: data.user.id }
+}
+
 export async function POST(request: Request) {
+  const verification = await verifyRequest(request)
+  if (verification instanceof NextResponse) {
+    return verification
+  }
+  const { userId } = verification
+
+  if (!takeRateLimitSlot(userId)) {
+    return NextResponse.json({ error: 'Too many renders, try again soon' }, { status: 429 })
+  }
+
+  if (globalInFlight >= MAX_GLOBAL_CONCURRENCY) {
+    return NextResponse.json({ error: 'Render service is busy, retry shortly' }, { status: 503 })
+  }
+
+  globalInFlight += 1
   let workingDirectory = ''
 
   try {
@@ -311,6 +448,7 @@ export async function POST(request: Request) {
       { status: 500 },
     )
   } finally {
+    globalInFlight = Math.max(0, globalInFlight - 1)
     if (workingDirectory) {
       await rm(workingDirectory, { recursive: true, force: true }).catch(() => {})
     }

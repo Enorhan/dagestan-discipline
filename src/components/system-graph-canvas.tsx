@@ -124,6 +124,8 @@ export function SystemGraphCanvas({
   }, [viewport, onViewportChange])
 
   useEffect(() => {
+    // Reset viewport when the parent disables gestures (e.g. switching graphs).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!viewportGestures) setViewport(DEFAULT_VP)
   }, [viewportGestures])
 

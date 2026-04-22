@@ -1,7 +1,7 @@
 import type { MartialArtsBranchId } from '@/lib/martial-arts-branches'
 
 export type BjjBottomTab = 'sessions' | 'social' | 'techniques' | 'you'
-export type BjjSessionsTab = 'my-sessions' | 'leaderboards'
+export type BjjSessionsTab = 'my-sessions'
 export type BjjTechniquesTab = 'my-library' | 'systems' | 'discover'
 export type BjjSocialSurface = MartialArtsBranchId
 export type BjjSocialHomeRail = 'for_you' | 'following'
@@ -115,6 +115,8 @@ export interface BjjTechnique {
   createdAt: string
   updatedAt: string
   ownership: 'library' | 'discover'
+  /** True when the authenticated viewer has already forked this community technique into their library. */
+  viewerHasForked?: boolean
 }
 
 export interface BjjSystem {
@@ -146,6 +148,8 @@ export interface BjjSystem {
   sortOrder?: number
   /** ISO timestamp from `systems.updated_at` (user-owned rows); used for edit conflict checks. */
   updatedAt?: string
+  /** True when the authenticated viewer has already forked this public system into their library. */
+  viewerHasForked?: boolean
 }
 
 export interface BjjSession {
