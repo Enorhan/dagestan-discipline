@@ -79,6 +79,24 @@ export interface SaveBjjSessionInput {
   photoUrl?: string
 }
 
+export interface UpdateBjjSessionInput {
+  branch?: MartialArtsBranchId
+  date: string
+  time: string
+  location: string
+  type: BjjSessionType
+  submissions: string[]
+  taps: string[]
+  durationMinutes: number
+  notes: string
+  satisfaction: number
+  taggedFriends: string[]
+  visibility: BjjSessionVisibility
+  caption: string
+  linkedTechniqueIds: string[]
+  photoUrl?: string | null
+}
+
 export interface SaveUserSystemInput {
   id?: string
   /** Martial arts branch; must match linked library techniques. */
@@ -1950,6 +1968,76 @@ export const bjjService = {
 
     await syncProgressSignals(userId)
     return mapSession(row, linkedTechniqueIds)
+  },
+
+  async updateSession(userId: string, sessionId: string, input: UpdateBjjSessionInput): Promise<BjjSession> {
+    const branch = normalizeMartialArtsBranchId(input.branch) ?? 'bjj'
+    await assertUserOwnsTechniques(userId, sanitizeArray(input.linkedTechniqueIds), branch)
+
+    const updatePayload: Record<string, unknown> = {
+      branch,
+      title: `${input.type} @ ${input.location || 'Training Room'}`,
+      session_date: input.date,
+      started_at: toStartedAt(input.date, input.time),
+      notes: input.notes,
+      location: input.location,
+      session_type: input.type,
+      duration_minutes: input.durationMinutes,
+      satisfaction: input.satisfaction,
+      visibility: input.visibility,
+      caption: input.caption,
+      tagged_friends: sanitizeArray(input.taggedFriends),
+      submission_names: sanitizeArray(input.submissions),
+      tap_names: sanitizeArray(input.taps),
+    }
+    if (input.photoUrl !== undefined) {
+      updatePayload.photo_url = input.photoUrl
+    }
+
+    const { data: row, error } = await db
+      .from('training_sessions')
+      .update(updatePayload)
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .select('*')
+      .single()
+
+    if (error) throw new Error(error.message)
+
+    const { error: deleteLinksError } = await db
+      .from('training_session_techniques')
+      .delete()
+      .eq('training_session_id', row.id)
+
+    if (deleteLinksError && !isMissingSchemaError(deleteLinksError)) {
+      throw new Error(deleteLinksError.message)
+    }
+
+    const linkedTechniqueIds = sanitizeArray(input.linkedTechniqueIds)
+    if (linkedTechniqueIds.length > 0) {
+      const { error: insertLinksError } = await db
+        .from('training_session_techniques')
+        .insert(linkedTechniqueIds.map((techniqueId) => ({
+          training_session_id: row.id,
+          technique_id: techniqueId,
+        })))
+
+      if (insertLinksError && !isMissingSchemaError(insertLinksError)) {
+        throw new Error(insertLinksError.message)
+      }
+    }
+
+    return mapSession(row, linkedTechniqueIds)
+  },
+
+  async deleteSession(userId: string, sessionId: string): Promise<void> {
+    const { error } = await db
+      .from('training_sessions')
+      .delete()
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+
+    if (error) throw new Error(error.message)
   },
 
   async followUser(userId: string, targetUserId: string): Promise<void> {

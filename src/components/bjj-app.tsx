@@ -172,6 +172,7 @@ import stripeService from '@/lib/stripe-service'
 import { cn } from '@/lib/utils'
 
 type SessionDraft = {
+  branch: MartialArtsBranchId
   date: string
   time: string
   location: string
@@ -242,20 +243,34 @@ type NativeInputLike = Event & {
   isComposing?: boolean
 }
 
-const SESSION_TYPES: BjjSessionType[] = ['Gi', 'No-Gi', 'Open Mat', 'Wrestling', 'Competition']
+const SESSION_TYPES_BY_BRANCH: Record<MartialArtsBranchId, BjjSessionType[]> = {
+  bjj: ['Gi', 'No-Gi', 'Open Mat', 'Drilling', 'Competition'],
+  grappling: ['No-Gi', 'Open Mat', 'Drilling', 'Sparring', 'Competition'],
+  wrestling: ['Wrestling', 'Drilling', 'Sparring', 'Competition'],
+  boxing: ['Sparring', 'Pad Work', 'Bag Work', 'Drilling', 'Competition'],
+  'muay-thai': ['Muay Thai', 'Sparring', 'Pad Work', 'Bag Work', 'Competition'],
+  mma: ['MMA', 'Sparring', 'Drilling', 'Pad Work', 'Competition'],
+  judo: ['Judo', 'Drilling', 'Sparring', 'Competition'],
+  taekwondo: ['Taekwondo', 'Sparring', 'Drilling', 'Competition'],
+}
+const DURATION_PRESETS: number[] = [30, 45, 60, 90, 120]
+const DURATION_MIN = 5
+const DURATION_MAX = 360
 const BELTS: Array<BjjPersistedState['profile']['belt']> = ['white', 'blue', 'purple', 'brown', 'black']
 const VISIBILITY_OPTIONS: BjjSessionVisibility[] = ['everyone', 'friends', 'private']
 
-function createSessionDraft(): SessionDraft {
+function createSessionDraft(branch: MartialArtsBranchId = 'bjj'): SessionDraft {
   const now = new Date()
   const date = now.toISOString().slice(0, 10)
   const time = now.toTimeString().slice(0, 5)
+  const types = SESSION_TYPES_BY_BRANCH[branch] ?? SESSION_TYPES_BY_BRANCH.bjj
 
   return {
+    branch,
     date,
     time,
     location: '',
-    type: 'No-Gi',
+    type: types[0] ?? 'No-Gi',
     submissions: '',
     taps: '',
     durationMinutes: 90,
@@ -265,6 +280,27 @@ function createSessionDraft(): SessionDraft {
     visibility: 'everyone',
     caption: '',
     linkedTechniqueIds: [],
+  }
+}
+
+function sessionToDraft(session: BjjSession): SessionDraft {
+  const types = SESSION_TYPES_BY_BRANCH[session.branch] ?? SESSION_TYPES_BY_BRANCH.bjj
+  const type = types.includes(session.type) ? session.type : (types[0] ?? session.type)
+  return {
+    branch: session.branch,
+    date: session.date,
+    time: session.time,
+    location: session.location,
+    type,
+    submissions: session.submissions.join(', '),
+    taps: session.taps.join(', '),
+    durationMinutes: session.durationMinutes,
+    notes: session.notes,
+    satisfaction: session.satisfaction,
+    taggedFriends: session.taggedFriends.join(', '),
+    visibility: session.visibility,
+    caption: session.caption,
+    linkedTechniqueIds: [...session.linkedTechniqueIds],
   }
 }
 
@@ -344,6 +380,144 @@ function formatPrettyDate(date: string): string {
 
 function formatPrettyDateTime(date: string, time: string): string {
   return `${formatPrettyDate(date)} · ${time}`
+}
+
+type SessionBucketKey = 'today' | 'yesterday' | 'this-week' | 'this-month' | 'older'
+
+const SESSION_BUCKET_LABELS: Record<SessionBucketKey, string> = {
+  'today': 'Today',
+  'yesterday': 'Yesterday',
+  'this-week': 'This week',
+  'this-month': 'This month',
+  'older': 'Earlier',
+}
+
+const SESSION_BUCKET_ORDER: SessionBucketKey[] = ['today', 'yesterday', 'this-week', 'this-month', 'older']
+
+function startOfDay(date: Date): Date {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function bucketForSessionDate(sessionDate: string, now: Date = new Date()): SessionBucketKey {
+  const parsed = new Date(sessionDate)
+  if (Number.isNaN(parsed.getTime())) return 'older'
+  const target = startOfDay(parsed).getTime()
+  const todayStart = startOfDay(now).getTime()
+  const yesterdayStart = todayStart - 24 * 60 * 60 * 1000
+  const dayOfWeek = now.getDay()
+  const weekStart = todayStart - dayOfWeek * 24 * 60 * 60 * 1000
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+  if (target === todayStart) return 'today'
+  if (target === yesterdayStart) return 'yesterday'
+  if (target >= weekStart) return 'this-week'
+  if (target >= monthStart) return 'this-month'
+  return 'older'
+}
+
+function computeWeekStart(now: Date = new Date()): number {
+  const todayStart = startOfDay(now).getTime()
+  return todayStart - now.getDay() * 24 * 60 * 60 * 1000
+}
+
+function computeTrainingStreakDays(sessions: readonly BjjSession[], now: Date = new Date()): number {
+  if (sessions.length === 0) return 0
+  const dayMs = 24 * 60 * 60 * 1000
+  const days = new Set<number>()
+  for (const session of sessions) {
+    const parsed = new Date(session.date)
+    if (Number.isNaN(parsed.getTime())) continue
+    days.add(startOfDay(parsed).getTime())
+  }
+  const todayStart = startOfDay(now).getTime()
+  let cursor = days.has(todayStart) ? todayStart : todayStart - dayMs
+  if (!days.has(cursor)) return 0
+  let streak = 0
+  while (days.has(cursor)) {
+    streak += 1
+    cursor -= dayMs
+  }
+  return streak
+}
+
+const BRANCH_DOT_COLORS: Record<MartialArtsBranchId, string> = {
+  'bjj': '#4d7cff',
+  'grappling': '#7c5cff',
+  'boxing': '#ff8a3d',
+  'wrestling': '#ff5d73',
+  'mma': '#ffba33',
+  'muay-thai': '#ff5d3d',
+  'judo': '#22c55e',
+  'taekwondo': '#06b6d4',
+}
+
+const CALENDAR_WEEKDAY_LABELS: readonly string[] = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
+function formatDayKey(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function parseDayKey(key: string): Date | null {
+  const parts = key.split('-')
+  if (parts.length !== 3) return null
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  const day = Number(parts[2])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  const date = new Date(year, month - 1, day)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getMonthAnchor(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addMonths(anchor: Date, delta: number): Date {
+  return new Date(anchor.getFullYear(), anchor.getMonth() + delta, 1)
+}
+
+function getMonthMatrix(anchor: Date): Date[] {
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+  const startOffset = first.getDay()
+  const cells: Date[] = []
+  for (let i = 0; i < 42; i += 1) {
+    cells.push(new Date(anchor.getFullYear(), anchor.getMonth(), 1 - startOffset + i))
+  }
+  return cells
+}
+
+function formatMonthTitle(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
+
+function formatSelectedDayTitle(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
+function computeStreakDayKeys(sessions: readonly BjjSession[], now: Date = new Date()): Set<string> {
+  const result = new Set<string>()
+  if (sessions.length === 0) return result
+  const dayMs = 24 * 60 * 60 * 1000
+  const keys = new Set<string>()
+  for (const session of sessions) {
+    if (session.date) keys.add(session.date.slice(0, 10))
+  }
+  const todayKey = formatDayKey(now)
+  const yesterdayKey = formatDayKey(new Date(now.getTime() - dayMs))
+  let cursorKey = keys.has(todayKey) ? todayKey : yesterdayKey
+  if (!keys.has(cursorKey)) return result
+  const cursorStart = parseDayKey(cursorKey)
+  if (!cursorStart) return result
+  let cursorMs = cursorStart.getTime()
+  while (keys.has(formatDayKey(new Date(cursorMs)))) {
+    result.add(formatDayKey(new Date(cursorMs)))
+    cursorMs -= dayMs
+  }
+  return result
 }
 
 function toTechniqueColor(category: BjjTechniqueCategory): string {
@@ -1049,6 +1223,17 @@ function BjjAppInner() {
   const [justForkedId, setJustForkedId] = useState<{ kind: 'system' | 'technique'; id: string; forkedAt: number } | null>(null)
   const [sessionPhotoFile, setSessionPhotoFile] = useState<File | null>(null)
   const [sessionPhotoPreview, setSessionPhotoPreview] = useState<string | null>(null)
+  const [sessionPhotoExistingUrl, setSessionPhotoExistingUrl] = useState<string | null>(null)
+  const [savingSession, setSavingSession] = useState(false)
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [sessionDurationMode, setSessionDurationMode] = useState<'preset' | 'custom'>('preset')
+  const [pendingDeletedSession, setPendingDeletedSession] = useState<BjjSession | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [sessionsView, setSessionsView] = useState<'list' | 'calendar'>('list')
+  const [calendarAnchor, setCalendarAnchor] = useState<Date>(() => getMonthAnchor(new Date()))
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null)
+  const sessionClientIdRef = useRef<string>('')
+  const pendingDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [techniqueMediaFiles, setTechniqueMediaFiles] = useState<File[]>([])
   const [techniqueMediaPreviews, setTechniqueMediaPreviews] = useState<string[]>([])
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null)
@@ -1131,6 +1316,15 @@ function BjjAppInner() {
       }
     }
   }, [socialComposerPreviewUrl])
+
+  useEffect(() => {
+    return () => {
+      if (pendingDeleteTimerRef.current) {
+        clearTimeout(pendingDeleteTimerRef.current)
+        pendingDeleteTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1844,8 +2038,10 @@ function BjjAppInner() {
 
   const filteredSessions = useMemo(() => {
     const query = deferredSessionSearch.trim().toLowerCase()
+    const hiddenId = pendingDeletedSession?.id
     return (appState?.sessions ?? [])
       .filter((session) => {
+        if (hiddenId && session.id === hiddenId) return false
         if (!query) return true
         return (
           session.location.toLowerCase().includes(query) ||
@@ -1855,7 +2051,96 @@ function BjjAppInner() {
         )
       })
       .sort((left, right) => Date.parse(`${right.date}T${right.time}`) - Date.parse(`${left.date}T${left.time}`))
-  }, [appState?.sessions, deferredSessionSearch])
+  }, [appState?.sessions, deferredSessionSearch, pendingDeletedSession?.id])
+
+  const groupedSessions = useMemo(() => {
+    const now = new Date()
+    const buckets = new Map<SessionBucketKey, BjjSession[]>()
+    for (const session of filteredSessions) {
+      const key = bucketForSessionDate(session.date, now)
+      const list = buckets.get(key)
+      if (list) list.push(session)
+      else buckets.set(key, [session])
+    }
+    return SESSION_BUCKET_ORDER
+      .map((key) => ({ key, label: SESSION_BUCKET_LABELS[key], sessions: buckets.get(key) ?? [] }))
+      .filter((group) => group.sessions.length > 0)
+  }, [filteredSessions])
+
+  const sessionStats = useMemo(() => {
+    const all = appState?.sessions ?? []
+    const now = new Date()
+    const weekStart = computeWeekStart(now)
+    let weekCount = 0
+    let weekMinutes = 0
+    for (const session of all) {
+      const parsed = new Date(session.date)
+      if (Number.isNaN(parsed.getTime())) continue
+      if (startOfDay(parsed).getTime() >= weekStart) {
+        weekCount += 1
+        weekMinutes += session.durationMinutes
+      }
+    }
+    const streak = computeTrainingStreakDays(all, now)
+    return { weekCount, weekMinutes, streak }
+  }, [appState?.sessions])
+
+  const selectedSession = useMemo(
+    () => (selectedSessionId ? (appState?.sessions ?? []).find((entry) => entry.id === selectedSessionId) ?? null : null),
+    [selectedSessionId, appState?.sessions],
+  )
+
+  const sessionsByDay = useMemo(() => {
+    const map = new Map<string, BjjSession[]>()
+    const hiddenId = pendingDeletedSession?.id
+    for (const session of appState?.sessions ?? []) {
+      if (hiddenId && session.id === hiddenId) continue
+      if (!session.date) continue
+      const key = session.date.slice(0, 10)
+      const list = map.get(key)
+      if (list) list.push(session)
+      else map.set(key, [session])
+    }
+    for (const list of map.values()) {
+      list.sort((left, right) => Date.parse(`${right.date}T${right.time}`) - Date.parse(`${left.date}T${left.time}`))
+    }
+    return map
+  }, [appState?.sessions, pendingDeletedSession?.id])
+
+  const streakDayKeys = useMemo(
+    () => computeStreakDayKeys(appState?.sessions ?? []),
+    [appState?.sessions],
+  )
+
+  const calendarMatrix = useMemo(() => getMonthMatrix(calendarAnchor), [calendarAnchor])
+
+  const calendarMonthStats = useMemo(() => {
+    let count = 0
+    let minutes = 0
+    const year = calendarAnchor.getFullYear()
+    const month = calendarAnchor.getMonth()
+    for (const session of appState?.sessions ?? []) {
+      const parsed = new Date(session.date)
+      if (Number.isNaN(parsed.getTime())) continue
+      if (parsed.getFullYear() === year && parsed.getMonth() === month) {
+        count += 1
+        minutes += session.durationMinutes
+      }
+    }
+    return { count, minutes }
+  }, [appState?.sessions, calendarAnchor])
+
+  const selectedDaySessions = useMemo(
+    () => (selectedCalendarDay ? sessionsByDay.get(selectedCalendarDay) ?? [] : []),
+    [selectedCalendarDay, sessionsByDay],
+  )
+
+  const isViewingCurrentMonth = useMemo(() => {
+    const now = new Date()
+    return calendarAnchor.getFullYear() === now.getFullYear() && calendarAnchor.getMonth() === now.getMonth()
+  }, [calendarAnchor])
+
+  const todayDayKey = useMemo(() => formatDayKey(new Date()), [])
 
   const filteredExplorePosts = useMemo(() => {
     const query = deferredSocialSearch.trim().toLowerCase()
@@ -3213,7 +3498,9 @@ function BjjAppInner() {
   }
 
   const handleSaveSession = async () => {
+    if (savingSession) return
     if (!sessionDraft.location.trim()) {
+      void haptics.warning()
       showError(toastCopy.locationRequired)
       return
     }
@@ -3223,40 +3510,193 @@ function BjjAppInner() {
       return
     }
 
+    setSavingSession(true)
     try {
-      const photoUrl = sessionPhotoFile
+      const uploadedPhotoUrl = sessionPhotoFile
         ? await bjjService.uploadSessionPhoto(user.id, sessionPhotoFile)
         : undefined
 
-      await bjjService.saveSession(user.id, {
-        clientId: `session-${Date.now()}`,
-        branch: branchFromPrimaryDiscipline(appState?.profile.primaryDiscipline),
-        date: sessionDraft.date,
-        time: sessionDraft.time,
-        location: sessionDraft.location.trim(),
-        type: sessionDraft.type,
-        submissions: sessionDraft.submissions.split(',').map((entry) => entry.trim()).filter(Boolean),
-        taps: sessionDraft.taps.split(',').map((entry) => entry.trim()).filter(Boolean),
-        durationMinutes: sessionDraft.durationMinutes,
-        notes: sessionDraft.notes.trim(),
-        satisfaction: sessionDraft.satisfaction,
-        taggedFriends: sessionDraft.taggedFriends.split(',').map((entry) => entry.trim()).filter(Boolean),
-        visibility: sessionDraft.visibility,
-        caption: sessionDraft.caption.trim(),
-        linkedTechniqueIds: sessionDraft.linkedTechniqueIds,
-        photoUrl,
-      })
+      const submissions = sessionDraft.submissions.split(',').map((entry) => entry.trim()).filter(Boolean)
+      const taps = sessionDraft.taps.split(',').map((entry) => entry.trim()).filter(Boolean)
+      const taggedFriends = sessionDraft.taggedFriends.split(',').map((entry) => entry.trim()).filter(Boolean)
 
-      setSessionDraft(createSessionDraft())
+      if (editingSessionId) {
+        const nextPhotoUrl = uploadedPhotoUrl !== undefined
+          ? uploadedPhotoUrl
+          : sessionPhotoExistingUrl
+        await bjjService.updateSession(user.id, editingSessionId, {
+          branch: sessionDraft.branch,
+          date: sessionDraft.date,
+          time: sessionDraft.time,
+          location: sessionDraft.location.trim(),
+          type: sessionDraft.type,
+          submissions,
+          taps,
+          durationMinutes: sessionDraft.durationMinutes,
+          notes: sessionDraft.notes.trim(),
+          satisfaction: sessionDraft.satisfaction,
+          taggedFriends,
+          visibility: sessionDraft.visibility,
+          caption: sessionDraft.caption.trim(),
+          linkedTechniqueIds: sessionDraft.linkedTechniqueIds,
+          photoUrl: nextPhotoUrl ?? null,
+        })
+      } else {
+        if (!sessionClientIdRef.current) {
+          sessionClientIdRef.current = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? `session-${crypto.randomUUID()}`
+            : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        }
+        await bjjService.saveSession(user.id, {
+          clientId: sessionClientIdRef.current,
+          branch: sessionDraft.branch,
+          date: sessionDraft.date,
+          time: sessionDraft.time,
+          location: sessionDraft.location.trim(),
+          type: sessionDraft.type,
+          submissions,
+          taps,
+          durationMinutes: sessionDraft.durationMinutes,
+          notes: sessionDraft.notes.trim(),
+          satisfaction: sessionDraft.satisfaction,
+          taggedFriends,
+          visibility: sessionDraft.visibility,
+          caption: sessionDraft.caption.trim(),
+          linkedTechniqueIds: sessionDraft.linkedTechniqueIds,
+          photoUrl: uploadedPhotoUrl,
+        })
+      }
+
+      void haptics.success()
+      const defaultBranch = branchFromPrimaryDiscipline(appState?.profile.primaryDiscipline)
+      setSessionDraft(createSessionDraft(defaultBranch))
       setSessionPhotoFile(null)
       setSessionPhotoPreview(null)
+      setSessionPhotoExistingUrl(null)
+      setSessionDurationMode('preset')
+      const wasEditing = Boolean(editingSessionId)
+      setEditingSessionId(null)
+      sessionClientIdRef.current = ''
       setActiveSurface(null)
       setIsSpeedDialOpen(false)
       refreshShellSnapshot()
-      showSuccess('Session saved')
+      showSuccess(wasEditing ? 'Session updated' : 'Session saved')
     } catch (error) {
+      void haptics.error()
       showError(error instanceof Error ? error.message : 'Unable to save session')
+    } finally {
+      setSavingSession(false)
     }
+  }
+
+  const openCreateSession = (dateOverride?: string) => {
+    const defaultBranch = branchFromPrimaryDiscipline(appState?.profile.primaryDiscipline)
+    const draft = createSessionDraft(defaultBranch)
+    setSessionDraft(dateOverride ? { ...draft, date: dateOverride } : draft)
+    setSessionPhotoFile(null)
+    setSessionPhotoPreview(null)
+    setSessionPhotoExistingUrl(null)
+    setSessionDurationMode(DURATION_PRESETS.includes(90) ? 'preset' : 'custom')
+    setEditingSessionId(null)
+    sessionClientIdRef.current = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? `session-${crypto.randomUUID()}`
+      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    setActiveSurface('new-session')
+  }
+
+  const handlePrevMonth = () => {
+    void haptics.light()
+    setCalendarAnchor((anchor) => addMonths(anchor, -1))
+    setSelectedCalendarDay(null)
+  }
+
+  const handleNextMonth = () => {
+    void haptics.light()
+    setCalendarAnchor((anchor) => addMonths(anchor, 1))
+    setSelectedCalendarDay(null)
+  }
+
+  const handleGoToTodayMonth = () => {
+    void haptics.light()
+    setCalendarAnchor(getMonthAnchor(new Date()))
+    setSelectedCalendarDay(formatDayKey(new Date()))
+  }
+
+  const handleSelectCalendarDay = (dayKey: string) => {
+    void haptics.light()
+    setSelectedCalendarDay((current) => (current === dayKey ? null : dayKey))
+  }
+
+  const openEditSession = (session: BjjSession) => {
+    setSessionDraft(sessionToDraft(session))
+    setSessionPhotoFile(null)
+    setSessionPhotoPreview(session.photo ?? null)
+    setSessionPhotoExistingUrl(session.photo ?? null)
+    setSessionDurationMode(DURATION_PRESETS.includes(session.durationMinutes) ? 'preset' : 'custom')
+    setEditingSessionId(session.id)
+    sessionClientIdRef.current = ''
+    setActiveSurface('new-session')
+  }
+
+  const openSessionDetail = (sessionId: string) => {
+    setSelectedSessionId(sessionId)
+    setActiveSurface('session-detail')
+  }
+
+  const handleDuplicateSession = (session: BjjSession) => {
+    const now = new Date()
+    const today = now.toISOString().slice(0, 10)
+    const time = now.toTimeString().slice(0, 5)
+    const base = sessionToDraft(session)
+    setSessionDraft({
+      ...base,
+      date: today,
+      time,
+      submissions: '',
+      taps: '',
+      caption: '',
+    })
+    setSessionPhotoFile(null)
+    setSessionPhotoPreview(null)
+    setSessionPhotoExistingUrl(null)
+    setSessionDurationMode(DURATION_PRESETS.includes(base.durationMinutes) ? 'preset' : 'custom')
+    setEditingSessionId(null)
+    sessionClientIdRef.current = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? `session-${crypto.randomUUID()}`
+      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    setActiveSurface('new-session')
+  }
+
+  const handleRequestDeleteSession = (session: BjjSession) => {
+    if (pendingDeleteTimerRef.current) {
+      clearTimeout(pendingDeleteTimerRef.current)
+      pendingDeleteTimerRef.current = null
+    }
+    void haptics.warning()
+    setPendingDeletedSession(session)
+    pendingDeleteTimerRef.current = setTimeout(() => {
+      pendingDeleteTimerRef.current = null
+      void (async () => {
+        try {
+          if (!user) return
+          await bjjService.deleteSession(user.id, session.id)
+          refreshShellSnapshot()
+        } catch (error) {
+          showError(error instanceof Error ? error.message : 'Unable to delete session')
+        } finally {
+          setPendingDeletedSession((current) => (current?.id === session.id ? null : current))
+        }
+      })()
+    }, 5000)
+  }
+
+  const handleUndoDeleteSession = () => {
+    if (pendingDeleteTimerRef.current) {
+      clearTimeout(pendingDeleteTimerRef.current)
+      pendingDeleteTimerRef.current = null
+    }
+    void haptics.light()
+    setPendingDeletedSession(null)
   }
 
   const handleSaveProfile = async () => {
@@ -4724,50 +5164,318 @@ function BjjAppInner() {
         {selectedBottomTab === 'sessions' && (
           <div className="min-h-0 flex-1 overflow-y-auto pb-4">
             <SearchField inputRef={sessionSearchInputRef} value={sessionSearchInput} onChange={(event) => setSessionSearchInput(event.target.value)} placeholder="Search sessions" />
-            <div className="mt-2.5 flex items-center justify-between px-1 text-sm font-semibold text-white/70">
-              <span>{filteredSessions.length} sessions found</span>
-              <span>New</span>
-            </div>
-            {filteredSessions.length === 0 ? (
-              <EmptyState title="No Training Sessions Yet" body="Use the + button to create your first training session and start tracking your BJJ progress." />
+            {(appState?.sessions ?? []).length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">This week</p>
+                  <p className="mt-1 text-lg font-black text-white">{sessionStats.weekCount}</p>
+                  <p className="text-[11px] font-semibold text-white/50">sessions</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">Mat time</p>
+                  <p className="mt-1 text-lg font-black text-white">{sessionStats.weekMinutes}</p>
+                  <p className="text-[11px] font-semibold text-white/50">min this wk</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">Streak</p>
+                  <p className="mt-1 text-lg font-black text-white">{sessionStats.streak}</p>
+                  <p className="text-[11px] font-semibold text-white/50">{sessionStats.streak === 1 ? 'day' : 'days'}</p>
+                </div>
+              </div>
+            )}
+            {(appState?.sessions ?? []).length > 0 && (
+              <div
+                role="tablist"
+                aria-label="Sessions view"
+                className="mt-3 inline-flex w-full rounded-full border border-white/10 bg-white/6 p-1"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sessionsView === 'list'}
+                  onClick={() => {
+                    if (sessionsView !== 'list') void haptics.light()
+                    setSessionsView('list')
+                  }}
+                  className={cn(
+                    'flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition',
+                    sessionsView === 'list' ? 'bg-white text-black' : 'text-white/65 hover:text-white/85',
+                  )}
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sessionsView === 'calendar'}
+                  onClick={() => {
+                    if (sessionsView !== 'calendar') void haptics.light()
+                    setSessionsView('calendar')
+                  }}
+                  className={cn(
+                    'flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition',
+                    sessionsView === 'calendar' ? 'bg-white text-black' : 'text-white/65 hover:text-white/85',
+                  )}
+                >
+                  Calendar
+                </button>
+              </div>
+            )}
+            {sessionsView === 'list' && (
+              <div className="mt-2.5 flex items-center justify-between px-1 text-sm font-semibold text-white/70">
+                <span>{filteredSessions.length} sessions found</span>
+                <span>New</span>
+              </div>
+            )}
+            {sessionsView === 'list' && (filteredSessions.length === 0 ? (
+              <EmptyState
+                title={(appState?.sessions ?? []).length === 0 ? 'Start tracking your training' : 'No matches'}
+                body={(appState?.sessions ?? []).length === 0
+                  ? 'Log your first session to see your rolls, rounds, and progress build up over time.'
+                  : 'Try a different search, or clear the query to see every session you have logged.'}
+                actionLabel={(appState?.sessions ?? []).length === 0 ? 'Log a session' : undefined}
+                onAction={(appState?.sessions ?? []).length === 0 ? () => openCreateSession() : undefined}
+              />
             ) : (
-              <div className={cn(shellSubsectionSpacingClass, 'space-y-3')}>
-                {filteredSessions.map((session) => (
-                  <ShellCard key={session.id} className={shellCompactCardPaddingClass}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className={cn(shellCardTitleClass, 'font-bold')}>{session.type} @ {session.location}</p>
-                        <p className="mt-1 text-sm text-white/40">{formatPrettyDateTime(session.date, session.time)}</p>
-                      </div>
-                      <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/55">
-                        {session.durationMinutes} min
-                      </span>
+              <div className={cn(shellSubsectionSpacingClass, 'space-y-5')}>
+                {groupedSessions.map((group) => (
+                  <div key={group.key} className="space-y-3">
+                    <div className="flex items-center gap-3 px-1">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">{group.label}</span>
+                      <span className="h-px flex-1 bg-white/8" />
+                      <span className="text-[11px] font-semibold text-white/35">{group.sessions.length}</span>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm font-semibold">
-                      <div className="rounded-[18px] bg-white/6 p-3">
-                        <p className="text-white/45">Submissions</p>
-                        <p className="mt-1 text-lg">{session.submissions.length}</p>
-                      </div>
-                      <div className="rounded-[18px] bg-white/6 p-3">
-                        <p className="text-white/45">Taps</p>
-                        <p className="mt-1 text-lg">{session.taps.length}</p>
-                      </div>
+                    <div className="space-y-3">
+                      {group.sessions.map((session) => (
+                        <ShellCard key={session.id} className={cn(shellCompactCardPaddingClass, 'relative')}>
+                          <button
+                            type="button"
+                            aria-label={`Open ${session.type} session at ${session.location}`}
+                            onClick={() => {
+                              void haptics.light()
+                              openSessionDetail(session.id)
+                            }}
+                            className="absolute inset-0 rounded-[inherit]"
+                          />
+                          <div className="pointer-events-none relative flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className={cn(shellCardTitleClass, 'font-bold')}>{session.type} @ {session.location}</p>
+                              <p className="mt-1 text-sm text-white/40">{formatPrettyDateTime(session.date, session.time)}</p>
+                            </div>
+                            <div className="pointer-events-auto flex shrink-0 items-center gap-2">
+                              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/55">
+                                {session.durationMinutes} min
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void haptics.light()
+                                  openEditSession(session)
+                                }}
+                                aria-label={`Edit session at ${session.location}`}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 transition hover:bg-white/10"
+                              >
+                                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleRequestDeleteSession(session)
+                                }}
+                                aria-label={`Delete session at ${session.location}`}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 transition hover:bg-red-500/15 hover:text-red-200"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="pointer-events-none relative mt-4 grid grid-cols-2 gap-3 text-sm font-semibold">
+                            <div className="rounded-[18px] bg-white/6 p-3">
+                              <p className="text-white/45">Submissions</p>
+                              <p className="mt-1 text-lg">{session.submissions.length}</p>
+                            </div>
+                            <div className="rounded-[18px] bg-white/6 p-3">
+                              <p className="text-white/45">Taps</p>
+                              <p className="mt-1 text-lg">{session.taps.length}</p>
+                            </div>
+                          </div>
+                          {session.linkedTechniqueIds.length > 0 && (
+                            <div className="pointer-events-none relative mt-4 flex flex-wrap gap-2">
+                              {session.linkedTechniqueIds.map((id) => {
+                                const technique = libraryTechniques.find((entry) => entry.id === id)
+                                if (!technique) return null
+                                return (
+                                  <span key={id} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
+                                    {technique.title}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </ShellCard>
+                      ))}
                     </div>
-                    {session.linkedTechniqueIds.length > 0 && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {session.linkedTechniqueIds.map((id) => {
-                          const technique = libraryTechniques.find((entry) => entry.id === id)
-                          if (!technique) return null
-                          return (
-                            <span key={id} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
-                              {technique.title}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </ShellCard>
+                  </div>
                 ))}
+              </div>
+            ))}
+            {sessionsView === 'calendar' && (
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    aria-label="Previous month"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/75 transition hover:bg-white/10"
+                  >
+                    <ChevronLeft className="h-4 w-4" aria-hidden />
+                  </button>
+                  <div className="flex min-w-0 flex-col items-center">
+                    <p className="text-[15px] font-black leading-tight text-white">{formatMonthTitle(calendarAnchor)}</p>
+                    <p className="mt-0.5 text-[11px] font-semibold text-white/45">
+                      {calendarMonthStats.count} {calendarMonthStats.count === 1 ? 'session' : 'sessions'} · {calendarMonthStats.minutes} min
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    aria-label="Next month"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/75 transition hover:bg-white/10"
+                  >
+                    <ChevronRight className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+                {!isViewingCurrentMonth && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={handleGoToTodayMonth}
+                      className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-bold text-white/85 hover:bg-white/12"
+                    >
+                      Jump to today
+                    </button>
+                  </div>
+                )}
+                <div className="grid grid-cols-7 gap-1 px-0.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+                  {CALENDAR_WEEKDAY_LABELS.map((label, index) => (
+                    <span key={`${label}-${index}`}>{label}</span>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarMatrix.map((cellDate) => {
+                    const cellKey = formatDayKey(cellDate)
+                    const inMonth = cellDate.getMonth() === calendarAnchor.getMonth()
+                    const isToday = cellKey === todayDayKey
+                    const isSelected = cellKey === selectedCalendarDay
+                    const daySessions = sessionsByDay.get(cellKey) ?? []
+                    const hasSessions = daySessions.length > 0
+                    const onStreak = streakDayKeys.has(cellKey)
+                    const dotColors = hasSessions
+                      ? Array.from(new Set(daySessions.map((s) => BRANCH_DOT_COLORS[s.branch] ?? '#4d7cff'))).slice(0, 3)
+                      : []
+                    return (
+                      <button
+                        key={cellKey}
+                        type="button"
+                        onClick={() => handleSelectCalendarDay(cellKey)}
+                        aria-label={`${cellDate.toDateString()}${hasSessions ? `, ${daySessions.length} ${daySessions.length === 1 ? 'session' : 'sessions'}` : ''}`}
+                        aria-pressed={isSelected}
+                        className={cn(
+                          'relative flex aspect-square flex-col items-center justify-center rounded-xl border text-[13px] font-semibold transition',
+                          inMonth ? 'text-white/85' : 'text-white/25',
+                          isSelected
+                            ? 'border-white bg-white text-black shadow-[0_0_0_2px_rgba(255,255,255,0.12)]'
+                            : isToday
+                              ? 'border-[#4d7cff]/50 bg-[#4d7cff]/10'
+                              : onStreak
+                                ? 'border-[#ffba33]/30 bg-[#ffba33]/6'
+                                : 'border-white/6 bg-white/4 hover:bg-white/8',
+                        )}
+                      >
+                        <span className={cn('leading-none', isSelected && 'font-black')}>{cellDate.getDate()}</span>
+                        {dotColors.length > 0 && (
+                          <span className="absolute bottom-1.5 flex items-center gap-0.5">
+                            {dotColors.map((color, index) => (
+                              <span
+                                key={`${cellKey}-dot-${index}`}
+                                className="h-1 w-1 rounded-full"
+                                style={{ backgroundColor: isSelected ? '#000' : color }}
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-3 px-1 text-[10px] font-semibold text-white/45">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#4d7cff]" /> Trained
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm border border-[#ffba33]/50 bg-[#ffba33]/10" /> Current streak
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm border border-[#4d7cff]/50 bg-[#4d7cff]/10" /> Today
+                  </span>
+                </div>
+                {selectedCalendarDay ? (() => {
+                  const dayDate = parseDayKey(selectedCalendarDay)
+                  if (!dayDate) return null
+                  return (
+                    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-[15px] font-black text-white">{formatSelectedDayTitle(dayDate)}</p>
+                          <p className="mt-0.5 text-[11px] font-semibold text-white/45">
+                            {selectedDaySessions.length === 0
+                              ? 'No sessions logged'
+                              : `${selectedDaySessions.length} ${selectedDaySessions.length === 1 ? 'session' : 'sessions'}`}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openCreateSession(selectedCalendarDay)}
+                          className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-black hover:bg-white/90"
+                        >
+                          Log session
+                        </button>
+                      </div>
+                      {selectedDaySessions.length > 0 && (
+                        <div className="space-y-2">
+                          {selectedDaySessions.map((session) => (
+                            <button
+                              key={session.id}
+                              type="button"
+                              onClick={() => {
+                                void haptics.light()
+                                openSessionDetail(session.id)
+                              }}
+                              className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/6 px-3 py-2.5 text-left transition hover:bg-white/10"
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className="h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: BRANCH_DOT_COLORS[session.branch] ?? '#4d7cff' }}
+                                  aria-hidden
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-bold text-white">{session.type} @ {session.location || 'Training'}</span>
+                                  <span className="block text-[11px] font-semibold text-white/45">{session.time} · {session.durationMinutes} min</span>
+                                </span>
+                              </span>
+                              <ChevronRight className="h-4 w-4 shrink-0 text-white/35" aria-hidden />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })() : (
+                  <p className="px-1 text-[12px] font-semibold text-white/45">Tap any day to see sessions or log a new one.</p>
+                )}
               </div>
             )}
           </div>
@@ -5778,6 +6486,25 @@ function BjjAppInner() {
           </div>
         </nav>
 
+        {selectedBottomTab === 'sessions' && pendingDeletedSession && (
+          <div className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+176px)] left-1/2 z-40 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 px-2">
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#101520]/95 px-4 py-3 text-sm font-semibold text-white shadow-xl backdrop-blur"
+            >
+              <span className="truncate">Session deleted</span>
+              <button
+                type="button"
+                onClick={handleUndoDeleteSession}
+                className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-white"
+              >
+                Undo
+              </button>
+            </div>
+          </div>
+        )}
+
         {(selectedBottomTab === 'sessions'
           || (selectedBottomTab === 'techniques' && (selectedTechniquesTab === 'my-library' || selectedTechniquesTab === 'discover'))) && (
           <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+106px)] left-1/2 z-30 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 px-2">
@@ -5787,11 +6514,9 @@ function BjjAppInner() {
                   <button
                     type="button"
                     onClick={() => {
-                      setSessionDraft(createSessionDraft())
-                      setSessionPhotoFile(null)
-                      setSessionPhotoPreview(null)
-                      setActiveSurface('new-session')
+                      void haptics.light()
                       setIsSpeedDialOpen(false)
+                      openCreateSession()
                     }}
                     className="inline-flex items-center gap-3 rounded-full bg-white px-4 py-2 text-sm font-bold text-black shadow-lg"
                   >
@@ -7010,16 +7735,25 @@ function BjjAppInner() {
 
       {activeSurface === 'new-session' && (
         <ModalShell
-          title="New Session"
+          title={editingSessionId ? 'Edit Session' : 'New Session'}
           onBack={() => {
             setSessionPhotoFile(null)
             setSessionPhotoPreview(null)
+            setSessionPhotoExistingUrl(null)
+            setEditingSessionId(null)
+            sessionClientIdRef.current = ''
             setActiveSurface(null)
           }}
           variant="sessions"
           action={
-            <button type="button" onClick={handleSaveSession} className="rounded-2xl bg-[#2f58ff] px-4 py-2 text-sm font-bold">
-              Save
+            <button
+              type="button"
+              onClick={handleSaveSession}
+              disabled={savingSession}
+              aria-busy={savingSession}
+              className="rounded-2xl bg-[#2f58ff] px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingSession ? 'Saving…' : editingSessionId ? 'Update' : 'Save'}
             </button>
           }
         >
@@ -7065,21 +7799,65 @@ function BjjAppInner() {
             </label>
 
             <div>
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Discipline</span>
+              <div
+                role="radiogroup"
+                aria-label="Martial arts discipline"
+                className="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+              >
+                {MARTIAL_ARTS_BRANCHES.map((branch) => {
+                  const selected = sessionDraft.branch === branch.id
+                  return (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        void haptics.light()
+                        setSessionDraft((previous) => {
+                          if (previous.branch === branch.id) return previous
+                          const nextTypes = SESSION_TYPES_BY_BRANCH[branch.id] ?? SESSION_TYPES_BY_BRANCH.bjj
+                          const nextType = nextTypes.includes(previous.type) ? previous.type : (nextTypes[0] ?? previous.type)
+                          return { ...previous, branch: branch.id, type: nextType }
+                        })
+                      }}
+                      className={cn(
+                        'shrink-0 rounded-full px-4 py-2 text-sm font-bold',
+                        selected ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
+                      )}
+                    >
+                      {branch.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Type</span>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {SESSION_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setSessionDraft((previous) => ({ ...previous, type }))}
-                    className={cn(
-                      'rounded-full px-4 py-2 text-sm font-bold',
-                      sessionDraft.type === type ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
-                    )}
-                  >
-                    {type}
-                  </button>
-                ))}
+              <div role="radiogroup" aria-label="Session type" className="mt-3 flex flex-wrap gap-2">
+                {(SESSION_TYPES_BY_BRANCH[sessionDraft.branch] ?? SESSION_TYPES_BY_BRANCH.bjj).map((type) => {
+                  const selected = sessionDraft.type === type
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        void haptics.light()
+                        setSessionDraft((previous) => ({ ...previous, type }))
+                      }}
+                      className={cn(
+                        'rounded-full px-4 py-2 text-sm font-bold',
+                        selected ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
+                      )}
+                    >
+                      {type}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
@@ -7104,16 +7882,109 @@ function BjjAppInner() {
             </label>
 
             <div className="space-y-4">
-              <label className="space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Duration</span>
-                <input
-                  type="number"
-                  min={15}
-                  value={sessionDraft.durationMinutes}
-                  onChange={(event) => setSessionDraft((previous) => ({ ...previous, durationMinutes: Number(event.target.value) || 90 }))}
-                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white outline-none"
-                />
-              </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Duration</span>
+                  <span className="text-xs font-semibold text-white/55">{sessionDraft.durationMinutes} min</span>
+                </div>
+                <div role="radiogroup" aria-label="Duration preset" className="flex flex-wrap gap-2">
+                  {DURATION_PRESETS.map((preset) => {
+                    const selected = sessionDurationMode === 'preset' && sessionDraft.durationMinutes === preset
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          void haptics.light()
+                          setSessionDurationMode('preset')
+                          setSessionDraft((previous) => ({ ...previous, durationMinutes: preset }))
+                        }}
+                        className={cn(
+                          'rounded-full px-4 py-2 text-sm font-bold',
+                          selected ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
+                        )}
+                      >
+                        {preset}m
+                      </button>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={sessionDurationMode === 'custom'}
+                    onClick={() => {
+                      void haptics.light()
+                      setSessionDurationMode('custom')
+                    }}
+                    className={cn(
+                      'rounded-full px-4 py-2 text-sm font-bold',
+                      sessionDurationMode === 'custom' ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
+                    )}
+                  >
+                    Custom
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Decrease duration by 5 minutes"
+                    onClick={() => {
+                      void haptics.light()
+                      setSessionDurationMode('custom')
+                      setSessionDraft((previous) => ({
+                        ...previous,
+                        durationMinutes: Math.max(DURATION_MIN, previous.durationMinutes - 5),
+                      }))
+                    }}
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/6 text-lg font-bold text-white"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={DURATION_MIN}
+                    max={DURATION_MAX}
+                    aria-label="Duration in minutes"
+                    value={sessionDraft.durationMinutes}
+                    onFocus={() => setSessionDurationMode('custom')}
+                    onChange={(event) => {
+                      const raw = event.target.value
+                      const parsed = Number.parseInt(raw, 10)
+                      setSessionDurationMode('custom')
+                      setSessionDraft((previous) => ({
+                        ...previous,
+                        durationMinutes: Number.isFinite(parsed) ? parsed : previous.durationMinutes,
+                      }))
+                    }}
+                    onBlur={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10)
+                      const clamped = Number.isFinite(parsed)
+                        ? Math.min(DURATION_MAX, Math.max(DURATION_MIN, parsed))
+                        : 90
+                      setSessionDraft((previous) => ({ ...previous, durationMinutes: clamped }))
+                    }}
+                    className="h-12 flex-1 rounded-2xl border border-white/10 bg-white/6 px-4 text-center text-base font-medium text-white outline-none"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Increase duration by 5 minutes"
+                    onClick={() => {
+                      void haptics.light()
+                      setSessionDurationMode('custom')
+                      setSessionDraft((previous) => ({
+                        ...previous,
+                        durationMinutes: Math.min(DURATION_MAX, previous.durationMinutes + 5),
+                      }))
+                    }}
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/6 text-lg font-bold text-white"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
               <div>
                 <input
                   ref={sessionPhotoInputRef}
@@ -7252,6 +8123,161 @@ function BjjAppInner() {
                   )
                 })}
               </div>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
+      {activeSurface === 'session-detail' && selectedSession && (
+        <ModalShell
+          title="Session"
+          onBack={() => {
+            setActiveSurface(null)
+            setSelectedSessionId(null)
+          }}
+          variant="sessions"
+        >
+          <div className="space-y-5 pb-24">
+            {selectedSession.photo && (
+              <div className="relative h-56 w-full overflow-hidden rounded-[24px] border border-white/10">
+                <Image src={selectedSession.photo} alt="Session photo" fill className="object-cover" />
+              </div>
+            )}
+            <div>
+              <p className="text-[26px] font-black leading-tight text-white">{selectedSession.type} @ {selectedSession.location || 'Training Room'}</p>
+              <p className="mt-1 text-sm text-white/50">{formatPrettyDateTime(selectedSession.date, selectedSession.time)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
+                {getMartialArtsBranchLabel(selectedSession.branch)}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
+                {selectedSession.durationMinutes} min
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold capitalize text-white/70">
+                {selectedSession.visibility}
+              </span>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Satisfaction</p>
+              <div className="mt-2 flex items-center gap-2" aria-label={`Rated ${selectedSession.satisfaction} of 5`}>
+                {Array.from({ length: 5 }, (_, index) => {
+                  const value = index + 1
+                  return (
+                    <Star
+                      key={value}
+                      className={cn('h-5 w-5', value <= selectedSession.satisfaction ? 'fill-[#ffba33] text-[#ffba33]' : 'text-white/25')}
+                      aria-hidden
+                    />
+                  )
+                })}
+              </div>
+            </div>
+            {selectedSession.notes && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Notes</p>
+                <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7 text-white/80">{selectedSession.notes}</p>
+              </div>
+            )}
+            {selectedSession.caption && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Caption</p>
+                <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7 text-white/80">{selectedSession.caption}</p>
+              </div>
+            )}
+            {selectedSession.submissions.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Submissions ({selectedSession.submissions.length})</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedSession.submissions.map((name, index) => (
+                    <span key={`${name}-${index}`} className="rounded-full border border-emerald-300/20 bg-emerald-400/12 px-3 py-1 text-xs font-semibold text-emerald-100">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedSession.taps.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Taps ({selectedSession.taps.length})</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedSession.taps.map((name, index) => (
+                    <span key={`${name}-${index}`} className="rounded-full border border-rose-300/20 bg-rose-400/12 px-3 py-1 text-xs font-semibold text-rose-100">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedSession.linkedTechniqueIds.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Linked techniques</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedSession.linkedTechniqueIds.map((id) => {
+                    const technique = libraryTechniques.find((entry) => entry.id === id)
+                    if (!technique) return null
+                    return (
+                      <span key={id} className="rounded-full border border-[#4d7cff]/30 bg-[#4d7cff]/15 px-3 py-1 text-xs font-semibold text-[#8cabff]">
+                        {technique.title}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {selectedSession.taggedFriends.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Training partners</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedSession.taggedFriends.map((name, index) => (
+                    <span key={`${name}-${index}`} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/75">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(env(safe-area-inset-bottom)+14px)]">
+            <div className="pointer-events-auto flex w-full max-w-[398px] items-center gap-2 rounded-2xl border border-white/10 bg-[#0b0e14]/95 px-2.5 py-2 shadow-xl backdrop-blur">
+              <button
+                type="button"
+                onClick={() => {
+                  void haptics.light()
+                  const target = selectedSession
+                  setActiveSurface(null)
+                  setSelectedSessionId(null)
+                  openEditSession(target)
+                }}
+                className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void haptics.light()
+                  const target = selectedSession
+                  setActiveSurface(null)
+                  setSelectedSessionId(null)
+                  handleDuplicateSession(target)
+                }}
+                className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = selectedSession
+                  setActiveSurface(null)
+                  setSelectedSessionId(null)
+                  handleRequestDeleteSession(target)
+                }}
+                className="flex-1 rounded-xl bg-red-500/15 px-3 py-2 text-sm font-bold text-red-200"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </ModalShell>

@@ -11,6 +11,7 @@ export type BjjSurface =
   | 'paywall'
   | 'edit-profile'
   | 'new-session'
+  | 'session-detail'
   | 'new-technique'
   | 'new-discover-technique'
   | 'new-technique-tags'
