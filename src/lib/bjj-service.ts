@@ -1867,7 +1867,7 @@ export const bjjService = {
     await assertWithinFreeTechniqueLimit(userId, `lib-${catalogTechniqueId}`)
 
     return this.saveTechnique(userId, {
-      id: `lib-${catalogTechniqueId}`,
+      id: createTextId('lib'),
       catalogTechniqueId,
       branch: normalizeMartialArtsBranchId(catalogTechnique.branch) ?? 'bjj',
       title: catalogTechnique.title,
