@@ -113,6 +113,11 @@ export interface SaveUserSystemInput {
     color: string
     layout?: { x: number; y: number } | null
     linkedTechniqueIds?: string[]
+    details?: string | null
+    trigger?: string | null
+    commonMistake?: string | null
+    videoUrl?: string | null
+    videoTimestampSeconds?: number | null
   }>
   edges: Array<{ from: string; to: string; label?: string | null }>
 }
@@ -838,7 +843,7 @@ async function listNotifications(userId: string): Promise<BjjNotification[]> {
 const MAX_USER_SYSTEM_NODES = 24
 const MAX_USER_SYSTEM_EDGES = 48
 const MAX_TECHNIQUES_PER_SYSTEM_NODE = 16
-const MAX_EDGE_LABEL_LENGTH = 96
+const MAX_EDGE_LABEL_LENGTH = 200
 
 function buildTechniquesByNodeMap(nodeTechniques: any[] | null | undefined) {
   const techniquesByNode = new Map<string, Array<{ techniqueId: string; snapshot: string | null }>>()
@@ -917,6 +922,15 @@ function buildBjjSystemsFromRows(
             layout: hasLayout ? { x: layoutX as number, y: layoutY as number } : null,
             linkedTechniqueIds,
             linkedTechniqueTitles,
+            details: typeof node.details === 'string' && node.details.trim() ? node.details : null,
+            trigger: typeof node.trigger === 'string' && node.trigger.trim() ? node.trigger : null,
+            commonMistake:
+              typeof node.common_mistake === 'string' && node.common_mistake.trim() ? node.common_mistake : null,
+            videoUrl: typeof node.video_url === 'string' && node.video_url.trim() ? node.video_url : null,
+            videoTimestampSeconds:
+              typeof node.video_timestamp_seconds === 'number' && Number.isFinite(node.video_timestamp_seconds)
+                ? node.video_timestamp_seconds
+                : null,
           }
         }),
       edges: (edges ?? [])
@@ -963,6 +977,7 @@ function mapPublicSystemRpcRow(row: any, ownerId: string): BjjSystem {
       const titles = Array.isArray(node?.linkedTechniqueTitles)
         ? node.linkedTechniqueTitles.map((title: unknown) => String(title)).filter(Boolean)
         : []
+      const nTimestamp = typeof node?.videoTimestampSeconds === 'number' ? node.videoTimestampSeconds : null
       return {
         id: String(node?.id ?? ''),
         label: String(node?.label ?? 'Step'),
@@ -970,6 +985,12 @@ function mapPublicSystemRpcRow(row: any, ownerId: string): BjjSystem {
         layout: hasLayout ? { x: layout.x, y: layout.y } : null,
         linkedTechniqueIds: [],
         linkedTechniqueTitles: titles,
+        details: typeof node?.details === 'string' && node.details.trim() ? node.details : null,
+        trigger: typeof node?.trigger === 'string' && node.trigger.trim() ? node.trigger : null,
+        commonMistake:
+          typeof node?.commonMistake === 'string' && node.commonMistake.trim() ? node.commonMistake : null,
+        videoUrl: typeof node?.videoUrl === 'string' && node.videoUrl.trim() ? node.videoUrl : null,
+        videoTimestampSeconds: nTimestamp != null && Number.isFinite(nTimestamp) ? nTimestamp : null,
       }
     }),
     edges: edges.map((edge: any) => ({
@@ -1173,6 +1194,17 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
       layout.x <= 1 &&
       layout.y >= 0 &&
       layout.y <= 1
+    const clean = (value: string | null | undefined, max: number) => {
+      if (typeof value !== 'string') return null
+      const trimmed = value.trim()
+      if (!trimmed) return null
+      return trimmed.length > max ? trimmed.slice(0, max) : trimmed
+    }
+    const timestampRaw = node.videoTimestampSeconds
+    const timestamp =
+      typeof timestampRaw === 'number' && Number.isFinite(timestampRaw) && timestampRaw >= 0
+        ? Math.min(Math.floor(timestampRaw), 100000)
+        : null
     return {
       id: node.id,
       label: node.label.trim() || 'Step',
@@ -1180,6 +1212,11 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
       sortOrder: index,
       layout: hasLayout ? { x: layout!.x, y: layout!.y } : null,
       linkedTechniqueIds: [...new Set((node.linkedTechniqueIds ?? []).map((id) => id.trim()).filter(Boolean))],
+      details: clean(node.details, 2000),
+      trigger: clean(node.trigger, 300),
+      commonMistake: clean(node.commonMistake, 500),
+      videoUrl: clean(node.videoUrl, 512),
+      videoTimestampSeconds: timestamp,
     }
   })
 

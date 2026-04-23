@@ -37,7 +37,11 @@ import { cn } from '@/lib/utils'
 
 const NODE_COLORS = ['#4c6fff', '#22c55e', '#eab308', '#f97316', '#a855f7', '#ef4444'] as const
 
-const MAX_EDGE_LABEL_LEN = 96
+const MAX_EDGE_LABEL_LEN = 200
+const MAX_NODE_DETAILS_LEN = 2000
+const MAX_NODE_TRIGGER_LEN = 300
+const MAX_NODE_MISTAKE_LEN = 500
+const MAX_NODE_VIDEO_URL_LEN = 512
 const MAX_GRAPH_UNDO = 35
 
 function userSystemDraftStorageKey(userId: string) {
@@ -58,6 +62,23 @@ type DraftNode = {
   color: string
   layout: { x: number; y: number } | null
   linkedTechniqueIds: string[]
+  details: string | null
+  trigger: string | null
+  commonMistake: string | null
+  videoUrl: string | null
+  videoTimestampSeconds: number | null
+}
+
+function trimToMax(value: string | null | undefined, max: number): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return trimmed.length > max ? trimmed.slice(0, max) : trimmed
+}
+
+function normalizeTimestamp(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null
+  return Math.min(Math.floor(value), 100000)
 }
 
 type EditorTab = 'basics' | 'graph' | 'publish'
@@ -85,6 +106,11 @@ function cloneEditorState(
       ...n,
       linkedTechniqueIds: [...n.linkedTechniqueIds],
       layout: n.layout ? { ...n.layout } : null,
+      details: n.details,
+      trigger: n.trigger,
+      commonMistake: n.commonMistake,
+      videoUrl: n.videoUrl,
+      videoTimestampSeconds: n.videoTimestampSeconds,
     })),
     edges: edges.map((e) => ({ ...e })),
   }
@@ -117,6 +143,11 @@ function defaultDraftNodes(): DraftNode[] {
       color: NODE_COLORS[0],
       layout: { x: 0.22, y: 0.42 },
       linkedTechniqueIds: [],
+      details: null,
+      trigger: null,
+      commonMistake: null,
+      videoUrl: null,
+      videoTimestampSeconds: null,
     },
   ]
 }
@@ -138,6 +169,11 @@ function systemToDraft(system: BjjSystem): {
       color: node.color,
       layout: node.layout ? { x: node.layout.x, y: node.layout.y } : null,
       linkedTechniqueIds: [...(node.linkedTechniqueIds ?? [])],
+      details: trimToMax(node.details, MAX_NODE_DETAILS_LEN),
+      trigger: trimToMax(node.trigger, MAX_NODE_TRIGGER_LEN),
+      commonMistake: trimToMax(node.commonMistake, MAX_NODE_MISTAKE_LEN),
+      videoUrl: trimToMax(node.videoUrl, MAX_NODE_VIDEO_URL_LEN),
+      videoTimestampSeconds: normalizeTimestamp(node.videoTimestampSeconds),
     })),
     edges: system.edges.map((edge) => ({
       from: edge.from,
@@ -164,6 +200,11 @@ function seedToDraft(seed: SaveUserSystemInput): {
       color: node.color,
       layout: node.layout ? { x: node.layout.x, y: node.layout.y } : null,
       linkedTechniqueIds: [...(node.linkedTechniqueIds ?? [])],
+      details: trimToMax(node.details, MAX_NODE_DETAILS_LEN),
+      trigger: trimToMax(node.trigger, MAX_NODE_TRIGGER_LEN),
+      commonMistake: trimToMax(node.commonMistake, MAX_NODE_MISTAKE_LEN),
+      videoUrl: trimToMax(node.videoUrl, MAX_NODE_VIDEO_URL_LEN),
+      videoTimestampSeconds: normalizeTimestamp(node.videoTimestampSeconds),
     })),
     edges: seed.edges.map((edge) => ({
       from: edge.from,
@@ -466,6 +507,11 @@ export function UserSystemEditorModal({
           color: node.color,
           layout: node.layout,
           linkedTechniqueIds: node.linkedTechniqueIds,
+          details: trimToMax(node.details, MAX_NODE_DETAILS_LEN),
+          trigger: trimToMax(node.trigger, MAX_NODE_TRIGGER_LEN),
+          commonMistake: trimToMax(node.commonMistake, MAX_NODE_MISTAKE_LEN),
+          videoUrl: trimToMax(node.videoUrl, MAX_NODE_VIDEO_URL_LEN),
+          videoTimestampSeconds: normalizeTimestamp(node.videoTimestampSeconds),
         })),
         edges: edges.map((edge) => ({ from: edge.from, to: edge.to, label: edge.label ?? null })),
       })
@@ -521,6 +567,11 @@ export function UserSystemEditorModal({
           color: NODE_COLORS[previous.length % NODE_COLORS.length],
           layout: { x: clamp01(0.5 + offset * 0.5), y: clamp01(0.48 + offset) },
           linkedTechniqueIds: [],
+          details: null,
+          trigger: null,
+          commonMistake: null,
+          videoUrl: null,
+          videoTimestampSeconds: null,
         },
       ]
     })
@@ -658,6 +709,13 @@ export function UserSystemEditorModal({
       }),
     )
   }
+
+  const updateSelectedNodeField = useCallback(
+    <K extends keyof DraftNode>(nodeId: string, key: K, value: DraftNode[K]) => {
+      setNodes((previous) => previous.map((node) => (node.id === nodeId ? { ...node, [key]: value } : node)))
+    },
+    [],
+  )
 
   return (
     <div
@@ -1010,6 +1068,95 @@ export function UserSystemEditorModal({
                       })
                     )}
                   </div>
+
+                  <details className="mt-4 rounded-[14px] border border-white/10 bg-black/30 [&[open]]:bg-black/40">
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white/55">
+                      <span>Study details</span>
+                      <span aria-hidden className="text-white/35 transition group-open:rotate-180">▾</span>
+                    </summary>
+                    <div className="space-y-3 px-3 pb-3">
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">Trigger</label>
+                        <input
+                          value={selectedNode.trigger ?? ''}
+                          onChange={(event) =>
+                            updateSelectedNodeField(selectedNode.id, 'trigger', event.target.value === '' ? null : event.target.value)
+                          }
+                          onBlur={() => pushEditorHistory()}
+                          placeholder="When to use this step"
+                          maxLength={MAX_NODE_TRIGGER_LEN}
+                          className="mt-1 w-full rounded-[10px] border border-white/12 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#4d7cff]/45"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">Details</label>
+                        <textarea
+                          value={selectedNode.details ?? ''}
+                          onChange={(event) =>
+                            updateSelectedNodeField(selectedNode.id, 'details', event.target.value === '' ? null : event.target.value)
+                          }
+                          onBlur={() => pushEditorHistory()}
+                          placeholder="Key concepts, grips, frames, timing…"
+                          rows={4}
+                          maxLength={MAX_NODE_DETAILS_LEN}
+                          className="mt-1 w-full resize-y rounded-[10px] border border-white/12 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#4d7cff]/45"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">Common mistake</label>
+                        <textarea
+                          value={selectedNode.commonMistake ?? ''}
+                          onChange={(event) =>
+                            updateSelectedNodeField(selectedNode.id, 'commonMistake', event.target.value === '' ? null : event.target.value)
+                          }
+                          onBlur={() => pushEditorHistory()}
+                          placeholder="What students get wrong here"
+                          rows={2}
+                          maxLength={MAX_NODE_MISTAKE_LEN}
+                          className="mt-1 w-full resize-y rounded-[10px] border border-white/12 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#4d7cff]/45"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">Video URL</label>
+                          <input
+                            type="url"
+                            inputMode="url"
+                            value={selectedNode.videoUrl ?? ''}
+                            onChange={(event) =>
+                              updateSelectedNodeField(selectedNode.id, 'videoUrl', event.target.value === '' ? null : event.target.value)
+                            }
+                            onBlur={() => pushEditorHistory()}
+                            placeholder="https://…"
+                            maxLength={MAX_NODE_VIDEO_URL_LEN}
+                            className="mt-1 w-full rounded-[10px] border border-white/12 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#4d7cff]/45"
+                          />
+                        </div>
+                        <div className="w-24">
+                          <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">At (s)</label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={100000}
+                            value={selectedNode.videoTimestampSeconds ?? ''}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              const parsed = raw === '' ? null : Number.parseInt(raw, 10)
+                              updateSelectedNodeField(
+                                selectedNode.id,
+                                'videoTimestampSeconds',
+                                normalizeTimestamp(parsed ?? null),
+                              )
+                            }}
+                            onBlur={() => pushEditorHistory()}
+                            placeholder="0"
+                            className="mt-1 w-full rounded-[10px] border border-white/12 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#4d7cff]/45"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               ) : null}
 

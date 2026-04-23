@@ -1,13 +1,40 @@
 'use client'
 
-import { ArrowLeft, BookOpen, GitFork, Link2, MessageCircle, Sparkles, Trash2 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { ArrowLeft, BookOpen, GitFork, Link2, MessageCircle, ScanSearch, Sparkles, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { SystemGraphCanvas } from '@/components/system-graph-canvas'
+import { SystemNodeStudyView } from '@/components/system-node-study-view'
 import { useReducedMotion } from '@/lib/hooks/use-reduced-motion'
 import { useModalFocusTrap } from '@/lib/hooks/use-modal-focus-trap'
 import type { BjjSystem, BjjTechnique } from '@/lib/bjj-types'
 import { computeGraphLayout } from '@/lib/system-graph-layout'
 import { cn } from '@/lib/utils'
+
+function formatSeconds(total: number): string {
+  const safe = Math.max(0, Math.floor(total))
+  const minutes = Math.floor(safe / 60)
+  const seconds = safe % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function buildVideoHref(url: string, timestamp: number | null | undefined): string {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp) || timestamp <= 0) return url
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname.toLowerCase()
+    if (host.endsWith('youtube.com') || host === 'youtu.be' || host.endsWith('youtube-nocookie.com')) {
+      parsed.searchParams.set('t', `${Math.floor(timestamp)}s`)
+      return parsed.toString()
+    }
+    if (host.endsWith('vimeo.com')) {
+      parsed.hash = `#t=${Math.floor(timestamp)}s`
+      return parsed.toString()
+    }
+    return url
+  } catch {
+    return url
+  }
+}
 
 export function UserSystemReaderModal({
   system,
@@ -31,9 +58,18 @@ export function UserSystemReaderModal({
   onOpenComments?: () => void
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [studyStack, setStudyStack] = useState<string[]>([])
   const reduceMotion = useReducedMotion()
   const modalShellRef = useRef<HTMLDivElement | null>(null)
   useModalFocusTrap(true, modalShellRef)
+
+  const pushStudyNode = useCallback((nodeId: string) => {
+    setStudyStack((prev) => (prev[prev.length - 1] === nodeId ? prev : [...prev, nodeId]))
+  }, [])
+  const popStudyNode = useCallback(() => {
+    setStudyStack((prev) => prev.slice(0, -1))
+  }, [])
+  const exitStudy = useCallback(() => setStudyStack([]), [])
 
   const positions = useMemo(() => {
     const base = computeGraphLayout(system.nodes, system.edges)
@@ -93,6 +129,19 @@ export function UserSystemReaderModal({
       aria-label={`System: ${system.title}`}
     >
       <div className="relative mx-auto flex h-full w-full max-w-[430px] flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-[calc(env(safe-area-inset-top)+12px)]">
+        {studyStack.length > 0 ? (
+          <SystemNodeStudyView
+            system={system}
+            stack={studyStack}
+            isOwner={isOwner}
+            libraryTechniques={libraryTechniques}
+            onPush={pushStudyNode}
+            onPop={popStudyNode}
+            onExit={exitStudy}
+            onOpenTechnique={onOpenTechnique}
+          />
+        ) : (
+          <>
         <header className="mb-3 flex shrink-0 items-start justify-between gap-3">
           <button
             type="button"
@@ -182,7 +231,54 @@ export function UserSystemReaderModal({
             </div>
             {selectedNode ? (
               <div className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-lg font-black text-white">{selectedNode.label}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-lg font-black text-white">{selectedNode.label}</p>
+                  <button
+                    type="button"
+                    onClick={() => pushStudyNode(selectedNode.id)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1.5 text-xs font-bold text-[#b8c9ff]"
+                    aria-label={`Study ${selectedNode.label}`}
+                  >
+                    <ScanSearch className="h-3.5 w-3.5" />
+                    Study
+                  </button>
+                </div>
+                {selectedNode.trigger ? (
+                  <div className="mt-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/38">Trigger</p>
+                    <p className="mt-1 text-sm leading-6 text-white/85">{selectedNode.trigger}</p>
+                  </div>
+                ) : null}
+                {selectedNode.details ? (
+                  <div className="mt-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/38">Details</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-white/85">{selectedNode.details}</p>
+                  </div>
+                ) : null}
+                {selectedNode.commonMistake ? (
+                  <div className="mt-3 rounded-[14px] border border-amber-400/25 bg-amber-400/08 p-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-200/80">Common mistake</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-white/85">{selectedNode.commonMistake}</p>
+                  </div>
+                ) : null}
+                {selectedNode.videoUrl ? (
+                  <div className="mt-3">
+                    <a
+                      href={buildVideoHref(selectedNode.videoUrl, selectedNode.videoTimestampSeconds)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.05] px-3 py-1.5 text-xs font-bold text-white/80 hover:bg-white/[0.09]"
+                    >
+                      <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        Video
+                        {typeof selectedNode.videoTimestampSeconds === 'number' && selectedNode.videoTimestampSeconds > 0
+                          ? ` · ${formatSeconds(selectedNode.videoTimestampSeconds)}`
+                          : ''}
+                      </span>
+                    </a>
+                  </div>
+                ) : null}
                 {linkedForSelected.mode === 'owner' && linkedForSelected.ownerTechniques.length > 0 ? (
                   <div className="mt-3">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/38">Linked from your library</p>
@@ -277,7 +373,8 @@ export function UserSystemReaderModal({
             ) : null}
           </div>
         </div>
-
+          </>
+        )}
       </div>
     </div>
   )

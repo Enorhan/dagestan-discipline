@@ -135,6 +135,16 @@ export interface BjjSystem {
     linkedTechniqueIds?: string[]
     /** Snapshot titles for public viewers (non-owners); prefer over resolving IDs. */
     linkedTechniqueTitles?: string[]
+    /** Study notes body for this step (<= 2000 chars). */
+    details?: string | null
+    /** When-condition that applies this step (<= 300 chars). */
+    trigger?: string | null
+    /** Frequent mistake to avoid (<= 500 chars). */
+    commonMistake?: string | null
+    /** Instructional source URL. */
+    videoUrl?: string | null
+    /** Optional deep-link offset into videoUrl. */
+    videoTimestampSeconds?: number | null
   }>
   edges: Array<{
     from: string

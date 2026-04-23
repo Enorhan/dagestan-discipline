@@ -21,6 +21,11 @@ export function duplicateUserSystemDraft(system: BjjSystem): SaveUserSystemInput
       color: node.color,
       layout: node.layout ? { ...node.layout } : null,
       linkedTechniqueIds: [...(node.linkedTechniqueIds ?? [])],
+      details: node.details ?? null,
+      trigger: node.trigger ?? null,
+      commonMistake: node.commonMistake ?? null,
+      videoUrl: node.videoUrl ?? null,
+      videoTimestampSeconds: node.videoTimestampSeconds ?? null,
     }
   })
   const edges: SaveUserSystemInput['edges'] = []
