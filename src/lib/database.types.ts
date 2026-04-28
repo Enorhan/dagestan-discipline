@@ -779,11 +779,12 @@ export type Database = {
           first_active_at: string | null
           gym_name: string
           heard_from: string | null
-          id: string
-          injury_notes: string | null
-          is_premium: boolean | null
-          level: number
-          onboarding_completed: boolean | null
+	          id: string
+	          injury_notes: string | null
+	          is_premium: boolean | null
+	          level: number
+	          matflow_trial_started_at: string | null
+	          onboarding_completed: boolean | null
           premium_provider_id: string | null
           premium_source: string | null
           premium_updated_at: string | null
@@ -821,11 +822,12 @@ export type Database = {
           first_active_at?: string | null
           gym_name?: string
           heard_from?: string | null
-          id: string
-          injury_notes?: string | null
-          is_premium?: boolean | null
-          level?: number
-          onboarding_completed?: boolean | null
+	          id: string
+	          injury_notes?: string | null
+	          is_premium?: boolean | null
+	          level?: number
+	          matflow_trial_started_at?: string | null
+	          onboarding_completed?: boolean | null
           premium_provider_id?: string | null
           premium_source?: string | null
           premium_updated_at?: string | null
@@ -863,11 +865,12 @@ export type Database = {
           first_active_at?: string | null
           gym_name?: string
           heard_from?: string | null
-          id?: string
-          injury_notes?: string | null
-          is_premium?: boolean | null
-          level?: number
-          onboarding_completed?: boolean | null
+	          id?: string
+	          injury_notes?: string | null
+	          is_premium?: boolean | null
+	          level?: number
+	          matflow_trial_started_at?: string | null
+	          onboarding_completed?: boolean | null
           premium_provider_id?: string | null
           premium_source?: string | null
           premium_updated_at?: string | null
@@ -1728,6 +1731,7 @@ export type Database = {
           id: string
           locked: boolean
           sort_order: number
+          status: string
           summary: string
           title: string
           updated_at: string
@@ -1740,6 +1744,7 @@ export type Database = {
           id: string
           locked?: boolean
           sort_order?: number
+          status?: string
           summary: string
           title: string
           updated_at?: string
@@ -1752,6 +1757,7 @@ export type Database = {
           id?: string
           locked?: boolean
           sort_order?: number
+          status?: string
           summary?: string
           title?: string
           updated_at?: string
@@ -2639,14 +2645,22 @@ export type Database = {
           viewer_requested: boolean
         }[]
       }
-      has_premium_or_grace_access: {
-        Args: { p_now?: string; p_user_id: string }
-        Returns: boolean
-      }
-      increment_feature_usage: {
-        Args: { p_delta?: number; p_feature: string }
-        Returns: number
-      }
+	      has_premium_or_grace_access: {
+	        Args: { p_now?: string; p_user_id: string }
+	        Returns: boolean
+	      }
+	      has_matflow_paid_or_trial_access: {
+	        Args: { p_now?: string; p_user_id: string }
+	        Returns: boolean
+	      }
+	      record_matflow_app_store_transaction: {
+	        Args: { p_transaction: Json }
+	        Returns: Json
+	      }
+	      increment_feature_usage: {
+	        Args: { p_delta?: number; p_feature: string }
+	        Returns: number
+	      }
       is_accepted_follower: {
         Args: { creator_id: string; viewer_id: string }
         Returns: boolean
@@ -2729,7 +2743,7 @@ export type Database = {
         }
         Returns: undefined
       }
-      record_playback_milestone: {
+	      record_playback_milestone: {
         Args: {
           milestone_name: Database["public"]["Enums"]["social_playback_milestone"]
           post_id: string
@@ -2737,8 +2751,9 @@ export type Database = {
           viewer_id: string
           watch_ms?: number
         }
-        Returns: undefined
-      }
+	        Returns: undefined
+	      }
+	      start_matflow_v2_trial_if_missing: { Args: never; Returns: string }
       refresh_social_post_feature_rollups: { Args: never; Returns: number }
       replace_custom_workout_exercises: {
         Args: { p_exercises: Json; p_workout_id: string }

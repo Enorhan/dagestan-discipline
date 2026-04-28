@@ -4,6 +4,7 @@ import { socialRelationshipsService } from '@/lib/social-relationships-service'
 import { supabase } from '@/lib/supabase'
 import { supabaseService } from '@/lib/supabase-service'
 import type { UserProfile } from '@/lib/user-profile-types'
+import { getMatFlowAccessState } from '@/lib/matflow-access'
 import type { MartialArtsBranchId } from '@/lib/martial-arts-branches'
 import {
   branchFromPrimaryDiscipline,
@@ -28,6 +29,7 @@ import type {
   BjjSessionVisibility,
   BjjSuggestedGrappler,
   BjjSystem,
+  BjjSystemStatus,
   BjjTechnique,
   BjjTechniqueCategory,
 } from '@/lib/bjj-types'
@@ -104,6 +106,7 @@ export interface SaveUserSystemInput {
   title: string
   summary: string
   visibility: BjjPrivacy
+  status?: BjjSystemStatus
   sortOrder?: number
   /** When set, `save_user_system` rejects if the row changed (unless null to force overwrite). */
   expectedUpdatedAt?: string | null
@@ -120,6 +123,12 @@ export interface SaveUserSystemInput {
     videoTimestampSeconds?: number | null
   }>
   edges: Array<{ from: string; to: string; label?: string | null }>
+}
+
+export type SaveUserSystemResult = {
+  id: string
+  updatedAt: string | null
+  status: BjjSystemStatus
 }
 
 export interface BjjShellSnapshot {
@@ -281,8 +290,7 @@ function accentFromSeed(seed: string): string {
 }
 
 function isPremiumProfile(profile: UserProfile | null | undefined): boolean {
-  if (!profile) return false
-  return Boolean(profile.isPremium || profile.subscriptionStatus === 'active' || profile.subscriptionStatus === 'trialing')
+  return getMatFlowAccessState(profile).hasAccess
 }
 
 function buildProfilePatch(profile: UserProfile | null, cachedState: BjjPersistedState | null): Partial<BjjPersistedState['profile']> {
@@ -335,6 +343,9 @@ function buildProfilePatch(profile: UserProfile | null, cachedState: BjjPersiste
     paywallCompleted,
     coachMarksSeen,
     proUnlocked: premiumUnlocked || fallback.proUnlocked,
+    matflowTrialStartedAt: profile?.matflowTrialStartedAt ?? fallback.matflowTrialStartedAt ?? null,
+    subscriptionStatus: profile?.subscriptionStatus ?? fallback.subscriptionStatus ?? null,
+    subscriptionPeriodEnd: profile?.subscriptionPeriodEnd ?? fallback.subscriptionPeriodEnd ?? null,
   }
 }
 
@@ -845,6 +856,10 @@ const MAX_USER_SYSTEM_EDGES = 48
 const MAX_TECHNIQUES_PER_SYSTEM_NODE = 16
 const MAX_EDGE_LABEL_LENGTH = 200
 
+function normalizeSystemStatus(raw: unknown): BjjSystemStatus {
+  return raw === 'draft' ? 'draft' : 'active'
+}
+
 function buildTechniquesByNodeMap(nodeTechniques: any[] | null | undefined) {
   const techniquesByNode = new Map<string, Array<{ techniqueId: string; snapshot: string | null }>>()
   for (const row of nodeTechniques ?? []) {
@@ -886,6 +901,7 @@ function buildBjjSystemsFromRows(
       summary: system.summary as string,
       userId: ownerId ?? null,
       visibility: (system.visibility as BjjPrivacy | undefined) ?? 'private',
+      status: normalizeSystemStatus(system.status),
       sortOrder: typeof system.sort_order === 'number' ? system.sort_order : 0,
       updatedAt:
         typeof system.updated_at === 'string' && system.updated_at
@@ -963,6 +979,7 @@ function mapPublicSystemRpcRow(row: any, ownerId: string): BjjSystem {
     summary: String(row.summary ?? ''),
     userId: ownerId,
     visibility: 'public',
+    status: 'active',
     sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
     updatedAt: typeof row.updated_at === 'string' ? row.updated_at : undefined,
     locked: false,
@@ -1135,11 +1152,11 @@ function mapSaveUserSystemRpcError(message: string): string {
   return message
 }
 
-async function persistUserSystem(userId: string, input: SaveUserSystemInput): Promise<void> {
+async function persistUserSystem(userId: string, input: SaveUserSystemInput): Promise<SaveUserSystemResult> {
   const title = input.title.trim()
   const summary = input.summary.trim()
   if (!title) throw new Error('System title is required')
-  if (input.nodes.length === 0) throw new Error('Add at least one step (node)')
+  if (input.nodes.length === 0) throw new Error('Add at least one step')
   if (input.nodes.length > MAX_USER_SYSTEM_NODES) {
     throw new Error(`Systems can include at most ${MAX_USER_SYSTEM_NODES} steps`)
   }
@@ -1158,12 +1175,12 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
   })
 
   if (uniqueEdges.length > MAX_USER_SYSTEM_EDGES) {
-    throw new Error(`Systems can include at most ${MAX_USER_SYSTEM_EDGES} links`)
+    throw new Error(`Systems can include at most ${MAX_USER_SYSTEM_EDGES} connections`)
   }
 
   for (const edge of uniqueEdges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-      throw new Error('Each link must connect two existing steps')
+      throw new Error('Each connection must join two existing steps')
     }
     if (edge.from === edge.to) {
       throw new Error('A step cannot link to itself')
@@ -1182,6 +1199,8 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
   const systemId = input.id ?? null
   const sortOrder = typeof input.sortOrder === 'number' ? input.sortOrder : 5000
   const branch = normalizeMartialArtsBranchId(input.branch) ?? 'bjj'
+  const status = normalizeSystemStatus(input.status)
+  const visibility: BjjPrivacy = status === 'draft' ? 'private' : input.visibility
   await assertUserOwnsTechniques(userId, allLinkedTechniques, branch)
 
   const pNodes = input.nodes.map((node, index) => {
@@ -1230,12 +1249,13 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
   const pExpected =
     typeof expectedRaw === 'string' && expectedRaw.trim().length > 0 ? expectedRaw.trim() : null
 
-  const { error } = await db.rpc('save_user_system_graph', {
+  const { data, error } = await db.rpc('save_user_system_graph', {
     p_input: {
       id: systemId,
       title,
       summary,
-      visibility: input.visibility,
+      visibility,
+      status,
       branch,
       sortOrder,
       expectedUpdatedAt: pExpected,
@@ -1252,6 +1272,12 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
   }
 
   await syncProgressSignals(userId)
+  const row = data as { id?: unknown; updatedAt?: unknown; status?: unknown } | null
+  return {
+    id: typeof row?.id === 'string' && row.id ? row.id : (systemId ?? ''),
+    updatedAt: typeof row?.updatedAt === 'string' ? row.updatedAt : null,
+    status: normalizeSystemStatus(row?.status ?? status),
+  }
 }
 
 async function removeUserSystem(userId: string, systemId: string): Promise<void> {
@@ -2313,7 +2339,7 @@ export const bjjService = {
     return data.publicUrl
   },
 
-  async saveUserSystem(userId: string, input: SaveUserSystemInput): Promise<void> {
+  async saveUserSystem(userId: string, input: SaveUserSystemInput): Promise<SaveUserSystemResult> {
     return persistUserSystem(userId, input)
   },
 

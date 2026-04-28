@@ -52,7 +52,7 @@ async function main() {
       selectedSystemBranch: 'boxing',
     }),
     {
-      selectedBottomTab: 'social',
+      selectedBottomTab: 'community',
       selectedTechniquesTab: 'discover',
       socialSurface: 'boxing',
       socialHomeRail: 'following',
@@ -75,7 +75,7 @@ async function main() {
     socialHomeRail: 'following',
   }, 'Enes', 'enes')
 
-  assert.equal(normalizedState.selectedBottomTab, 'social')
+  assert.equal(normalizedState.selectedBottomTab, 'community')
   assert.equal(normalizedState.selectedSessionsTab, 'my-sessions')
   assert.equal(normalizedState.socialSurface, 'bjj')
   assert.equal(normalizedState.socialHomeRail, 'following')

@@ -15,7 +15,7 @@ import type {
 } from '@/lib/bjj-types'
 import { MARTIAL_ARTS_BRANCHES } from '@/lib/martial-arts-branches'
 
-export const BJJ_STORAGE_KEY = 'dagestani-disciple.bjj-rework.v1'
+export const BJJ_STORAGE_KEY = 'matflow.v2'
 
 export const BJJ_ONBOARDING_STEPS: BjjOnboardingStep[] = [
   'welcome',
@@ -625,7 +625,7 @@ export function createDefaultBjjState(displayName = 'Grappler', username = 'grap
       coachMarksSeen: false,
       proUnlocked: false,
     },
-    selectedBottomTab: 'sessions',
+    selectedBottomTab: 'today',
     selectedSessionsTab: 'my-sessions',
     selectedTechniquesTab: 'my-library',
     socialSurface: 'bjj',

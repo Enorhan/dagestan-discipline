@@ -66,7 +66,7 @@ export interface AnalyticsEntry {
   ts: string
 }
 
-const STORAGE_KEY = 'dagestaniDiscipline.analytics'
+const STORAGE_KEY = 'matflow.analytics'
 const MAX_BUFFERED_ENTRIES = 200
 
 function readBufferedAnalyticsEntries(): AnalyticsEntry[] {

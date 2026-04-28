@@ -32,7 +32,7 @@ export function buildSupportDiagnosticsSnapshot(input: SupportDiagnosticsSnapsho
   const portalAvailability = getBillingPortalAvailability(input.runtimeFlags)
 
   return [
-    'Dagestani Disciple diagnostics',
+    'MatFlow diagnostics',
     `Generated at: ${input.generatedAt ?? new Date().toISOString()}`,
     `Environment: ${formatNullable(input.environment, 'unknown')}`,
     `Release: ${formatNullable(input.releaseVersion)}`,

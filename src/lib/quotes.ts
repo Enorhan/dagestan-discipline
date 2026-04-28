@@ -1,13 +1,13 @@
-// Stoic and Dagestani fighter quotes for mental toughness
+// Combat-sports and stoic quotes for mental toughness
 
 export const stoicQuotes = [
-  // Khabib & Dagestani fighters
+  // Combat-sports mindset
   "If you give up, you're finished. - Khabib Nurmagomedov",
   "I don't train to be the best. I train because I have to. - Khabib Nurmagomedov",
   "Discipline is doing what you hate to do, but doing it like you love it. - Khabib Nurmagomedov",
   "Your mind will quit a thousand times before your body will. - Khabib Nurmagomedov",
   "Champions are made when no one is watching.",
-  "In Dagestan, we don't make excuses. We make champions.",
+  "Champions are built by showing up when the room is quiet.",
   "The mountain doesn't care about your feelings. Neither does your opponent.",
   
   // Marcus Aurelius
@@ -58,4 +58,3 @@ export const getDailyQuote = (): string => {
   const index = Math.abs(hash) % stoicQuotes.length
   return stoicQuotes[index]
 }
-

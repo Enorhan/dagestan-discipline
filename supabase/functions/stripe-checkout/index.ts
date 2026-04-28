@@ -1,5 +1,5 @@
 // ============================================================================
-// DAGESTAN DISCIPLINE - STRIPE CHECKOUT EDGE FUNCTION
+// MATFLOW - STRIPE CHECKOUT EDGE FUNCTION
 // Creates Stripe Checkout sessions for the monthly Premium subscription.
 // ============================================================================
 
@@ -12,9 +12,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Premium subscription price: 25 SEK/month (in öre)
+// Premium subscription price: 25 kr/month (in öre)
 const PREMIUM_PRICE_SEK = 2500
-const APP_URL_SCHEME = 'dagestanidiscipline://'
+const APP_URL_SCHEME = 'matflow://'
 const DEFAULT_REDIRECT_ORIGIN = 'https://enorhan.github.io'
 
 function parseCsvEnv(name: string): string[] {
@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
     let sessionParams: Stripe.Checkout.SessionCreateParams
 
     if (mode !== 'subscription') {
-      throw new Error('Premium is only available as a 25 SEK/month subscription')
+      throw new Error('Premium is only available as a 25 kr/month subscription')
     }
 
     const alreadySubscribed = await hasOpenSubscription(supabaseAdmin, user.id)
@@ -211,8 +211,8 @@ Deno.serve(async (req) => {
             price_data: {
               currency: 'sek',
               product_data: {
-                name: 'Dagestan Discipline Premium',
-                description: 'Access all premium workout programs and features',
+                name: 'MatFlow Premium',
+                description: 'Access the full combat-sports Training OS',
               },
               unit_amount: PREMIUM_PRICE_SEK,
               recurring: { interval: 'month' },

@@ -720,7 +720,7 @@ export const socialFeedService = {
         id: row.id,
         slug: row.slug ?? row.id,
         title: row.title ?? 'Untitled track',
-        artist: row.artist ?? 'Dagestani Disciple',
+        artist: row.artist ?? 'MatFlow',
         previewUrl: row.preview_url ?? '',
         artworkUrl: row.artwork_url ?? undefined,
         durationMs: typeof row.duration_ms === 'number' ? row.duration_ms : 15_000,

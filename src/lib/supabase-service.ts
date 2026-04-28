@@ -10,6 +10,7 @@ import type {
   UserProfile,
   WeightUnit,
 } from './user-profile-types'
+import type { AppleIapResult } from './apple-iap-service'
 
 const db = supabase as any
 
@@ -32,6 +33,7 @@ type DbProfile = {
   injury_notes?: string | null
   is_premium?: boolean | null
   first_active_at?: string | null
+  matflow_trial_started_at?: string | null
   stripe_customer_id?: string | null
   subscription_status?: string | null
   subscription_period_end?: string | null
@@ -475,7 +477,7 @@ async function getAuthRedirectUrl(): Promise<string> {
       const originRedirect = toHttpAuthCallbackUrl(window.location.origin)
       if (originRedirect) return originRedirect
     }
-    return 'dagestanidiscipline://auth/callback'
+    return 'matflow://auth/callback'
   }
 
   if (typeof window !== 'undefined') {
@@ -556,6 +558,7 @@ function dbProfileToUserProfile(profile: DbProfile, stats?: DbUserStats | null):
     injuryNotes: profile.injury_notes ?? null,
     isPremium: profile.is_premium ?? false,
     firstActiveAt: profile.first_active_at ?? null,
+    matflowTrialStartedAt: profile.matflow_trial_started_at ?? null,
     stripeCustomerId: profile.stripe_customer_id ?? null,
     subscriptionStatus: profile.subscription_status ?? null,
     subscriptionPeriodEnd: profile.subscription_period_end ?? null,
@@ -625,6 +628,21 @@ async function bootstrapProfileForUser(user: User): Promise<UserProfile> {
   return {
     ...profile,
     profileHydrationPending: needsProfileCompletionFromAuthUser(user) || inferProfileHydrationPending(profile),
+  }
+}
+
+async function startMatFlowTrialIfMissing(userId: string): Promise<string | null> {
+  try {
+    const { data, error } = await db.rpc('start_matflow_v2_trial_if_missing')
+    if (error) {
+      if (isMissingSchemaError(error)) return null
+      captureException('matflow-trial-start', error, { step: 'rpc.start_matflow_v2_trial_if_missing', userId }, 'warning')
+      return null
+    }
+    return typeof data === 'string' ? data : null
+  } catch (error) {
+    captureException('matflow-trial-start', error, { step: 'rpc.exception', userId }, 'warning')
+    return null
   }
 }
 
@@ -782,7 +800,7 @@ export const supabaseService = {
   async resetPassword(email: string): Promise<void> {
     const redirectTo = await getAuthRedirectUrl()
     const { error } = await db.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectTo.startsWith('dagestanidiscipline://')
+      redirectTo: redirectTo.startsWith('matflow://')
         ? redirectTo
         : `${redirectTo}/reset-password`,
     })
@@ -861,9 +879,11 @@ export const supabaseService = {
         }, 'warning')
       }
 
+      const trialStartedAt = profile ? await startMatFlowTrialIfMissing(user.id) : null
+
       return {
         isAuthenticated: true,
-        user: profile ?? buildPendingUserProfile(user),
+        user: profile ? { ...profile, matflowTrialStartedAt: trialStartedAt ?? profile.matflowTrialStartedAt ?? null } : buildPendingUserProfile(user),
         isLoading: false,
         error: null,
         emailVerified: Boolean(user.email_confirmed_at),
@@ -898,7 +918,7 @@ export const supabaseService = {
       const fallbackResult = await db
         .from('profiles')
         .select(
-          'id, username, display_name, avatar_url, bio, sport, created_at, training_days, weight_unit, equipment, experience_level, bodyweight_kg, primary_goal, combat_sessions_per_week, session_minutes, injury_notes, is_premium, first_active_at, stripe_customer_id, subscription_status, subscription_period_end, onboarding_completed, bjj_paywall_completed, bjj_coach_marks_seen, belt, stripes, gym_name, privacy, primary_discipline, xp, level, favorite_content_types, heard_from, biggest_challenges',
+          'id, username, display_name, avatar_url, bio, sport, created_at, training_days, weight_unit, equipment, experience_level, bodyweight_kg, primary_goal, combat_sessions_per_week, session_minutes, injury_notes, is_premium, first_active_at, matflow_trial_started_at, stripe_customer_id, subscription_status, subscription_period_end, onboarding_completed, bjj_paywall_completed, bjj_coach_marks_seen, belt, stripes, gym_name, privacy, primary_discipline, xp, level, favorite_content_types, heard_from, biggest_challenges',
         )
         .eq('id', userId)
         .maybeSingle()
@@ -933,6 +953,37 @@ export const supabaseService = {
     }
 
     return dbProfileToUserProfile(profile as DbProfile, (stats ?? null) as DbUserStats | null)
+  },
+
+  async recordAppStoreTransaction(userId: string, transaction: AppleIapResult): Promise<UserProfile | null> {
+    const payload = {
+      status: transaction.status,
+      productId: transaction.productId,
+      transactionId: transaction.transactionId,
+      originalTransactionId: transaction.originalTransactionId,
+      environment: transaction.environment,
+      appAccountToken: transaction.appAccountToken,
+      purchaseDate: transaction.purchaseDate,
+      expirationDate: transaction.expirationDate,
+      revocationDate: transaction.revocationDate,
+    }
+
+    const { error } = await db.rpc('record_matflow_app_store_transaction', {
+      p_transaction: payload,
+    })
+
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        captureException('matflow-app-store-transaction', error, {
+          step: 'rpc.record_matflow_app_store_transaction.missing',
+          userId,
+        }, 'warning')
+        return supabaseService.getProfile(userId)
+      }
+      throw new Error(error.message)
+    }
+
+    return supabaseService.getProfile(userId)
   },
 
   async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {

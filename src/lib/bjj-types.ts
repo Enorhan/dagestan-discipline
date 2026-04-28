@@ -1,6 +1,6 @@
 import type { MartialArtsBranchId } from '@/lib/martial-arts-branches'
 
-export type BjjBottomTab = 'sessions' | 'social' | 'techniques' | 'you'
+export type BjjBottomTab = 'today' | 'library' | 'gameplans' | 'community' | 'you'
 export type BjjSessionsTab = 'my-sessions'
 export type BjjTechniquesTab = 'my-library' | 'systems' | 'discover'
 export type BjjSocialSurface = MartialArtsBranchId
@@ -28,6 +28,7 @@ export type BjjSurface =
 export type BjjAuthMode = 'sign-up' | 'sign-in'
 export type BeltRank = 'white' | 'blue' | 'purple' | 'brown' | 'black'
 export type BjjPrivacy = 'public' | 'private'
+export type BjjSystemStatus = 'draft' | 'active'
 export type BjjTechniqueCategory =
   | 'submission'
   | 'sweep'
@@ -95,6 +96,9 @@ export interface BjjProfile {
   paywallCompleted: boolean
   coachMarksSeen: boolean
   proUnlocked: boolean
+  matflowTrialStartedAt?: string | null
+  subscriptionStatus?: string | null
+  subscriptionPeriodEnd?: string | null
 }
 
 export interface BjjTechnique {
@@ -156,6 +160,7 @@ export interface BjjSystem {
   /** Set when this row is a user-owned system (null/undefined = curated catalog). */
   userId?: string | null
   visibility?: BjjPrivacy
+  status?: BjjSystemStatus
   sortOrder?: number
   /** ISO timestamp from `systems.updated_at` (user-owned rows); used for edit conflict checks. */
   updatedAt?: string

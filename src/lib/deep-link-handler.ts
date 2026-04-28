@@ -8,7 +8,7 @@ import { supabase } from './supabase'
 import { normalizeSubscriptionReturnStatus, SubscriptionReturnStatus } from './subscription-return'
 
 // Deep link URL scheme
-const URL_SCHEME = 'dagestanidiscipline://'
+const URL_SCHEME = 'matflow://'
 
 /**
  * Extracts auth tokens from a deep link URL
@@ -195,4 +195,3 @@ export function initDeepLinkHandler(
 export function isNativePlatform(): boolean {
   return Capacitor.isNativePlatform()
 }
-

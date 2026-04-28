@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Dagestani Disciple</string>
+        <string>MatFlow</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -62,7 +62,7 @@
 			<string>com.dagestani.disciple</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>dagestanidiscipline</string>
+				<string>matflow</string>
 			</array>
 		</dict>
 		<dict>

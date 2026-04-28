@@ -227,9 +227,9 @@ function LeaderboardsTab() {
   )
 }
 
-type DiscoverSubTab = 'graphs' | 'techniques'
+type DiscoverSubTab = 'gameplans' | 'techniques'
 
-function DiscoverGraphsTab({
+function DiscoverGameplansTab({
   surface,
   branchLabel,
   onPreviewSystem,
@@ -255,7 +255,7 @@ function DiscoverGraphsTab({
       const rows = await communityService.listPublicSystemsByBranch(surface, 24, null)
       setCards(rows)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load systems')
+      setError(err instanceof Error ? err.message : 'Failed to load gameplans')
     } finally {
       setLoading(false)
     }
@@ -265,7 +265,7 @@ function DiscoverGraphsTab({
 
   const handleFork = useCallback(async (card: DiscoverSystemCard) => {
     if (card.viewerHasForked) {
-      showSuccess(`"${card.title}" is already in your library`)
+      showSuccess(`"${card.title}" is already in your gameplans`)
       return
     }
     setForkingId(card.systemId)
@@ -281,7 +281,7 @@ function DiscoverGraphsTab({
 
   if (loading) return <DiscoverListSkeleton />
   if (error) return <EmptyState title="Couldn't load" body={error} />
-  if (cards.length === 0) return <EmptyState title="No public systems yet" body={`Be the first to publish a ${branchLabel} system and other athletes can fork it into their library.`} />
+  if (cards.length === 0) return <EmptyState title="No public gameplans yet" body={`Be the first to publish a ${branchLabel} gameplan and other athletes can fork it into their library.`} />
 
   return (
     <div className="space-y-3 px-1">
@@ -458,13 +458,13 @@ function DiscoverTab(props: {
   onForkSystem: (card: DiscoverSystemCard) => Promise<void>
   refreshNonce: number
 }) {
-  const [subTab, setSubTab] = useState<DiscoverSubTab>('graphs')
+  const [subTab, setSubTab] = useState<DiscoverSubTab>('gameplans')
   return (
     <div className="space-y-3">
       <div className="sticky top-0 z-10 -mx-1 bg-[linear-gradient(180deg,rgba(14,15,20,0.96),rgba(14,15,20,0.86))] px-1 py-1 backdrop-blur">
         <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
           {([
-            { value: 'graphs' as const, label: 'Graphs', Icon: Network },
+            { value: 'gameplans' as const, label: 'Gameplans', Icon: Network },
             { value: 'techniques' as const, label: 'Techniques', Icon: BookOpen },
           ]).map(({ value, label, Icon }) => {
             const active = subTab === value
@@ -486,8 +486,8 @@ function DiscoverTab(props: {
           })}
         </div>
       </div>
-      {subTab === 'graphs' ? (
-        <DiscoverGraphsTab
+      {subTab === 'gameplans' ? (
+        <DiscoverGameplansTab
           surface={props.surface}
           branchLabel={props.branchLabel}
           onPreviewSystem={props.onPreviewSystem}

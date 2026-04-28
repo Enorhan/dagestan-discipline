@@ -11,11 +11,21 @@ export type PersistedShellUiPrefs = Pick<
 export const BJJ_PROFILE_FLAGS_STORAGE_KEY = `${BJJ_STORAGE_KEY}:profile-flags`
 export const BJJ_UI_PREFS_STORAGE_KEY = `${BJJ_STORAGE_KEY}:ui-prefs`
 
-const BOTTOM_TABS = new Set<BjjPersistedState['selectedBottomTab']>(['sessions', 'social', 'techniques', 'you'])
+const BOTTOM_TABS = new Set<BjjPersistedState['selectedBottomTab']>(['today', 'library', 'gameplans', 'community', 'you'])
 const SESSIONS_TABS = new Set<BjjPersistedState['selectedSessionsTab']>(['my-sessions'])
 const TECHNIQUES_TABS = new Set<BjjPersistedState['selectedTechniquesTab']>(['my-library', 'systems', 'discover'])
 const SOCIAL_HOME_RAILS = new Set<BjjPersistedState['socialHomeRail']>(['for_you', 'following'])
 const SYSTEMS_HUB_FILTERS = new Set<BjjPersistedState['systemsHubFilter']>(['all', 'mine', 'curated', 'community'])
+
+function normalizeBottomTab(value: unknown, fallback: BjjPersistedState['selectedBottomTab']): BjjPersistedState['selectedBottomTab'] {
+  if (BOTTOM_TABS.has(value as BjjPersistedState['selectedBottomTab'])) {
+    return value as BjjPersistedState['selectedBottomTab']
+  }
+  if (value === 'sessions') return 'today'
+  if (value === 'techniques') return 'library'
+  if (value === 'social') return 'community'
+  return fallback
+}
 
 export function normalizeBjjState(raw: unknown, displayName: string, username: string): BjjPersistedState {
   const fallback = createDefaultBjjState(displayName, username)
@@ -47,9 +57,7 @@ export function normalizeBjjState(raw: unknown, displayName: string, username: s
     ...fallback,
     ...candidate,
     profile: nextProfile,
-    selectedBottomTab: BOTTOM_TABS.has(candidate.selectedBottomTab as BjjPersistedState['selectedBottomTab'])
-      ? candidate.selectedBottomTab as BjjPersistedState['selectedBottomTab']
-      : fallback.selectedBottomTab,
+    selectedBottomTab: normalizeBottomTab(candidate.selectedBottomTab, fallback.selectedBottomTab),
     selectedSessionsTab: SESSIONS_TABS.has(candidate.selectedSessionsTab as BjjPersistedState['selectedSessionsTab'])
       ? candidate.selectedSessionsTab as BjjPersistedState['selectedSessionsTab']
       : fallback.selectedSessionsTab,
@@ -113,8 +121,8 @@ export function normalizePersistedShellUiPrefs(raw: unknown): Partial<PersistedS
   const candidate = raw as Partial<Record<keyof PersistedShellUiPrefs, unknown>>
 
   return {
-    ...(BOTTOM_TABS.has(candidate.selectedBottomTab as BjjPersistedState['selectedBottomTab'])
-      ? { selectedBottomTab: candidate.selectedBottomTab as BjjPersistedState['selectedBottomTab'] }
+    ...(candidate.selectedBottomTab !== undefined
+      ? { selectedBottomTab: normalizeBottomTab(candidate.selectedBottomTab, 'today') }
       : {}),
     ...(SESSIONS_TABS.has(candidate.selectedSessionsTab as BjjPersistedState['selectedSessionsTab'])
       ? { selectedSessionsTab: candidate.selectedSessionsTab as BjjPersistedState['selectedSessionsTab'] }

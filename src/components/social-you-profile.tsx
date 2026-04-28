@@ -113,9 +113,9 @@ function SystemList({
   if (items.length === 0) {
     return (
       <div className="flex min-h-[34vh] flex-col items-center justify-center px-8 text-center">
-        <p className="text-[28px] font-black tracking-tight text-white">No graphs yet</p>
+        <p className="text-[28px] font-black tracking-tight text-white">No gameplans yet</p>
         <p className="mt-2 max-w-[280px] text-sm leading-6 text-white/56">
-          Graphs you create appear here.
+          Gameplans you create appear here.
         </p>
       </div>
     )
@@ -240,7 +240,7 @@ export function SocialYouProfile({
             </button>
             <button type="button" onClick={() => onTabChange('graphs')} className="text-center">
               <p className="text-[22px] font-black text-white">{systems.length}</p>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Graphs</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Gameplans</p>
             </button>
             <button type="button" onClick={onOpenFollowers} className="text-center">
               <p className="text-[22px] font-black text-white">{overview.followerCount}</p>
@@ -254,7 +254,7 @@ export function SocialYouProfile({
           {overview.bio ? (
             <p className="text-sm leading-6 text-white/64">{overview.bio}</p>
           ) : (
-            <p className="text-sm leading-6 text-white/38">Techniques and graphs from your training system.</p>
+            <p className="text-sm leading-6 text-white/38">Techniques and gameplans from your training system.</p>
           )}
           {overview.primaryDiscipline ? (
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
@@ -293,7 +293,7 @@ export function SocialYouProfile({
         <div className="flex items-center gap-5 border-b border-white/10" role="tablist" aria-label="Profile tabs">
           {([
             { value: 'techniques', label: 'Techniques', Icon: BookOpen, count: techniques.length },
-            { value: 'graphs', label: 'Graphs', Icon: GitBranch, count: systems.length },
+            { value: 'graphs', label: 'Gameplans', Icon: GitBranch, count: systems.length },
           ] as const).map(({ value, label, Icon, count }) => (
             <button
               key={value}

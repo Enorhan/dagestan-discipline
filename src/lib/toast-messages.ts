@@ -1,6 +1,6 @@
 /**
  * Central toast copy + error presentation for useToast / showError.
- * Design reference: Figma “Dagestan Discipline — Toast / Snackbar” (team drafts).
+ * Design reference: Figma “MatFlow — Toast / Snackbar” (team drafts).
  */
 
 /** Prefer these for new code; legacy literals are normalized in {@link presentableErrorText}. */
@@ -17,7 +17,7 @@ export const toastCopy = {
   linkLimitTechniques: 'You can link up to 15 techniques.',
   freePlanTechniqueLimit: 'Free plan limit: 20 techniques. Upgrade to Pro to add more.',
   createAccountBeforePaywall: 'Create an account first, then continue from the paywall.',
-  systemUnavailableDeepLink: 'That system isn’t available. Open it from the Systems hub or use an updated link.',
+  systemUnavailableDeepLink: 'That gameplan isn’t available. Open it from the Gameplans hub or use an updated link.',
 } as const
 
 /**

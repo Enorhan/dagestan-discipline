@@ -188,7 +188,7 @@ async function main() {
     assert.equal(oauthProvider, 'google')
     assert.equal(oauthRedirectTo, 'https://app.example.com')
     assert.equal(assignedUrl, 'https://auth.example.com/oauth')
-    assert.equal(String(oauthRedirectTo).startsWith('dagestanidiscipline://'), false)
+    assert.equal(String(oauthRedirectTo).startsWith('matflow://'), false)
 
     ;(Capacitor as any).isNativePlatform = () => true
     ;(Capacitor as any).getPlatform = () => 'ios'
@@ -217,7 +217,7 @@ async function main() {
       username: 'enesorhan',
       belt: 'blue',
       stripes: 2,
-      gymName: 'Dagestani HQ',
+      gymName: 'MatFlow HQ',
       privacy: 'private',
       primaryDiscipline: 'BJJ',
       experienceLevel: 'intermediate',
@@ -237,7 +237,7 @@ async function main() {
     assert.equal(updatedProfile.username, 'enesorhan')
     assert.equal(updatedProfile.belt, 'blue')
     assert.equal(updatedProfile.stripes, 2)
-    assert.equal(updatedProfile.gymName, 'Dagestani HQ')
+    assert.equal(updatedProfile.gymName, 'MatFlow HQ')
     assert.equal(updatedProfile.privacy, 'private')
     assert.equal(updatedProfile.primaryDiscipline, 'BJJ')
     assert.equal(updatedProfile.experienceLevel, 'intermediate')

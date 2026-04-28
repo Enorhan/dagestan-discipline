@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 
-const DEFAULT_SUPPORT_EMAIL = 'support@dagestanidisciple.com'
+const DEFAULT_SUPPORT_EMAIL = 'support@matflow.app'
 const DEFAULT_PRIVACY_POLICY_URL = '/legal/privacy-policy.html'
 const DEFAULT_TERMS_OF_SERVICE_URL = '/legal/terms-of-service.html'
 
@@ -38,12 +38,12 @@ export function buildSupportMailtoLink(email: string, subject: string, body?: st
 
 export const BILLING_SUPPORT_MAILTO = buildSupportMailtoLink(
   BILLING_SUPPORT_EMAIL,
-  'Dagestani Disciple billing help'
+  'MatFlow billing help'
 )
 
 export const ACCOUNT_DELETION_MAILTO = buildSupportMailtoLink(
   SUPPORT_EMAIL,
-  'Dagestani Disciple account deletion request'
+  'MatFlow account deletion request'
 )
 
 export async function openSupportLink(target: string): Promise<void> {

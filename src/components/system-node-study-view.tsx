@@ -136,12 +136,15 @@ export function SystemNodeStudyView({
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/38">Study · {stack.length}</p>
       </header>
 
-      <div className="shrink-0 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: current.color }} aria-hidden />
-          <h1 className="text-[22px] font-black leading-tight tracking-tight text-white">{current.label}</h1>
-        </div>
-      </div>
+	      <div className="shrink-0 space-y-1">
+	        <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+	          <div className="flex items-center gap-2">
+	            <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: current.color }} aria-hidden />
+	            <h1 className="text-[22px] font-black leading-tight tracking-tight text-white">{current.label}</h1>
+	          </div>
+	          <p className="mt-2 text-xs font-semibold text-white/38">{incoming.length} incoming · {outgoing.length} outgoing</p>
+	        </div>
+	      </div>
 
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
         <StudyBody
@@ -190,27 +193,42 @@ function StudyBody({
 }) {
   return (
     <div className="space-y-4 pb-2">
-      <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#0a0e18]">
-        <div className="aspect-[5/4] w-full">
-          <SystemGraphCanvas
-            variant="reader"
-            nodes={neighborhood.nodes}
-            edges={neighborhood.edges}
-            positions={positions}
-            className="h-full w-full"
-            viewportGestures={false}
-            reduceMotion={reduceMotion}
-            keyboardFocusNodeId={current.id}
-            selectedNodeId={current.id}
-            onSelectNode={(id) => {
-              if (id && id !== current.id) onPush(id)
-            }}
-          />
-        </div>
-        <p className="border-t border-white/8 px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">
-          Neighborhood · tap a connected step to drill in
-        </p>
-      </div>
+	      <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#050914] shadow-[0_20px_58px_rgba(0,0,0,0.42)]">
+	        <div className="aspect-[5/4] w-full">
+	          <SystemGraphCanvas
+	            variant="reader"
+	            nodes={neighborhood.nodes}
+	            edges={neighborhood.edges}
+	            positions={positions}
+	            className="h-full w-full"
+	            viewportGestures={false}
+	            reduceMotion={reduceMotion}
+	            density="hero"
+	            showControls={false}
+	            showMiniMap={false}
+	            keyboardFocusNodeId={current.id}
+	            selectedNodeId={current.id}
+	            onSelectNode={(id) => {
+	              if (id && id !== current.id) onPush(id)
+	            }}
+	          />
+	        </div>
+	      </div>
+
+	      {(incoming.length > 0 || outgoing.length > 0) ? (
+	        <div className="grid gap-3">
+	          {incoming.length > 0 ? (
+	            <EdgeList title="Coming from" edges={incoming} onPush={onPush} />
+	          ) : null}
+	          {outgoing.length > 0 ? (
+	            <EdgeList title="Leads to" edges={outgoing} onPush={onPush} />
+	          ) : null}
+	        </div>
+	      ) : (
+	        <p className="rounded-[18px] border border-dashed border-white/12 bg-white/[0.02] px-4 py-6 text-center text-sm text-white/45">
+	          No connections yet.
+	        </p>
+	      )}
 
       {current.trigger ? (
         <div className="rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
@@ -233,8 +251,8 @@ function StudyBody({
         </div>
       ) : null}
 
-      {current.videoUrl ? (
-        <a
+	      {current.videoUrl ? (
+	        <a
           href={buildVideoHref(current.videoUrl, current.videoTimestampSeconds)}
           target="_blank"
           rel="noopener noreferrer"
@@ -248,7 +266,7 @@ function StudyBody({
               : ''}
           </span>
         </a>
-      ) : null}
+	      ) : null}
 
       {linkedTechniques.length > 0 ? (
         <div className="rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
@@ -284,20 +302,9 @@ function StudyBody({
         </div>
       ) : null}
 
-      {incoming.length > 0 ? (
-        <EdgeList title="Coming from" edges={incoming} onPush={onPush} />
-      ) : null}
-      {outgoing.length > 0 ? (
-        <EdgeList title="Leads to" edges={outgoing} onPush={onPush} />
-      ) : null}
-      {incoming.length === 0 && outgoing.length === 0 ? (
-        <p className="rounded-[18px] border border-dashed border-white/12 bg-white/[0.02] px-4 py-6 text-center text-sm text-white/45">
-          No connections yet. Add edges in the editor to chain steps.
-        </p>
-      ) : null}
-    </div>
-  )
-}
+	    </div>
+	  )
+	}
 
 
 function EdgeList({

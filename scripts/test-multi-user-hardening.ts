@@ -6,6 +6,7 @@ const root = process.cwd()
 const read = (path: string) => readFileSync(join(root, path), 'utf8')
 
 const migration = read('supabase/migrations/20260421223000_multi_user_public_graph_hardening.sql')
+const draftStatusMigration = read('supabase/migrations/20260424113000_system_draft_status.sql')
 const bjjService = read('src/lib/bjj-service.ts')
 const bjjApp = read('src/components/bjj-app.tsx')
 const runtimeFlags = read('src/lib/runtime-flags.ts')
@@ -37,6 +38,15 @@ assert.ok(
   /technique_branch is distinct from session_branch/.test(migration),
   'training session technique guard must enforce branch ownership',
 )
+
+for (const token of [
+  "add column if not exists status text not null default 'active'",
+  "status in ('draft', 'active')",
+  "coalesce(s.status, 'active') = 'active'",
+  "v_status = 'draft' then 'private'",
+]) {
+  assert.ok(draftStatusMigration.includes(token), `draft status migration missing ${token}`)
+}
 
 for (const rpc of [
   'save_user_system_graph',

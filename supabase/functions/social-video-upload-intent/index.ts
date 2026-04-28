@@ -45,7 +45,7 @@ async function createMuxUploadIntent(body: UploadIntentRequest): Promise<{ provi
         passthrough: JSON.stringify({
           fileName: body.fileName ?? null,
           contentType: body.contentType ?? null,
-          source: 'dagestani-disciple',
+          source: 'matflow',
         }),
       },
       cors_origin: '*',

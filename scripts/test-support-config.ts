@@ -8,11 +8,11 @@ import {
   buildSupportMailtoLink,
 } from '@/lib/app-support'
 
-assert.equal(SUPPORT_EMAIL, 'support@dagestanidisciple.com')
+assert.equal(SUPPORT_EMAIL, 'support@matflow.app')
 assert.equal(PRIVACY_POLICY_URL, '/legal/privacy-policy.html')
 assert.equal(TERMS_OF_SERVICE_URL, '/legal/terms-of-service.html')
-assert.match(BILLING_SUPPORT_MAILTO, /^mailto:support@dagestanidisciple\.com\?subject=/)
-assert.match(ACCOUNT_DELETION_MAILTO, /^mailto:support@dagestanidisciple\.com\?subject=/)
+assert.match(BILLING_SUPPORT_MAILTO, /^mailto:support@matflow\.app\?subject=/)
+assert.match(ACCOUNT_DELETION_MAILTO, /^mailto:support@matflow\.app\?subject=/)
 assert.equal(
   buildSupportMailtoLink('help@example.com', 'Need billing help'),
   'mailto:help@example.com?subject=Need%20billing%20help'

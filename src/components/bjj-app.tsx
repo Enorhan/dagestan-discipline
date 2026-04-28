@@ -41,6 +41,7 @@ import {
   Play,
   Medal,
   MessageCircle,
+  MoreHorizontal,
   NotebookPen,
   Plus,
   Search,
@@ -73,11 +74,12 @@ import { SystemGraphCanvas } from '@/components/system-graph-canvas'
 import { TargetCommentsSheet } from '@/components/target-comments-sheet'
 import { UserSystemEditorModal } from '@/components/user-system-editor-modal'
 import { UserSystemReaderModal } from '@/components/user-system-reader-modal'
+import { UserSystemWizardModal } from '@/components/user-system-wizard-modal'
 import { useAuth } from '@/contexts/auth-context'
 import { useRuntimeFlags } from '@/contexts/runtime-flags-context'
 import { useToast } from '@/contexts/toast-context'
 import { toastCopy } from '@/lib/toast-messages'
-import { bjjService, type BjjPublicUserProfileBundle, type SaveUserSystemInput } from '@/lib/bjj-service'
+import { bjjService, type BjjPublicUserProfileBundle, type SaveUserSystemInput, type SaveUserSystemResult } from '@/lib/bjj-service'
 import { communityService, type PublicProfileReviewRow, type CommentTargetType } from '@/lib/community-service'
 import { haptics } from '@/lib/haptics'
 import { supabaseService } from '@/lib/supabase-service'
@@ -125,6 +127,7 @@ import {
 } from '@/lib/user-technique-label-prefs'
 import { getAuthErrorMessage } from '@/lib/action-feedback'
 import { BILLING_SUPPORT_MAILTO, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL, openSupportLink } from '@/lib/app-support'
+import { purchaseMatFlowMonthly, restoreMatFlowPurchases, shouldUseAppleInAppPurchase, type AppleIapResult } from '@/lib/apple-iap-service'
 import { socialFeedService } from '@/lib/social-feed-service'
 import { socialRelationshipsService } from '@/lib/social-relationships-service'
 import type {
@@ -145,7 +148,7 @@ import type {
   SocialUploadStatus,
   SocialVideoProvider,
 } from '@/lib/social-models'
-import { PREMIUM_SUBSCRIPTION_PRICE_LABEL } from '@/lib/subscription-config'
+import { getMatFlowAccessState, MATFLOW_PRICE_LABEL } from '@/lib/matflow-access'
 import type {
   BjjAchievement,
   BjjAnalyticsWindow,
@@ -569,9 +572,10 @@ const ONBOARDING_PREVIEW_TECHNIQUES = [
 ] as const
 
 const BOTTOM_NAV_ITEMS: Array<{ value: BjjBottomTab; label: string; Icon: LucideIcon }> = [
-  { value: 'sessions', label: 'Sessions', Icon: Zap },
-  { value: 'techniques', label: 'Techniques', Icon: BookOpen },
-  { value: 'social', label: 'Community', Icon: Sparkles },
+  { value: 'today', label: 'Today', Icon: Zap },
+  { value: 'library', label: 'Library', Icon: BookOpen },
+  { value: 'gameplans', label: 'Gameplans', Icon: Network },
+  { value: 'community', label: 'Community', Icon: Trophy },
   { value: 'you', label: 'You', Icon: UserRound },
 ]
 
@@ -1016,14 +1020,20 @@ function SystemPreviewGraph({ system }: { system: BjjSystem }) {
   }, [system])
 
   return (
-    <div className="relative h-44 overflow-hidden rounded-[24px] border border-white/10 bg-[#0c111d]">
+    <div className="relative h-48 overflow-hidden rounded-[24px] border border-white/10 bg-[#050914] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <SystemGraphCanvas
         variant="preview"
         nodes={system.nodes}
         edges={system.edges}
         positions={positions}
+        density="hero"
+        labelMode="auto"
+        showGrid
+        showControls={false}
+        showMiniMap={false}
         className="absolute inset-0 h-full w-full"
       />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-[linear-gradient(180deg,transparent,rgba(3,6,12,0.82))]" />
     </div>
   )
 }
@@ -1140,7 +1150,7 @@ function BjjAppInner() {
   const [coachStep, setCoachStep] = useState<number | null>(null)
   const [onboardingIndex, setOnboardingIndex] = useState(0)
   const [paywallIndex, setPaywallIndex] = useState(0)
-  const [paywallPlan, setPaywallPlan] = useState<'monthly' | 'annual'>('annual')
+  const [paywallPlan] = useState<'monthly'>('monthly')
   const [setupProgress, setSetupProgress] = useState(27)
   const [analyticsWindow, setAnalyticsWindow] = useState<BjjAnalyticsWindow>('this-month')
   const [librarySearchInput, setLibrarySearchInput] = useState('')
@@ -1208,9 +1218,11 @@ function BjjAppInner() {
   } | null>(null)
   const [dismissedSuggestedGrapplerIds, setDismissedSuggestedGrapplerIds] = useState<string[]>([])
   const [systemsState, setSystemsState] = useState<BjjSystem[]>([])
+  const [systemActionsOpenId, setSystemActionsOpenId] = useState<string | null>(null)
   const [systemEditorSession, setSystemEditorSession] = useState<{
     initial: BjjSystem | null
     seedDraft?: SaveUserSystemInput | null
+    mode?: 'wizard' | 'editor'
     nonce: number
   } | null>(null)
   const [systemReaderSession, setSystemReaderSession] = useState<BjjSystem | null>(null)
@@ -1555,7 +1567,7 @@ function BjjAppInner() {
         cachedStateRef.current = null
       } catch (error) {
         if (active) {
-          const message = error instanceof Error ? error.message : 'Unable to sync your BJJ workspace'
+          const message = error instanceof Error ? error.message : 'Unable to sync your MatFlow workspace'
           setShellError(message)
           showError(message)
         }
@@ -1673,7 +1685,7 @@ function BjjAppInner() {
   useEffect(() => {
     if (activeSurface !== 'system-editor') return
     if (!appState) return
-    if (appState.selectedBottomTab !== 'techniques' || appState.selectedTechniquesTab !== 'systems') {
+    if (appState.selectedBottomTab !== 'gameplans') {
       setActiveSurface(null)
       setSystemEditorSession(null)
     }
@@ -1758,7 +1770,7 @@ function BjjAppInner() {
     setSocialFeedCursor(null)
     updateAppState((previous) => ({
       ...previous,
-      selectedBottomTab: 'social',
+      selectedBottomTab: 'community',
       socialSurface,
     }))
   }, [updateAppState])
@@ -1768,7 +1780,7 @@ function BjjAppInner() {
     setSocialFeedCursor(null)
     updateAppState((previous) => ({
       ...previous,
-      selectedBottomTab: 'social',
+      selectedBottomTab: 'community',
       socialHomeRail,
     }))
   }, [updateAppState])
@@ -1780,7 +1792,7 @@ function BjjAppInner() {
   const navigateToForkedSystem = (branch: MartialArtsBranchId, forkedId: string | null = null) => {
     updateAppState((previous) => ({
       ...previous,
-      selectedBottomTab: 'techniques',
+      selectedBottomTab: 'gameplans',
       selectedTechniquesTab: 'systems',
       systemsHubFilter: 'mine',
       selectedSystemBranch: branch,
@@ -1792,7 +1804,7 @@ function BjjAppInner() {
   const navigateToForkedTechnique = (branch: MartialArtsBranchId, forkedId: string | null = null) => {
     updateAppState((previous) => ({
       ...previous,
-      selectedBottomTab: 'techniques',
+      selectedBottomTab: 'library',
       selectedTechniquesTab: 'my-library',
       selectedTechniqueBranch: branch,
     }))
@@ -1824,19 +1836,19 @@ function BjjAppInner() {
 
   const openUserSystemEditorCreate = () => {
     if (!user) return
-    setSystemEditorSession({ initial: null, seedDraft: null, nonce: Date.now() })
+    setSystemEditorSession({ initial: null, seedDraft: null, mode: 'wizard', nonce: Date.now() })
     setActiveSurface('system-editor')
   }
 
   const openUserSystemEditorEdit = (system: BjjSystem) => {
     if (!user || system.userId !== user.id) return
-    setSystemEditorSession({ initial: system, seedDraft: null, nonce: Date.now() })
+    setSystemEditorSession({ initial: system, seedDraft: null, mode: system.status === 'draft' ? 'wizard' : 'editor', nonce: Date.now() })
     setActiveSurface('system-editor')
   }
 
   const openUserSystemDuplicate = (system: BjjSystem) => {
     if (!user || system.userId !== user.id) return
-    setSystemEditorSession({ initial: null, seedDraft: duplicateUserSystemDraft(system), nonce: Date.now() })
+    setSystemEditorSession({ initial: null, seedDraft: duplicateUserSystemDraft(system), mode: 'editor', nonce: Date.now() })
     setActiveSurface('system-editor')
   }
 
@@ -1963,14 +1975,21 @@ function BjjAppInner() {
     if (!user) return
     try {
       await bjjService.saveUserSystem(user.id, input)
-      showSuccess('System saved')
+      showSuccess(input.status === 'draft' ? 'Draft saved' : 'System saved')
       setSystemEditorSession(null)
       setActiveSurface(null)
       refreshShellSnapshot()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save system'
+      const message = error instanceof Error ? error.message : 'Could not save gameplan'
       showError(message)
     }
+  }
+
+  const handleAutosaveUserSystemDraft = async (input: SaveUserSystemInput): Promise<SaveUserSystemResult> => {
+    if (!user) throw new Error('Sign in to save drafts')
+    const result = await bjjService.saveUserSystem(user.id, { ...input, status: 'draft', visibility: 'private' })
+    refreshShellSnapshot()
+    return result
   }
 
   const handleDeleteUserSystem = async (systemId: string) => {
@@ -1986,7 +2005,7 @@ function BjjAppInner() {
       setActiveSurface(null)
       refreshShellSnapshot()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not delete system'
+      const message = error instanceof Error ? error.message : 'Could not delete gameplan'
       showError(message)
     }
   }
@@ -2160,9 +2179,10 @@ function BjjAppInner() {
     const query = deferredSystemsHubSearch.trim().toLowerCase()
     const pins = new Set(appState?.pinnedSystemIds ?? [])
     const scopeToBranch = filter !== 'mine'
+    const activeSystems = systemsState.filter((system) => system.status !== 'draft')
     let list = scopeToBranch
-      ? systemsState.filter((system) => system.branch === selectedSystemBranch)
-      : systemsState.slice()
+      ? activeSystems.filter((system) => system.branch === selectedSystemBranch)
+      : activeSystems.slice()
     if (filter === 'mine' && user?.id) list = list.filter((system) => system.userId === user.id)
     if (filter === 'curated') list = list.filter((system) => !system.userId)
     if (filter === 'community' && user?.id) list = list.filter((system) => Boolean(system.userId && system.userId !== user.id))
@@ -2188,6 +2208,19 @@ function BjjAppInner() {
     })
     return list
   }, [appState?.pinnedSystemIds, appState?.systemsHubFilter, deferredSystemsHubSearch, selectedSystemBranch, systemsState, user?.id])
+
+  const systemDraftsForBranch = useMemo(() => {
+    if (!user?.id) return []
+    return systemsState
+      .filter((system) => system.status === 'draft' && system.userId === user.id && system.branch === selectedSystemBranch)
+      .slice()
+      .sort((left, right) => {
+        const r = Date.parse(right.updatedAt ?? '')
+        const l = Date.parse(left.updatedAt ?? '')
+        if (Number.isFinite(r) && Number.isFinite(l) && r !== l) return r - l
+        return left.title.localeCompare(right.title)
+      })
+  }, [selectedSystemBranch, systemsState, user?.id])
 
   const discoverByCategory = useMemo(() => {
     const query = deferredLibrarySearch.trim().toLowerCase()
@@ -2488,7 +2521,7 @@ function BjjAppInner() {
 
   useEffect(() => {
     if (!user) return
-    if (appState?.selectedBottomTab !== 'social') return
+    if (appState?.selectedBottomTab !== 'community') return
     void refreshSocialFeed(true)
   }, [
     appState?.selectedBottomTab,
@@ -2498,7 +2531,7 @@ function BjjAppInner() {
   ])
 
   useEffect(() => {
-    if (!user || appState?.selectedBottomTab !== 'social') return
+    if (!user || appState?.selectedBottomTab !== 'community') return
     let active = true
     setSocialFeedLoading(true)
     void bjjService.searchCommunityProfiles(user.id, selectedSocialSurface, deferredSocialSearch)
@@ -2930,9 +2963,9 @@ function BjjAppInner() {
       }
     }
 
-    const displayName = socialProfileOverview.displayName || 'this grappler'
+    const displayName = socialProfileOverview.displayName || 'this athlete'
     await shareWithFallbacks({
-      title: `${displayName} on Dagestani Disciple`,
+      title: `${displayName} on MatFlow`,
       text: `Train with ${displayName}`,
       url,
       successMessage: 'Profile link copied',
@@ -2947,10 +2980,10 @@ function BjjAppInner() {
       return
     }
     const handle = (target.handle ?? '').replace(/^@/, '').trim()
-    const name = (target.displayName ?? '').trim() || (handle ? `@${handle}` : 'this grappler')
+    const name = (target.displayName ?? '').trim() || (handle ? `@${handle}` : 'this athlete')
     await shareWithFallbacks({
-      title: `${name} on Dagestani Disciple`,
-      text: `Check out ${name}${handle ? ` (@${handle})` : ''} on Dagestani Disciple`,
+      title: `${name} on MatFlow`,
+      text: `Check out ${name}${handle ? ` (@${handle})` : ''} on MatFlow`,
       url,
       successMessage: `@${handle || name} link copied`,
     })
@@ -3207,7 +3240,7 @@ function BjjAppInner() {
         : previous)
       navigateToForkedSystem(forkedBranch, childId || null)
       refreshShellSnapshot()
-      showSuccess(`Forked "${system.title}" to My Graphs`)
+      showSuccess(`Forked "${system.title}" to My Gameplans`)
     } catch (error) {
       void haptics.error()
       showError(error instanceof Error ? error.message : 'Unable to fork system')
@@ -3368,7 +3401,7 @@ function BjjAppInner() {
       return
     }
     if (typeof window === 'undefined') return
-    if (!window.confirm('Delete your account? This permanently removes your profile, sessions, systems, and uploads. This cannot be undone.')) {
+    if (!window.confirm('Delete your account? This permanently removes your profile, sessions, gameplans, and uploads. This cannot be undone.')) {
       return
     }
     const typed = window.prompt('Type DELETE to confirm account deletion.')
@@ -3739,19 +3772,82 @@ function BjjAppInner() {
     }
   }
 
-  const handleSubscribe = async (plan: 'monthly' | 'annual' = 'monthly') => {
+  const applyAppleEntitlement = async (result: AppleIapResult): Promise<boolean> => {
+    if (!user?.id) return false
+
+    const entitlements = result.entitlements?.length ? result.entitlements : [result]
+    let updatedProfile: Awaited<ReturnType<typeof supabaseService.recordAppStoreTransaction>> = null
+
+    for (const entitlement of entitlements) {
+      if (!entitlement.originalTransactionId || !entitlement.productId) continue
+      updatedProfile = await supabaseService.recordAppStoreTransaction(user.id, entitlement)
+    }
+
+    if (!updatedProfile) return false
+
+    const access = getMatFlowAccessState(updatedProfile)
+    updateAppState((previous) => ({
+      ...previous,
+      profile: {
+        ...previous.profile,
+        proUnlocked: access.hasAccess,
+        matflowTrialStartedAt: updatedProfile.matflowTrialStartedAt ?? previous.profile.matflowTrialStartedAt ?? null,
+        subscriptionStatus: updatedProfile.subscriptionStatus ?? previous.profile.subscriptionStatus ?? null,
+        subscriptionPeriodEnd: updatedProfile.subscriptionPeriodEnd ?? previous.profile.subscriptionPeriodEnd ?? null,
+      },
+    }))
+    refreshShellSnapshot()
+    return access.hasAccess
+  }
+
+  const handleSubscribe = async (plan: 'monthly' = 'monthly') => {
     if (!isAuthenticated) {
       showInfo(toastCopy.createAccountBeforePaywall)
       return
     }
 
     try {
-      const annualPriceId = (process.env.NEXT_PUBLIC_STRIPE_PREMIUM_ANNUAL_PRICE_ID ?? '').trim()
+      if (shouldUseAppleInAppPurchase()) {
+        const result = await purchaseMatFlowMonthly(user?.id)
+        if (result.status === 'purchased' || result.status === 'restored') {
+          const accessUnlocked = await applyAppleEntitlement(result)
+          showSuccess(accessUnlocked ? 'MatFlow access unlocked' : 'Purchase received. Restoring MatFlow access...')
+          return
+        }
+        if (result.status === 'pending') {
+          showInfo('Purchase is pending Apple approval.')
+          return
+        }
+        if (result.status === 'cancelled') {
+          showInfo('Purchase cancelled')
+          return
+        }
+        showError('This App Store product is not available yet.')
+        return
+      }
       const monthlyPriceId = (process.env.NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY_PRICE_ID ?? '').trim()
-      const priceId = plan === 'annual' ? annualPriceId : monthlyPriceId
-      await stripeService.subscribeToPremium(priceId || undefined)
+      void plan
+      await stripeService.subscribeToPremium(monthlyPriceId || undefined)
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Unable to open checkout')
+    }
+  }
+
+  const handleRestorePurchase = async () => {
+    try {
+      if (shouldUseAppleInAppPurchase()) {
+        const result = await restoreMatFlowPurchases()
+        if (result.status === 'restored') {
+          const accessUnlocked = await applyAppleEntitlement(result)
+          showSuccess(accessUnlocked ? 'MatFlow access restored' : 'Purchases restored. Refreshing access...')
+          return
+        }
+        showInfo('No active App Store subscription found')
+        return
+      }
+      await openSupportLink(BILLING_SUPPORT_MAILTO)
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Unable to restore purchases')
     }
   }
 
@@ -3959,11 +4055,11 @@ function BjjAppInner() {
         <div className="relative mx-auto flex h-full w-full max-w-[430px] items-center justify-center px-6">
           <div className="flex flex-col items-center gap-5 text-center">
             <div className="relative h-24 w-24 overflow-hidden rounded-[28px] border border-[#4d7cff]/35 bg-white/10 shadow-[0_16px_38px_rgba(37,99,235,0.22)]">
-              <Image src="/app-icon.png" alt="Dagestani Disciple" fill className="object-cover" />
+              <Image src="/app-icon.png" alt="MatFlow" fill className="object-cover" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#7ea4ff]">Dagestani Disciple</p>
-              <h1 className="mt-3 text-3xl font-bold">Loading your BJJ workspace…</h1>
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#7ea4ff]">MatFlow</p>
+              <h1 className="mt-3 text-3xl font-bold">Loading your MatFlow workspace...</h1>
             </div>
           </div>
         </div>
@@ -3979,7 +4075,7 @@ function BjjAppInner() {
         <ScreenBackdrop variant="auth" />
         <div className="relative mx-auto flex h-full w-full max-w-[430px] flex-col px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-[calc(env(safe-area-inset-top)+12px)]">
           <div className="flex items-center justify-between text-sm font-semibold text-white/70">
-            <span>Dagestani Disciple</span>
+            <span>MatFlow</span>
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">NoGi</span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Closed Guard</span>
@@ -4020,7 +4116,7 @@ function BjjAppInner() {
 
               <div className="pb-1 pt-5 text-center">
                 <h1 className={cn('mx-auto max-w-[300px] font-black leading-[0.98] text-white', isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[38px]')}>
-                  Never forget a BJJ technique again!
+                  Never forget a technique again!
                 </h1>
                 <div className="mt-3 flex items-center justify-center gap-2">
                   <span className="h-2 w-8 rounded-full bg-white" />
@@ -4648,10 +4744,10 @@ function BjjAppInner() {
                       <Star className="h-5 w-5 fill-current" />
                     </div>
                     <p className="mt-3 text-sm font-semibold uppercase tracking-[0.24em] text-white/65">
-                      Trusted by 30,000+ grapplers
+                      Trusted by 30,000+ combat athletes
                     </p>
                   </div>
-                  <h2 className={cn(isShortHeight ? 'mt-6 text-[30px]' : isCompactHeight ? 'mt-7 text-[34px]' : 'mt-8 text-[38px]', 'font-black leading-[1.02]')}>Setting up Dagestani Disciple…</h2>
+                  <h2 className={cn(isShortHeight ? 'mt-6 text-[30px]' : isCompactHeight ? 'mt-7 text-[34px]' : 'mt-8 text-[38px]', 'font-black leading-[1.02]')}>Setting up MatFlow…</h2>
                   <p className={cn('mx-auto mt-3 max-w-[310px] text-white/58', paywallBodyClass)}>
                     Identifying growth opportunities and shaping your first technical system.
                   </p>
@@ -4679,7 +4775,7 @@ function BjjAppInner() {
                     'mx-auto relative overflow-hidden rounded-[24px] border border-white/10 bg-white/8',
                     isShortHeight ? 'h-20 w-20' : 'h-24 w-24',
                   )}>
-                    <Image src="/app-icon.png" alt="Dagestani Disciple icon" fill className="object-cover" />
+                    <Image src="/app-icon.png" alt="MatFlow icon" fill className="object-cover" />
                   </div>
                   <h2 className={cn(isShortHeight ? 'mt-6 text-[30px]' : isCompactHeight ? 'mt-7 text-[34px]' : 'mt-8 text-[42px]', 'font-black leading-[1]')}>
                     Everything is ready.
@@ -4722,15 +4818,25 @@ function BjjAppInner() {
     )
   }
 
+  const matflowAccess = getMatFlowAccessState({
+    createdAt: user?.createdAt,
+    firstActiveAt: user?.firstActiveAt,
+    matflowTrialStartedAt: user?.matflowTrialStartedAt ?? appState.profile.matflowTrialStartedAt ?? null,
+    isPremium: user?.isPremium,
+    subscriptionStatus: user?.subscriptionStatus ?? appState.profile.subscriptionStatus ?? null,
+    subscriptionPeriodEnd: user?.subscriptionPeriodEnd ?? appState.profile.subscriptionPeriodEnd ?? null,
+  })
   const forcedPaywallStep = BJJ_PAYWALL_STEPS[paywallIndex] as BjjPaywallStep
-  const showingForcedPaywall = !appState.profile.paywallCompleted
+  const showingForcedPaywall = !appState.profile.paywallCompleted || matflowAccess.trialExpired
   if (showingForcedPaywall) {
     const paywallBackdropVariant: ScreenBackdropVariant = forcedPaywallStep === 'founder'
       ? 'paywall-founder'
       : forcedPaywallStep === 'pro'
         ? 'paywall-pro'
         : 'paywall-pricing'
-    const paywallActionLabel = forcedPaywallStep === 'pricing' ? 'Start Pro' : 'Continue'
+    const paywallActionLabel = forcedPaywallStep === 'pricing'
+      ? matflowAccess.trialExpired ? 'Subscribe to unlock' : 'Start 14-day trial'
+      : 'Continue'
 
     const handlePaywallContinue = async () => {
       if (forcedPaywallStep === 'founder') {
@@ -4763,13 +4869,17 @@ function BjjAppInner() {
               <ChevronLeft className="h-5 w-5" />
             </CircleIconButton>
             <ProgressDots count={BJJ_PAYWALL_STEPS.length} active={paywallIndex} />
-            <button
-              type="button"
-              onClick={() => void completePaywall()}
-              className="text-sm font-semibold text-white/45"
-            >
-              Not now
-            </button>
+            {matflowAccess.trialExpired ? (
+              <span className="text-sm font-semibold text-[#ff8a8a]">Trial ended</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void completePaywall()}
+                className="text-sm font-semibold text-white/45"
+              >
+                Not now
+              </button>
+            )}
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col pt-4">
@@ -4784,10 +4894,10 @@ function BjjAppInner() {
                     )} />
                   </div>
                   <h2 className={cn(paywallTitleClass, 'mt-5 font-black leading-[1]')}>
-                    Dagestani Disciple is <span className="text-[#4d7cff]">free…</span>
+                    MatFlow starts with <span className="text-[#4d7cff]">14 days free</span>
                   </h2>
                   <p className={cn('mx-auto mt-3 max-w-[310px] text-white/64', paywallBodyClass)}>
-                    But this product only survives if dedicated grapplers support the deeper Pro build.
+                    Build a real combat-sports training system before the subscription begins.
                   </p>
                 </div>
               </>
@@ -4797,7 +4907,7 @@ function BjjAppInner() {
               <>
                 <div className="flex-1 text-center">
                   <h2 className={cn(paywallTitleClass, 'mt-3 font-black leading-[1]')}>
-                    I want you to discover <span className="text-[#4d7cff]">Dagestani Disciple Pro</span>
+                    Meet <span className="text-[#4d7cff]">MatFlow Pro</span>
                   </h2>
                   <ShellCard className={cn('mt-5', isCompactHeight ? 'p-4' : 'p-6')}>
                     <div className="grid grid-cols-2 gap-3">
@@ -4808,15 +4918,15 @@ function BjjAppInner() {
                         </div>
                       </div>
                       <div className="rounded-[24px] border border-white/10 bg-[#0b1020] p-3">
-                        <p className="text-sm text-white/50">Flow Charts</p>
+                        <p className="text-sm text-white/50">Gameplans</p>
                         <div className="mt-4 rounded-[18px] border border-white/10 bg-black/40 p-3 text-sm text-white/70">
-                          Systems
+                          Branching maps
                         </div>
                       </div>
                     </div>
                     <div className="mt-5 space-y-3 text-left">
                       {[
-                        ['System flowcharts', 'Build decision trees instead of random move lists.'],
+                        ['Gameplan maps', 'Build decision trees instead of random move lists.'],
                         ['Expanded training analytics', 'See what you actually hit and where you stall.'],
                         ['Structured technique library', 'Keep connected notes without deleting older details.'],
                         ['Unlimited techniques', 'Stop deleting important notes to stay under a cap.'],
@@ -4853,8 +4963,8 @@ function BjjAppInner() {
                   </h2>
                   <div className="mt-6 space-y-6 text-left">
                     {[
-                      ['Today', 'Unlock systems, analytics, and unlimited technique tracking immediately.'],
-                      ['Billing', 'Your plan renews monthly until you cancel it from subscription settings.'],
+                      ['Today', 'Start with 14 days free, including gameplans, analytics, and unlimited technique tracking.'],
+                      ['Billing', `After the trial, MatFlow is ${MATFLOW_PRICE_LABEL} until you cancel it from subscription settings.`],
                       ['Control', 'You can cancel before the next renewal and keep access through the paid period.'],
                     ].map(([title, body], index) => (
                       <div key={title} className="flex gap-4">
@@ -4884,14 +4994,14 @@ function BjjAppInner() {
                         'mx-auto mb-4 rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.4),transparent_58%)]',
                         isShortHeight ? 'h-20 w-20' : isCompactHeight ? 'h-24 w-24' : 'h-28 w-28',
                       )} />
-                      <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'text-center font-black leading-[1]')}>Get Pro for {PREMIUM_SUBSCRIPTION_PRICE_LABEL}</h2>
+                      <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'text-center font-black leading-[1]')}>14 days free, then {MATFLOW_PRICE_LABEL}</h2>
                       <p className="mx-auto mt-3 max-w-[280px] text-center text-[16px] leading-6 text-white/60">
-                        Premium access unlocks systems, advanced analytics, unlimited techniques, and challenge tracking.
+                        Premium access unlocks gameplans, advanced analytics, unlimited techniques, and challenge tracking.
                       </p>
                     </div>
                     <div className="mt-4 space-y-2.5">
                       {[
-                        'Read-only System Graphs',
+                        'Gameplan maps and study mode',
                         'Advanced Training Analytics',
                         'Unlimited Techniques',
                         'Challenges & Achievements',
@@ -4911,44 +5021,16 @@ function BjjAppInner() {
                       </div>
                     </ShellCard>
                     <div className="mt-4 space-y-3">
-                      <button
-                        type="button"
-                        onClick={() => setPaywallPlan('annual')}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-[18px] border px-4 py-3.5 text-left transition',
-                          paywallPlan === 'annual'
-                            ? 'border-[#ff5b5b]/35 bg-[#ff5b5b]/10'
-                            : 'border-white/10 bg-[#11151f] hover:bg-white/5',
-                        )}
-                      >
-                        <div>
-                          <p className="text-base font-bold">Annual</p>
-                          <p className="mt-1 text-sm text-white/52">No payment due now</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-black">399,00 kr</p>
-                          <p className="text-sm text-white/52">per year</p>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPaywallPlan('monthly')}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-[18px] border px-4 py-3.5 text-left transition',
-                          paywallPlan === 'monthly'
-                            ? 'border-[#4d7cff]/45 bg-[#4d7cff]/18'
-                            : 'border-white/10 bg-[#11151f] hover:bg-white/5',
-                        )}
-                      >
+                      <div className="flex w-full items-center justify-between rounded-[18px] border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-4 py-3.5 text-left">
                         <div>
                           <p className="text-base font-bold">Monthly</p>
-                          <p className="mt-1 text-sm text-white/52">Cancel anytime</p>
+                          <p className="mt-1 text-sm text-white/52">14-day trial included. Cancel anytime.</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-black">69,00 kr</p>
+                          <p className="text-2xl font-black">25 kr</p>
                           <p className="text-sm text-white/52">per month</p>
                         </div>
-                      </button>
+                      </div>
                     </div>
                   </ShellCard>
                 </div>
@@ -4964,18 +5046,18 @@ function BjjAppInner() {
                 </PrimaryButton>
                 {forcedPaywallStep === 'pricing' && (
                   <div className="space-y-2">
+                    {!matflowAccess.trialExpired ? (
+                      <button
+                        type="button"
+                        onClick={() => void completePaywall()}
+                        className="w-full text-center text-sm font-semibold text-white/50"
+                      >
+                        Continue trial
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={() => void completePaywall()}
-                      className="w-full text-center text-sm font-semibold text-white/50"
-                    >
-                      Continue free
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void openSupportLink(BILLING_SUPPORT_MAILTO)
-                      }}
+                      onClick={() => { void handleRestorePurchase() }}
                       className="w-full text-center text-sm font-semibold text-white/50"
                     >
                       Restore purchases
@@ -4999,14 +5081,26 @@ function BjjAppInner() {
   }
 
   const selectedBottomTab = appState.selectedBottomTab
-  const selectedTechniquesTab = appState.selectedTechniquesTab
+  const selectedTechniquesTab = selectedBottomTab === 'gameplans'
+    ? 'systems'
+    : appState.selectedTechniquesTab === 'systems'
+      ? 'my-library'
+      : appState.selectedTechniquesTab
+  const isLibraryOrGameplansTab = selectedBottomTab === 'library' || selectedBottomTab === 'gameplans'
   const socialProfileEnabled = true
   const socialInsightsOpen = activeSurface === 'social-insights'
-  const mainBackdropVariant: ScreenBackdropVariant = selectedBottomTab === 'sessions'
+  const activeGameplan = (() => {
+    const owned = user?.id
+      ? systemsState.filter((system) => system.userId === user.id && system.status !== 'draft')
+      : []
+    const pins = new Set(appState.pinnedSystemIds ?? [])
+    return owned.find((system) => pins.has(system.id)) ?? owned[0] ?? systemsFilteredSorted[0] ?? null
+  })()
+  const mainBackdropVariant: ScreenBackdropVariant = selectedBottomTab === 'today'
     ? 'sessions'
-    : selectedBottomTab === 'social'
+    : selectedBottomTab === 'community'
       ? 'social'
-      : selectedBottomTab === 'techniques'
+      : isLibraryOrGameplansTab
         ? 'techniques'
         : selectedBottomTab === 'you' && socialProfileEnabled
           ? 'social'
@@ -5022,7 +5116,7 @@ function BjjAppInner() {
       <ScreenBackdrop variant={mainBackdropVariant} />
       <div className="relative z-10 mx-auto flex h-full w-full max-w-[430px] flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+100px)] pt-[calc(env(safe-area-inset-top)+12px)]">
         {tipModal && <TipModal content={tipModal} onClose={() => setTipModal(null)} />}
-        {selectedBottomTab !== 'social' && !(selectedBottomTab === 'you' && socialProfileEnabled) && (
+        {selectedBottomTab !== 'community' && !(selectedBottomTab === 'you' && socialProfileEnabled) && (
           <header className="flex items-center justify-between px-1 pb-3">
             <div className="flex items-center gap-3">
               {!(selectedBottomTab === 'you' && socialProfileEnabled) && (
@@ -5056,22 +5150,24 @@ function BjjAppInner() {
               {selectedBottomTab !== 'you' && (
                 <CircleIconButton
                   onClick={() => setTipModal(
-                    selectedBottomTab === 'sessions'
+                    selectedBottomTab === 'today'
                       ? {
-                        title: 'Build momentum',
-                        body: 'Log every round so your training history stays tight and honest.',
+                        title: 'Today is your cockpit',
+                        body: 'Use this screen for the next action, quick logging, and your active gameplan.',
                         bullets: [
-                          'Tap the + button to log a session (submissions, taps, notes).',
-                          'Post a public round to the feed when you want feedback or accountability.',
-                          'Head to Community to compare monthly sessions with other grapplers.',
+                          'Tap the + button to log a session fast.',
+                          'Open your active gameplan before training.',
+                          'Review weekly progress without digging through menus.',
                         ],
                       }
                       : {
-                        title: 'Build your game map',
-                        body: 'A library is useful, but linked systems are what make it sharp under pressure.',
+                        title: selectedBottomTab === 'gameplans' ? 'Build gameplans' : 'Sharpen your library',
+                        body: selectedBottomTab === 'gameplans'
+                          ? 'Gameplans turn steps and branches into maps you can study under pressure.'
+                          : 'A library is useful when every technique is searchable and linked to training context.',
                         bullets: [
-                          'Add techniques from Discover (or log your own notes).',
-                          'Use Systems to connect attacks, counters, and recoveries.',
+                          'Add techniques from Discover or log your own notes.',
+                          'Use Gameplans to connect attacks, counters, and recoveries.',
                           'Link techniques inside a session to see patterns in what you’re drilling.',
                         ],
                       },
@@ -5102,9 +5198,9 @@ function BjjAppInner() {
                         title: 'Smart search',
                         body: 'Search always filters the screen you’re on — no extra steps.',
                         bullets: [
-                          'My Sessions: search places, session types, notes, and submissions (e.g. “nogi”, “armbar”, “open mat”).',
+                          'Today: search places, session types, notes, and submissions (e.g. “nogi”, “armbar”, “open mat”).',
                           'Community: search people inside the selected martial arts branch (e.g. “@enes”, “boxing”).',
-                          'Techniques: search technique names and tags (e.g. “kimura”, “half guard”, “back take”).',
+                          'Library and Gameplans: search technique names, tags, and maps.',
                         ],
                       })
                       setSearchTutorialSaving(true)
@@ -5118,20 +5214,25 @@ function BjjAppInner() {
                         }
                       })()
                     }
-                    if (selectedBottomTab === 'sessions') {
+                    if (selectedBottomTab === 'today') {
                       sessionSearchInputRef.current?.focus()
                       return
                     }
-                    if (selectedBottomTab === 'techniques') {
+                    if (selectedBottomTab === 'library') {
                       librarySearchInputRef.current?.focus()
+                      return
+                    }
+                    if (selectedBottomTab === 'gameplans') {
+                      systemsHubSearchInputRef.current?.focus()
                       return
                     }
                     setTipModal({
                       title: 'Search',
-                      body: 'Search is available inside Sessions and Techniques.',
+                      body: 'Search is available inside Today, Library, and Gameplans.',
                       bullets: [
-                        'Sessions: filters your training history.',
-                        'Techniques: filters My Library and Discover.',
+                        'Today: filters your training history.',
+                        'Library: filters techniques.',
+                        'Gameplans: filters finished maps.',
                       ],
                     })
                   }}
@@ -5161,8 +5262,92 @@ function BjjAppInner() {
           </ShellCard>
         )}
 
-        {selectedBottomTab === 'sessions' && (
+        {selectedBottomTab === 'today' && (
           <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+            <div className="mb-4 space-y-3">
+              <ShellCard className="overflow-hidden border-[#4d7cff]/18 bg-[#07101f]/78 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.34)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8cabff]">Today</p>
+                    <h1 className="mt-1 text-[28px] font-black leading-none text-white">Training cockpit</h1>
+                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-white/58">
+                      {activeGameplan
+                        ? `Review ${activeGameplan.title} or log the next session.`
+                        : 'Log a session, build a gameplan, or save your next technical note.'}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    'shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]',
+                    matflowAccess.trialExpired
+                      ? 'border-red-400/30 bg-red-500/12 text-red-100'
+                      : matflowAccess.hasPaidAccess
+                        ? 'border-emerald-400/30 bg-emerald-500/12 text-emerald-100'
+                        : 'border-[#4d7cff]/35 bg-[#4d7cff]/16 text-[#d9e4ff]',
+                  )}>
+                    {matflowAccess.hasPaidAccess
+                      ? 'Pro'
+                      : matflowAccess.trialExpired
+                        ? 'Locked'
+                        : `${matflowAccess.trialDaysRemaining}d trial`}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {[
+                    ['Sessions', sessionStats.weekCount],
+                    ['Mat min', sessionStats.weekMinutes],
+                    ['Gameplans', systemsState.filter((system) => system.status !== 'draft').length],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.045] px-3 py-2.5">
+                      <p className="text-lg font-black leading-none text-white">{value}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/38">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void haptics.light()
+                      openCreateSession()
+                    }}
+                    className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-[16px] bg-white px-4 text-sm font-black text-black"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Log session
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeGameplan) {
+                        openSystemReader(activeGameplan)
+                        return
+                      }
+                      updateAppState((previous) => ({ ...previous, selectedBottomTab: 'gameplans', selectedTechniquesTab: 'systems' }))
+                    }}
+                    className="inline-flex min-h-[46px] items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white/78"
+                  >
+                    {activeGameplan ? 'Open map' : 'New map'}
+                  </button>
+                </div>
+              </ShellCard>
+              {matflowAccess.trialExpired ? (
+                <ShellCard className="border-red-500/20 bg-red-500/10 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-red-100">Your MatFlow trial has ended</p>
+                      <p className="mt-1 text-sm leading-6 text-red-100/70">Training creation and community actions unlock with Pro.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSurface('paywall')}
+                      className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-black text-black"
+                    >
+                      Subscribe
+                    </button>
+                  </div>
+                </ShellCard>
+              ) : null}
+            </div>
             <SearchField inputRef={sessionSearchInputRef} value={sessionSearchInput} onChange={(event) => setSessionSearchInput(event.target.value)} placeholder="Search sessions" />
             {(appState?.sessions ?? []).length > 0 && (
               <div className="mt-3 grid grid-cols-3 gap-2">
@@ -5481,7 +5666,7 @@ function BjjAppInner() {
           </div>
         )}
 
-        {selectedBottomTab === 'social' && (
+        {selectedBottomTab === 'community' && (
           <CommunitySurface
             hasUnreadNotifications={unreadNotificationCount > 0 || pendingFollowRequests.length > 0}
             loading={socialFeedLoading}
@@ -5514,7 +5699,7 @@ function BjjAppInner() {
                   showInfo(toastCopy.systemUnavailableDeepLink)
                 }
               } catch (error) {
-                showError(error instanceof Error ? error.message : 'Unable to open system')
+                showError(error instanceof Error ? error.message : 'Unable to open gameplan')
               }
             }}
             onPreviewTechnique={(techniqueId) => openTechniqueDetail(techniqueId, 'discover-detail')}
@@ -5554,10 +5739,10 @@ function BjjAppInner() {
                 const forkedBranch = normalizeMartialArtsBranchId(card.branch) ?? 'bjj'
                 navigateToForkedSystem(forkedBranch, childId || null)
                 refreshShellSnapshot()
-                showSuccess(`Forked "${card.title}" to My Graphs`)
+                showSuccess(`Forked "${card.title}" to My Gameplans`)
               } catch (error) {
                 void haptics.error()
-                const message = error instanceof Error ? error.message : 'Could not fork system'
+                const message = error instanceof Error ? error.message : 'Could not fork gameplan'
                 showError(message)
                 throw error instanceof Error ? error : new Error(message)
               }
@@ -5565,12 +5750,12 @@ function BjjAppInner() {
           />
         )}
 
-        {selectedBottomTab === 'techniques' && (
+        {isLibraryOrGameplansTab && (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {selectedBottomTab === 'library' && (
             <div className={cn('flex items-center gap-1.5 overflow-x-auto px-1', shellTopTabsClass)}>
               {([
                 { value: 'my-library' as const, label: 'My Library', Icon: BookOpen, count: libraryTechniques.length },
-                { value: 'systems' as const, label: 'Graphs', Icon: Network, count: (user?.id ? systemsState.filter((s) => s.userId === user.id).length : 0) },
                 { value: 'discover' as const, label: 'Discover', Icon: Compass, count: null as number | null },
               ]).map(({ value, label, Icon, count }) => (
                 <button
@@ -5590,7 +5775,7 @@ function BjjAppInner() {
                     if (value === 'my-library' && shellHydratedOnce && !shellSyncing && !hasSeenCoachMarks) {
                       setCoachStep((previous) => previous ?? 0)
                     }
-                    if (value !== 'systems' && (activeSurface === 'system-editor' || activeSurface === 'system-reader')) {
+                    if (activeSurface === 'system-editor' || activeSurface === 'system-reader') {
                       setSystemEditorSession(null)
                       setSystemReaderSession(null)
                       setActiveSurface(null)
@@ -5598,7 +5783,7 @@ function BjjAppInner() {
                     updateAppState((previous) => ({
                       ...previous,
                       selectedTechniquesTab: value,
-                      selectedBottomTab: 'techniques',
+                      selectedBottomTab: 'library',
                     }))
                   }}
                   className={cn(
@@ -5623,6 +5808,7 @@ function BjjAppInner() {
                 </button>
               ))}
             </div>
+            )}
 
             {selectedTechniquesTab === 'my-library' && (
               <div className="flex-1 overflow-y-auto pb-6">
@@ -5679,12 +5865,12 @@ function BjjAppInner() {
                     onAction={() => updateAppState((previous) => ({
                       ...previous,
                       selectedTechniquesTab: 'discover',
-                      selectedBottomTab: 'techniques',
+                      selectedBottomTab: 'library',
                     }))}
                     secondaryLabel="Find teammates"
                     onSecondaryAction={() => updateAppState((previous) => ({
                       ...previous,
-                      selectedBottomTab: 'social',
+                      selectedBottomTab: 'community',
                     }))}
                   />
                 ) : libraryView === 'graph' ? (
@@ -5754,7 +5940,7 @@ function BjjAppInner() {
                       )
                     })()}
                   <p className="mt-4 text-xs font-semibold text-white/45">
-                      Graph shows up to 40 {getMartialArtsBranchLabel(selectedTechniqueBranch)} techniques and their linked connections.
+                      Map shows up to 40 {getMartialArtsBranchLabel(selectedTechniqueBranch)} techniques and their linked connections.
                     </p>
                   </div>
                 ) : (
@@ -5868,102 +6054,192 @@ function BjjAppInner() {
 
             {selectedTechniquesTab === 'systems' && (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="shrink-0 space-y-3 px-1 pb-3">
-                  <BranchSelect
-                    label="Systems branch"
-                    value={selectedSystemBranch}
-                    onChange={(branch) => updateAppState((previous) => ({
-                      ...previous,
-                      selectedSystemBranch: branch,
-                    }))}
-                  />
-                  <button
-                    type="button"
-                    onClick={openUserSystemEditorCreate}
-                    className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-[#4d7cff]/45 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-5 py-4 text-[16px] font-bold text-white shadow-[0_14px_32px_rgba(47,88,255,0.35)]"
-                  >
-                    <Network className="h-5 w-5 shrink-0" />
-                    Create graph
-                  </button>
-                  <p className="text-center text-xs font-semibold leading-5 text-white/45">
-                    Graph-first builder, library links on steps, and curated Pro graphs below.
-                  </p>
-                  <SearchField
-                    inputRef={systemsHubSearchInputRef}
-                    value={appState?.systemsHubSearch ?? ''}
-                    onChange={(event) =>
-                      updateAppState((previous) => ({ ...previous, systemsHubSearch: event.target.value }))
-                    }
-                    placeholder="Search graphs"
-                  />
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="sticky top-0 z-20 shrink-0 px-1 pb-3 pt-1">
+                  <div className="rounded-[26px] border border-white/10 bg-[#050914]/94 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.36)] backdrop-blur-xl">
                     {(() => {
-                      const branchScoped = systemsState.filter((s) => s.branch === selectedSystemBranch)
-                      const counts: Record<'all' | 'mine' | 'curated' | 'community', number> = {
-                        all: systemsState.length,
-                        mine: user?.id ? systemsState.filter((s) => s.userId === user.id).length : 0,
-                        curated: branchScoped.filter((s) => !s.userId).length,
-                        community: user?.id ? branchScoped.filter((s) => Boolean(s.userId && s.userId !== user.id)).length : 0,
-                      }
-                      return ([
-                        ['all', 'All'],
-                        ['mine', 'Yours'],
-                        ['curated', 'Curated'],
-                        ['community', 'Community'],
-                      ] as const).map(([value, label]) => {
-                        const selected = (appState?.systemsHubFilter ?? 'all') === value
-                        const count = counts[value]
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() =>
-                              updateAppState((previous) => ({
+                      const activeSystems = systemsState.filter((s) => s.status !== 'draft')
+                      const branchScoped = activeSystems.filter((s) => s.branch === selectedSystemBranch)
+                      const mineCount = user?.id ? activeSystems.filter((s) => s.userId === user.id).length : 0
+                      const publicCount = branchScoped.filter((s) => s.visibility === 'public' || !s.userId).length
+                      return (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Training OS</p>
+                              <h2 className="mt-1 truncate text-[26px] font-black leading-none text-white">Gameplans</h2>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={openUserSystemEditorCreate}
+                              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/50 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-4 text-sm font-black text-white shadow-[0_14px_32px_rgba(47,88,255,0.35)]"
+                            >
+                              <Plus className="h-4 w-4" />
+                              New
+                            </button>
+                          </div>
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            {[
+                              ['Maps', branchScoped.length],
+                              ['Mine', mineCount],
+                              ['Drafts', systemDraftsForBranch.length],
+                            ].map(([label, value]) => (
+                              <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.045] px-3 py-2">
+                                <p className="text-[18px] font-black leading-none text-white">{value}</p>
+                                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/38">{label}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-2">
+                            <BranchSelect
+                              label="Gameplan branch"
+                              value={selectedSystemBranch}
+                              onChange={(branch) => updateAppState((previous) => ({
                                 ...previous,
-                                systemsHubFilter: value,
-                              }))
-                            }
-                            className={cn(
-                              'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition',
-                              selected ? 'bg-white/12 text-white' : 'text-white/45',
-                            )}
-                            aria-pressed={selected}
-                          >
-                            <span>{label}</span>
-                            {count > 0 ? (
-                              <span className={cn(
-                                'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none',
-                                selected ? 'bg-[#4d7cff]/25 text-[#a9c0ff]' : 'bg-white/10 text-white/60',
-                              )}>
-                                {count > 99 ? '99+' : count}
+                                selectedSystemBranch: branch,
+                              }))}
+                            />
+                            <SearchField
+                              inputRef={systemsHubSearchInputRef}
+                              value={appState?.systemsHubSearch ?? ''}
+                              onChange={(event) =>
+                                updateAppState((previous) => ({ ...previous, systemsHubSearch: event.target.value }))
+                              }
+                              placeholder="Search"
+                            />
+                          </div>
+                          <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
+                            {(() => {
+                              const counts: Record<'all' | 'mine' | 'curated' | 'community', number> = {
+                                all: branchScoped.length,
+                                mine: mineCount,
+                                curated: branchScoped.filter((s) => !s.userId).length,
+                                community: user?.id ? branchScoped.filter((s) => Boolean(s.userId && s.userId !== user.id)).length : 0,
+                              }
+                              return ([
+                                ['all', 'All'],
+                                ['mine', 'Yours'],
+                                ['curated', 'Curated'],
+                                ['community', 'Community'],
+                              ] as const).map(([value, label]) => {
+                                const selected = (appState?.systemsHubFilter ?? 'all') === value
+                                const count = counts[value]
+                                return (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => {
+                                      setSystemActionsOpenId(null)
+                                      updateAppState((previous) => ({
+                                        ...previous,
+                                        systemsHubFilter: value,
+                                      }))
+                                    }}
+                                    className={cn(
+                                      'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition',
+                                      selected ? 'bg-white/12 text-white' : 'text-white/45',
+                                    )}
+                                    aria-pressed={selected}
+                                  >
+                                    <span>{label}</span>
+                                    {count > 0 ? (
+                                      <span className={cn(
+                                        'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none',
+                                        selected ? 'bg-[#4d7cff]/25 text-[#a9c0ff]' : 'bg-white/10 text-white/60',
+                                      )}>
+                                        {count > 99 ? '99+' : count}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                )
+                              })
+                            })()}
+                            {publicCount > 0 ? (
+                              <span className="inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-bold text-white/30">
+                                {publicCount} visible
                               </span>
                             ) : null}
-                          </button>
-                        )
-                      })
+                          </div>
+                        </>
+                      )
                     })()}
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-                {systemsState.length === 0 ? (
+                {systemDraftsForBranch.length > 0 ? (
+                  <div className="mb-4 px-1">
+                    <div className="rounded-[22px] border border-[#4d7cff]/18 bg-[#07101f]/72 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.32)]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Drafts</p>
+                          <p className="mt-1 text-sm font-semibold text-white/58">Resume unfinished training maps.</p>
+                        </div>
+                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/42">
+                          {systemDraftsForBranch.length}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                        {systemDraftsForBranch.map((draft) => (
+                          <div key={draft.id} className="w-[245px] shrink-0 rounded-[18px] border border-white/10 bg-black/24 p-3">
+                            <div className="h-24 overflow-hidden rounded-[14px] border border-white/8 bg-[#050914]">
+                              <SystemGraphCanvas
+                                variant="preview"
+                                nodes={draft.nodes}
+                                edges={draft.edges}
+                                positions={computeGraphLayout(draft.nodes, draft.edges)}
+                                density="compact"
+                                showGrid
+                                showControls={false}
+                                showMiniMap={false}
+                                className="h-full w-full"
+                              />
+                            </div>
+                            <p className="mt-3 truncate text-sm font-black text-white">{draft.title || 'Untitled gameplan'}</p>
+                            <p className="mt-1 text-xs font-semibold text-white/42">{draft.nodes.length} steps · {draft.edges.length} outcomes</p>
+                            <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openUserSystemEditorEdit(draft)}
+                                className="min-h-[42px] rounded-[14px] border border-[#4d7cff]/35 bg-[#4d7cff]/16 px-3 text-xs font-black text-[#d9e4ff]"
+                              >
+                                Resume
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!window.confirm(`Delete draft “${draft.title}”?`)) return
+                                  void handleDeleteUserSystem(draft.id)
+                                }}
+                                className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.04] text-white/45"
+                                aria-label={`Delete draft ${draft.title}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {systemsState.filter((system) => system.status !== 'draft').length === 0 && systemDraftsForBranch.length === 0 ? (
                   <div className="flex flex-col items-center px-2 pt-2">
                     <EmptyState
-                      title="No graphs yet"
-                      body="Build a graph of positions, transitions, and finishes — or fork a public graph to start with."
-                      actionLabel="Create graph"
+                      title="No gameplans yet"
+                      body="Build step-by-step training paths. Add one step, branch into outcomes, and MatFlow draws the map."
+                      actionLabel="Create gameplan"
                       onAction={openUserSystemEditorCreate}
-                      secondaryLabel="Discover public graphs"
+                      secondaryLabel="Discover public gameplans"
                       onSecondaryAction={() => updateAppState((previous) => ({
                         ...previous,
-                        selectedBottomTab: 'social',
+                        selectedBottomTab: 'community',
                       }))}
                     />
                   </div>
                 ) : systemsFilteredSorted.length === 0 ? (
                   <div className="flex flex-col items-center px-2 pt-2">
                     <EmptyState
-                      title="No matches"
-                      body="Try another search term or filter — your graphs are still saved."
+                      title={systemDraftsForBranch.length > 0 ? 'No finished gameplans yet' : 'No matches'}
+                      body={systemDraftsForBranch.length > 0 ? 'Resume a draft above or finish a new gameplan when it is ready.' : 'Try another search term or filter. Your gameplans are still saved.'}
                       actionLabel="Clear filters"
                       onAction={() => updateAppState((previous) => ({
                         ...previous,
@@ -5973,7 +6249,7 @@ function BjjAppInner() {
                     />
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-4 px-1">
                     {systemsFilteredSorted.map((system) => {
                       const isMine = Boolean(user && system.userId && system.userId === user.id)
                       const isCatalog = !system.userId
@@ -5981,119 +6257,172 @@ function BjjAppInner() {
                       const pinned = (appState?.pinnedSystemIds ?? []).includes(system.id)
                       const canOpenReader = !system.locked || appState.profile.proUnlocked
                       const isJustForked = justForkedId?.kind === 'system' && justForkedId.id === system.id
+                      const linkedTechniqueCount = new Set(system.nodes.flatMap((node) => node.linkedTechniqueIds ?? node.linkedTechniqueTitles ?? [])).size
                       return (
                         <div
                           key={system.id}
                           ref={isJustForked ? handleJustForkedRef : undefined}
                           className={cn('rounded-[22px] transition-shadow', isJustForked && 'ring-2 ring-[#4d7cff]/60 shadow-[0_0_24px_rgba(77,124,255,0.35)]')}
                         >
-                        <ShellCard className={cn(isCompactHeight ? 'p-4' : 'p-5')}>
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className={cn(categoryRowTitleClass, 'font-black leading-none')}>{system.title}</h3>
-                                {isJustForked ? (
-                                  <span className="rounded-full border border-[#4d7cff]/45 bg-[#4d7cff]/15 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#a9c0ff]">
-                                    New
-                                  </span>
-                                ) : null}
-                                {isMine ? (
-                                  <span className="rounded-full border border-emerald-500/35 bg-emerald-500/12 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-200">
-                                    Yours
-                                  </span>
-                                ) : null}
-                                {isCatalog ? (
-                                  <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">
-                                    Curated
-                                  </span>
-                                ) : null}
-                                {isCommunity ? (
-                                  <span className="rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/12 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">
-                                    Community
-                                  </span>
-                                ) : null}
-                                {system.locked && !appState.profile.proUnlocked ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/12 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-[#8cabff]">
-                                    <Lock className="h-3.5 w-3.5" />
-                                    Pro
-                                  </span>
-                                ) : null}
-                              </div>
-                              <p className="mt-2 text-[15px] leading-6 text-white/60">{system.summary}</p>
+                        <ShellCard className="overflow-visible p-0">
+                          <div className="relative">
+                            <SystemPreviewGraph system={system} />
+                            <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
+                              {isJustForked ? (
+                                <span className="rounded-full border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#c8d6ff] backdrop-blur-md">
+                                  New
+                                </span>
+                              ) : null}
                               {isMine ? (
-                                <p className="mt-2 text-xs font-semibold text-white/38">
-                                  {system.visibility === 'public' ? 'Visible to everyone signed in.' : 'Only you can open this system.'}
-                                </p>
+                                <span className="rounded-full border border-emerald-500/35 bg-emerald-500/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-100 backdrop-blur-md">
+                                  Yours
+                                </span>
+                              ) : isCatalog ? (
+                                <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/62 backdrop-blur-md">
+                                  Curated
+                                </span>
+                              ) : isCommunity ? (
+                                <span className="rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b8c9ff] backdrop-blur-md">
+                                  Community
+                                </span>
+                              ) : null}
+                              {system.locked && !appState.profile.proUnlocked ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b8c9ff] backdrop-blur-md">
+                                  <Lock className="h-3.5 w-3.5" />
+                                  Pro
+                                </span>
                               ) : null}
                             </div>
-                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                            {pinned ? (
+                              <div className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/30 bg-amber-300/14 text-amber-100 backdrop-blur-md">
+                                <Star className="h-4 w-4 fill-amber-200" />
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className={cn(isCompactHeight ? 'p-4' : 'p-5')}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <h3 className={cn(categoryRowTitleClass, 'truncate font-black leading-none')}>{system.title}</h3>
+                                <p className="mt-2 line-clamp-2 text-[15px] leading-6 text-white/60">{system.summary}</p>
+                              </div>
+                              <div className="relative shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setSystemActionsOpenId((current) => (current === system.id ? null : system.id))}
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/70"
+                                  aria-label={`${system.title} actions`}
+                                  aria-expanded={systemActionsOpenId === system.id}
+                                >
+                                  <MoreHorizontal className="h-5 w-5" />
+                                </button>
+                                {systemActionsOpenId === system.id ? (
+                                  <div className="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-[16px] border border-white/12 bg-[#080d18] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        togglePinSystem(system.id)
+                                        setSystemActionsOpenId(null)
+                                      }}
+                                      className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
+                                    >
+                                      <Star className={cn('h-4 w-4', pinned ? 'fill-amber-300 text-amber-200' : 'text-white/50')} />
+                                      {pinned ? 'Unpin' : 'Pin'}
+                                    </button>
+                                    {isMine ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSystemActionsOpenId(null)
+                                            openUserSystemEditorEdit(system)
+                                          }}
+                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
+                                        >
+                                          <Pencil className="h-4 w-4 text-white/50" />
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSystemActionsOpenId(null)
+                                            openUserSystemDuplicate(system)
+                                          }}
+                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
+                                        >
+                                          <Copy className="h-4 w-4 text-white/50" />
+                                          Duplicate
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSystemActionsOpenId(null)
+                                            if (!window.confirm(`Delete “${system.title}”?`)) return
+                                            void handleDeleteUserSystem(system.id)
+                                          }}
+                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-red-200 hover:bg-red-500/10"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                          Delete
+                                        </button>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="mt-4 grid grid-cols-3 gap-2">
+                              {[
+                                ['Steps', system.nodes.length],
+                                ['Links', system.edges.length],
+                                ['Refs', linkedTechniqueCount],
+                              ].map(([label, value]) => (
+                                <div key={label} className="rounded-[14px] border border-white/8 bg-black/25 px-3 py-2">
+                                  <p className="text-base font-black leading-none text-white">{value}</p>
+                                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">{label}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-4 flex items-center gap-2">
                               {canOpenReader ? (
                                 <button
                                   type="button"
-                                  onClick={() => openSystemReader(system)}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-[#4d7cff]/40 bg-[#4d7cff]/16 px-4 py-2 text-sm font-bold text-[#b8c9ff]"
+                                  onClick={() => {
+                                    setSystemActionsOpenId(null)
+                                    openSystemReader(system)
+                                  }}
+                                  className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-4 text-sm font-black text-[#d9e4ff] shadow-[0_10px_28px_rgba(77,124,255,0.18)]"
                                 >
                                   <BookOpen className="h-4 w-4" />
                                   Open
                                 </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                onClick={() => togglePinSystem(system.id)}
-                                className={cn(
-                                  'inline-flex items-center gap-1 rounded-full border px-3 py-2 text-sm font-bold',
-                                  pinned
-                                    ? 'border-amber-400/45 bg-amber-400/15 text-amber-100'
-                                    : 'border-white/12 bg-white/[0.06] text-white/55',
-                                )}
-                                aria-label={pinned ? 'Unpin system' : 'Pin system'}
-                              >
-                                <Star className={cn('h-4 w-4', pinned ? 'fill-amber-300 text-amber-200' : '')} />
-                                {pinned ? 'Pinned' : 'Pin'}
-                              </button>
-                              {isMine ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => openUserSystemEditorEdit(system)}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => openUserSystemDuplicate(system)}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white"
-                                  >
-                                    <Copy className="h-4 w-4" />
-                                    Duplicate
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (!window.confirm(`Delete “${system.title}”?`)) return
-                                      void handleDeleteUserSystem(system.id)
-                                    }}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-200"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete
-                                  </button>
-                                </>
-                              ) : system.locked && !appState.profile.proUnlocked ? (
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={() => setActiveSurface('paywall')}
-                                  className="rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/12 px-4 py-2 text-sm font-bold text-[#8cabff]"
+                                  className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-4 text-sm font-black text-[#d9e4ff]"
                                 >
+                                  <Lock className="h-4 w-4" />
                                   Unlock Pro
+                                </button>
+                              )}
+                              {isMine ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSystemActionsOpenId(null)
+                                    openUserSystemEditorEdit(system)
+                                  }}
+                                  className="inline-flex min-h-[48px] items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white/75"
+                                >
+                                  <Pencil className="h-4 w-4" />
                                 </button>
                               ) : null}
                             </div>
-                          </div>
-                          <div className="mt-6">
-                            <SystemPreviewGraph system={system} />
+                            {isMine ? (
+                              <p className="mt-3 text-xs font-semibold text-white/36">
+                                {system.visibility === 'public' ? 'Public' : 'Private'}
+                              </p>
+                            ) : null}
                           </div>
                         </ShellCard>
                         </div>
@@ -6399,7 +6728,7 @@ function BjjAppInner() {
               <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Blue Belt Checklist</h2>
               <button type="button" className="text-sm font-semibold text-[#7ea4ff]" onClick={() => updateAppState((previous) => ({
                 ...previous,
-                selectedBottomTab: 'techniques',
+                selectedBottomTab: 'library',
                 selectedTechniquesTab: 'discover',
               }))}>
                 Open checklist
@@ -6441,7 +6770,7 @@ function BjjAppInner() {
         )}
 
         <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+8px)] left-1/2 z-30 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 rounded-[28px] border border-white/10 bg-[#080b13]/88 px-4 py-3 backdrop-blur-xl">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1">
             {BOTTOM_NAV_ITEMS.map(({ value, label, Icon }) => (
               <button
                 key={value}
@@ -6456,26 +6785,34 @@ function BjjAppInner() {
                     shellSyncing,
                   })
                   // #endregion agent log (dd-techniques-tour)
-                  if (value === 'techniques' && shellHydratedOnce && !shellSyncing && appState.selectedTechniquesTab === 'my-library' && !hasSeenCoachMarks) {
+                  if (value === 'library' && shellHydratedOnce && !shellSyncing && appState.selectedTechniquesTab === 'my-library' && !hasSeenCoachMarks) {
                     setCoachStep((previous) => previous ?? 0)
                   }
-                  if (value !== 'sessions') {
+                  if (value !== 'today') {
                     setIsSpeedDialOpen(false)
                   }
                   if (value !== 'you') {
                     setActiveSurface((current) => (current === 'social-insights' ? null : current))
                   }
-                  if (value !== 'techniques') {
+                  if (value !== 'gameplans') {
                     setSystemEditorSession(null)
                     setActiveSurface((current) => (current === 'system-editor' ? null : current))
+                  }
+                  if (value === 'gameplans') {
+                    setSystemActionsOpenId(null)
                   }
                   updateAppState((previous) => ({
                     ...previous,
                     selectedBottomTab: value,
+                    selectedTechniquesTab: value === 'gameplans'
+                      ? 'systems'
+                      : value === 'library' && previous.selectedTechniquesTab === 'systems'
+                        ? 'my-library'
+                        : previous.selectedTechniquesTab,
                   }))
                 }}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-2xl px-3 py-2 text-xs font-bold transition',
+                  'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 py-2 text-[10px] font-bold transition',
                   selectedBottomTab === value ? 'text-[#4d7cff]' : 'text-white/28',
                 )}
               >
@@ -6486,7 +6823,7 @@ function BjjAppInner() {
           </div>
         </nav>
 
-        {selectedBottomTab === 'sessions' && pendingDeletedSession && (
+        {selectedBottomTab === 'today' && pendingDeletedSession && (
           <div className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+176px)] left-1/2 z-40 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 px-2">
             <div
               role="status"
@@ -6505,11 +6842,12 @@ function BjjAppInner() {
           </div>
         )}
 
-        {(selectedBottomTab === 'sessions'
-          || (selectedBottomTab === 'techniques' && (selectedTechniquesTab === 'my-library' || selectedTechniquesTab === 'discover'))) && (
+        {(selectedBottomTab === 'today'
+          || selectedBottomTab === 'gameplans'
+          || (selectedBottomTab === 'library' && (selectedTechniquesTab === 'my-library' || selectedTechniquesTab === 'discover'))) && (
           <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+106px)] left-1/2 z-30 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 px-2">
             <div className="flex justify-end">
-              {selectedBottomTab === 'sessions' && isSpeedDialOpen && (
+              {selectedBottomTab === 'today' && isSpeedDialOpen && (
                 <div className="mb-3 flex flex-col items-end gap-2">
                   <button
                     type="button"
@@ -6531,7 +6869,11 @@ function BjjAppInner() {
               <button
                 type="button"
                 onClick={() => {
-                  if (selectedBottomTab === 'techniques' && selectedTechniquesTab === 'discover') {
+                  if (selectedBottomTab === 'gameplans') {
+                    openUserSystemEditorCreate()
+                    return
+                  }
+                  if (selectedBottomTab === 'library' && selectedTechniquesTab === 'discover') {
                     if (!user) {
                       showError('Sign in required')
                       return
@@ -6544,7 +6886,7 @@ function BjjAppInner() {
                     setActiveSurface('new-discover-technique')
                     return
                   }
-                  if (selectedBottomTab === 'techniques') {
+                  if (selectedBottomTab === 'library') {
                     setTechniqueDraft(createTechniqueDraft())
                     setTechniqueCategoryOverlayOpen(false)
                     setActiveSurface('new-technique')
@@ -6554,7 +6896,7 @@ function BjjAppInner() {
                 }}
                 className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] text-white shadow-[0_18px_40px_rgba(37,99,235,0.42)]"
               >
-                <Plus className={cn('h-7 w-7 transition', selectedBottomTab === 'sessions' && isSpeedDialOpen && 'rotate-45')} />
+                <Plus className={cn('h-7 w-7 transition', selectedBottomTab === 'today' && isSpeedDialOpen && 'rotate-45')} />
               </button>
             </div>
           </div>
@@ -6663,7 +7005,7 @@ function BjjAppInner() {
                     ) : null}
                     <div className="mt-3 flex gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/38">
                       <span>{publicProfileBundle.profile.followerCount ?? 0} followers</span>
-                      <span>{publicProfileBundle.systems.length} graphs</span>
+                      <span>{publicProfileBundle.systems.length} gameplans</span>
                       <span>{publicProfileBundle.techniques.length} techniques</span>
                     </div>
                   </div>
@@ -6692,10 +7034,10 @@ function BjjAppInner() {
 
               <div className="space-y-3">
                 <div>
-                  <p className="mb-2 px-1 text-xs font-bold uppercase tracking-[0.18em] text-white/38">Public graphs</p>
+                  <p className="mb-2 px-1 text-xs font-bold uppercase tracking-[0.18em] text-white/38">Public gameplans</p>
                   {publicProfileBundle.systems.length === 0 ? (
                     <div className="rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-5 text-sm text-white/50">
-                      No public graphs in {getMartialArtsBranchLabel(selectedSocialSurface)}.
+                      No public gameplans in {getMartialArtsBranchLabel(selectedSocialSurface)}.
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -8013,7 +8355,7 @@ function BjjAppInner() {
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="text-base font-bold leading-snug sm:text-lg">Share a photo on Dagestani Disciple</p>
+                      <p className="text-base font-bold leading-snug sm:text-lg">Share training media on MatFlow</p>
                       <p className="mt-1 text-sm text-white/42">{sessionPhotoPreview ? 'Tap to replace your session photo.' : 'Upload a session image for your public post.'}</p>
                       <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.2em] text-amber-200/75">Uploaded images are publicly accessible by URL.</p>
                     </div>
@@ -9254,7 +9596,7 @@ function BjjAppInner() {
                 {isDeletingAccount ? 'Deleting account…' : 'Delete account'}
               </button>
               <p className="text-center text-xs text-white/35">
-                Deleting your account permanently removes your profile, sessions, systems, and uploads.
+                Deleting your account permanently removes your profile, sessions, gameplans, and uploads.
               </p>
             </div>
           </div>
@@ -9404,21 +9746,21 @@ function BjjAppInner() {
       )}
 
       {activeSurface === 'paywall' && (
-        <ModalShell title="Dagestani Disciple Pro" onBack={() => setActiveSurface(null)} variant="paywall-pricing">
+        <ModalShell title="MatFlow Pro" onBack={() => setActiveSurface(null)} variant="paywall-pricing">
           <div className="space-y-5">
             <ShellCard className="p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[34px] font-black leading-none">Go Pro</p>
                   <p className="mt-3 text-[18px] leading-7 text-white/60">
-                    Unlock systems, advanced analytics, unlimited techniques, and achievement tracks.
+                    Unlock gameplans, advanced analytics, unlimited techniques, and achievement tracks.
                   </p>
                 </div>
                 <Crown className="h-8 w-8 text-[#7ea4ff]" />
               </div>
               <div className="mt-5 space-y-3">
                 {[
-                  'System flow charts',
+                  'Gameplan maps',
                   'Expanded training analytics',
                   'Unlimited techniques',
                   'Challenges and achievements',
@@ -9435,7 +9777,20 @@ function BjjAppInner() {
         </ModalShell>
       )}
 
-      {activeSurface === 'system-editor' && systemEditorSession && user && (
+      {activeSurface === 'system-editor' && systemEditorSession && user && (systemEditorSession.mode === 'wizard' ? (
+        <UserSystemWizardModal
+          key={`sys-wizard-${systemEditorSession.nonce}`}
+          initial={systemEditorSession.initial}
+          branch={systemEditorSession.initial?.branch ?? systemEditorSession.seedDraft?.branch ?? selectedSystemBranch}
+          onClose={() => {
+            setSystemEditorSession(null)
+            setActiveSurface(null)
+          }}
+          onSaveDraft={handleAutosaveUserSystemDraft}
+          onFinish={handleSaveUserSystem}
+          onDelete={handleDeleteUserSystem}
+        />
+      ) : (
         <UserSystemEditorModal
           key={`sys-editor-${systemEditorSession.nonce}`}
           initial={systemEditorSession.initial}
@@ -9466,7 +9821,7 @@ function BjjAppInner() {
           onSave={handleSaveUserSystem}
           onDelete={handleDeleteUserSystem}
         />
-      )}
+      ))}
 
       {activeSurface === 'system-reader' && systemReaderSession && user && appState && (
         <UserSystemReaderModal

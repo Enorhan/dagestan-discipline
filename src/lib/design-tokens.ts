@@ -1,7 +1,7 @@
 /**
  * Design System Tokens
  * 
- * Centralized design tokens for the Dagestan Discipline app.
+ * Centralized design tokens for the MatFlow app.
  * These values are the source of truth for all UI components.
  * 
  * Usage: Import these tokens in components for programmatic access.

@@ -28,13 +28,13 @@ function buildDeepLink(query: string, fragment: string): string {
   if (errorDescription) outbound.set('error_description', errorDescription)
 
   if (outbound.toString()) {
-    return `dagestanidiscipline://auth/callback?${outbound.toString()}`
+    return `matflow://auth/callback?${outbound.toString()}`
   }
 
   // Fallback for legacy token flows.
   const queryPart = query && query !== '?' ? query : ''
   const fragmentPart = fragment ? `#${fragment}` : ''
-  return `dagestanidiscipline://auth/callback${queryPart}${fragmentPart}`
+  return `matflow://auth/callback${queryPart}${fragmentPart}`
 }
 
 function shouldAutoOpenDeepLink(): boolean {
@@ -73,7 +73,7 @@ export default function OAuthCallbackPage() {
   return (
     <main className="min-h-dvh bg-[#0a0a0a] px-6 pb-10 pt-14 text-white">
       <div className="mx-auto w-full max-w-md">
-        <h1 className="text-2xl font-black tracking-tight">Return to Dagestani Disciple</h1>
+        <h1 className="text-2xl font-black tracking-tight">Return to MatFlow</h1>
         <p className="mt-3 text-sm font-medium text-white/65">
           Tap the button below to finish sign-in and return to the app.
         </p>
@@ -86,7 +86,7 @@ export default function OAuthCallbackPage() {
         </div>
 
         <a
-          href={deepLink || 'dagestanidiscipline://auth/callback'}
+          href={deepLink || 'matflow://auth/callback'}
           className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-white px-4 py-3 text-base font-black text-black"
         >
           Open app
@@ -99,4 +99,3 @@ export default function OAuthCallbackPage() {
     </main>
   )
 }
-

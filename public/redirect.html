@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Dagestani Disciple</title>
+    <title>MatFlow</title>
     <style>
       * { box-sizing: border-box; }
       body {
@@ -49,8 +49,8 @@
     <main class="card">
       <div class="icon" id="icon">🔁</div>
       <h1 id="title">Returning to the app…</h1>
-      <p id="message">We’re sending you back to Dagestani Disciple now.</p>
-      <button class="button" id="open-app">Open Dagestani Disciple</button>
+      <p id="message">We’re sending you back to MatFlow now.</p>
+      <button class="button" id="open-app">Open MatFlow</button>
       <p class="subtext">If the app does not open automatically, tap the button above.</p>
     </main>
 
@@ -72,7 +72,7 @@
         portal: {
           icon: '🧾',
           title: 'Returning from billing',
-          message: 'We’re taking you back to Dagestani Disciple and refreshing your subscription details.',
+          message: 'We’re taking you back to MatFlow and refreshing your subscription details.',
         },
       }
 
@@ -81,7 +81,7 @@
       document.getElementById('title').textContent = view.title
       document.getElementById('message').textContent = view.message
 
-      const deepLink = `dagestanidiscipline://billing/return?subscription=${status}`
+      const deepLink = `matflow://billing/return?subscription=${status}`
       const openApp = () => { window.location.href = deepLink }
 
       document.getElementById('open-app').addEventListener('click', openApp)

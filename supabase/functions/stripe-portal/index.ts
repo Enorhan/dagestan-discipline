@@ -1,5 +1,5 @@
 // ============================================================================
-// DAGESTAN DISCIPLINE - STRIPE CUSTOMER PORTAL EDGE FUNCTION
+// MATFLOW - STRIPE CUSTOMER PORTAL EDGE FUNCTION
 // Creates Stripe Customer Portal sessions for subscription management
 // Users can cancel subscriptions, update payment methods, view invoices
 // ============================================================================
@@ -13,9 +13,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const APP_URL_SCHEME = 'dagestanidiscipline://'
+const APP_URL_SCHEME = 'matflow://'
 const DEFAULT_REDIRECT_ORIGIN = 'https://enorhan.github.io'
-const DEFAULT_FALLBACK_PORTAL_RETURN_URL = 'https://enorhan.github.io/dagestan-discipline/redirect.html?status=portal'
+const DEFAULT_FALLBACK_PORTAL_RETURN_URL = 'https://enorhan.github.io/matflow/redirect.html?status=portal'
 
 function trimEnv(value: string | undefined | null): string | null {
   const trimmed = value?.trim()
@@ -171,4 +171,3 @@ Deno.serve(async (req) => {
     )
   }
 })
-

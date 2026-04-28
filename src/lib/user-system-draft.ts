@@ -44,6 +44,7 @@ export function duplicateUserSystemDraft(system: BjjSystem): SaveUserSystemInput
     title: `Copy of ${system.title}`,
     summary: system.summary,
     visibility: 'private',
+    status: 'active',
     nodes,
     edges,
   }
@@ -113,6 +114,7 @@ export function instantiateUserSystemTemplate(template: UserSystemTemplate, bran
     title: template.title,
     summary: template.summary,
     visibility: 'private',
+    status: 'active',
     nodes,
     edges,
   }

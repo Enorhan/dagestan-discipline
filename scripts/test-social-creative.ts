@@ -27,7 +27,7 @@ async function main() {
     filter: { id: 'vivid', intensity: 2 },
     crop: { aspectPreset: '1:1', scale: 3, offsetX: 2, offsetY: -2 },
     textOverlays: [{ text: 'Guard pull', x: 0.2, y: 0.3 }],
-    music: { trackId: 'focus-breathe', title: 'Focus Breathe', artist: 'Dagestani Disciple', previewUrl: '/audio/social/focus-breathe.m4a', startMs: -2, durationMs: 50_000, volume: 2 },
+    music: { trackId: 'focus-breathe', title: 'Focus Breathe', artist: 'MatFlow', previewUrl: '/audio/social/focus-breathe.m4a', startMs: -2, durationMs: 50_000, volume: 2 },
   }, 'post')
 
   assert.equal(normalized.filter.id, 'vivid')

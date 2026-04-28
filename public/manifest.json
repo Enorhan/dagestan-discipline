@@ -1,11 +1,11 @@
 {
-  "name": "Dagestan Discipline",
-  "short_name": "Dagestan",
-  "description": "Combat sports training tracker — log, track, and improve your training.",
+  "name": "MatFlow",
+  "short_name": "MatFlow",
+  "description": "Combat-sports Training OS for gameplans, technique libraries, fast logging, and review.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0A0A0A",
-  "theme_color": "#141414",
+  "background_color": "#050914",
+  "theme_color": "#050914",
   "orientation": "portrait",
   "scope": "/",
   "icons": [
@@ -29,4 +29,3 @@
   ],
   "categories": ["health", "fitness", "sports"]
 }
-

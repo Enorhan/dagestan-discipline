@@ -16,7 +16,7 @@ export interface BufferedErrorReport {
   ts: string
 }
 
-const STORAGE_KEY = 'dagestaniDiscipline.errorReports'
+const STORAGE_KEY = 'matflow.errorReports'
 const MAX_BUFFERED_ERROR_REPORTS = 50
 
 function trimEnv(value: string | undefined): string | null {

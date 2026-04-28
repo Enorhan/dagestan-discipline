@@ -10,13 +10,13 @@ import { RuntimeFlagsProvider } from '@/contexts/runtime-flags-context'
 import { ToastProvider } from '@/contexts/toast-context'
 
 export const metadata: Metadata = {
-  title: 'Dagestan Discipline',
-  description: 'Combat sports training tracker — log, track, and improve your training.',
+  title: 'MatFlow',
+  description: 'Combat-sports Training OS for gameplans, technique libraries, fast logging, and review.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Dagestan Discipline',
+    title: 'MatFlow',
   },
   icons: {
     icon: [
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#141414',
+  themeColor: '#050914',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

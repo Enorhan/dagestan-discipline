@@ -30,7 +30,7 @@ export default function ResetPasswordPage() {
 
   const supportHref = useMemo(() => {
     const body = [
-      'Hi Dagestani Disciple support,',
+      'Hi MatFlow support,',
       '',
       'I need help with a password reset link.',
       '',
@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
       '[add a short description here]',
     ].join('\n')
 
-    return buildSupportMailtoLink(SUPPORT_EMAIL, 'Dagestani Disciple password reset help', body)
+    return buildSupportMailtoLink(SUPPORT_EMAIL, 'MatFlow password reset help', body)
   }, [])
 
   const handleOpenSupport = () => {
@@ -136,7 +136,7 @@ export default function ResetPasswordPage() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">Account recovery</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight">Reset your password</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Choose a new password for your Dagestani Disciple account. This page is opened from your secure reset email.
+          Choose a new password for your MatFlow account. This page is opened from your secure reset email.
         </p>
 
         {status === 'checking' && (

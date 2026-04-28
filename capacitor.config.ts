@@ -4,7 +4,7 @@ const liveReloadUrl = process.env.CAPACITOR_LIVE_RELOAD_URL;
 
 const config: CapacitorConfig = {
   appId: 'com.dagestani.disciple',
-  appName: 'Dagestani Disciple',
+  appName: 'MatFlow',
   webDir: 'out',
   ios: {
     contentInset: 'never',

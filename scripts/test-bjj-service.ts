@@ -72,7 +72,7 @@ async function main() {
         onboarding_completed: true,
         belt: 'black',
         stripes: 4,
-        gym_name: 'Dagestan HQ',
+        gym_name: 'MatFlow HQ',
         privacy: 'public',
         xp: 900,
         level: 4,
@@ -138,6 +138,7 @@ async function main() {
         locked: false,
         user_id: null,
         visibility: 'private',
+        status: 'active',
         sort_order: 0,
         created_at: '2026-04-06T09:00:00.000Z',
         updated_at: '2026-04-06T10:30:00.000Z',
@@ -354,6 +355,7 @@ async function main() {
         locked: false,
         user_id: 'user-1',
         visibility: input.visibility === 'public' ? 'public' : 'private',
+        status: input.status === 'draft' ? 'draft' : 'active',
         branch: String(input.branch ?? 'bjj'),
         sort_order: Number(input.sortOrder ?? 5000),
         created_at: updatedAt,
@@ -401,7 +403,7 @@ async function main() {
           created_at: updatedAt,
         })
       }
-      return { data: { id: systemId, updatedAt }, error: null }
+      return { data: { id: systemId, updatedAt, status: systemRow.status }, error: null }
     }
     return { data: null, error: { message: `unknown rpc ${fn}` } }
   }
@@ -440,7 +442,7 @@ async function main() {
         branch: 'bjj',
         date: '2026-04-06',
         time: '10:15',
-        location: 'Dagestani HQ',
+        location: 'MatFlow HQ',
         type: 'No-Gi',
         submissions: ['Triangle Choke'],
         taps: [],
@@ -473,7 +475,7 @@ async function main() {
     assert.equal(snapshot.profilePatch.stripes, 1)
     assert.equal(snapshot.profilePatch.onboardingCompleted, true)
     assert.equal(snapshot.libraryTechniques.some((technique) => technique.id === 'lib-local-test'), true)
-    assert.equal(snapshot.sessions.some((session) => session.location === 'Dagestani HQ'), true)
+    assert.equal(snapshot.sessions.some((session) => session.location === 'MatFlow HQ'), true)
     assert.equal(tables.user_techniques.some((row) => row.id === 'lib-local-test'), true)
     assert.equal(tables.training_sessions.some((row) => row.client_id === 'session-local'), true)
     assert.equal(tables.profiles[0].belt, 'blue')
@@ -522,6 +524,28 @@ async function main() {
 
     const sessionPhotoUrl = await bjjService.uploadSessionPhoto('user-1', file)
     assert.match(sessionPhotoUrl, /session-media/)
+
+    const draftGraph = await bjjService.saveUserSystem('user-1', {
+      branch: 'bjj',
+      title: 'Triangle branch draft',
+      summary: '',
+      visibility: 'public',
+      status: 'draft',
+      nodes: [
+        { id: 'draft-step-1', label: 'Triangle choke', color: '#4c6fff', linkedTechniqueIds: [] },
+        { id: 'draft-step-2', label: 'Armbar', color: '#22c55e', linkedTechniqueIds: [] },
+        { id: 'draft-step-3', label: 'Omoplata', color: '#eab308', linkedTechniqueIds: [] },
+      ],
+      edges: [
+        { from: 'draft-step-1', to: 'draft-step-2', label: 'arm across' },
+        { from: 'draft-step-1', to: 'draft-step-3', label: 'posture up' },
+      ],
+    })
+    assert.equal(draftGraph.status, 'draft')
+    const draftRow = tables.systems.find((row) => row.id === draftGraph.id)
+    assert.equal(draftRow?.status, 'draft')
+    assert.equal(draftRow?.visibility, 'private')
+    assert.equal(tables.system_edges.filter((row) => row.system_id === draftGraph.id).length, 2)
 
     console.log('BJJ service tests passed.')
   } finally {

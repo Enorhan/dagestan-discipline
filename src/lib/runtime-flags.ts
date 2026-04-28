@@ -18,7 +18,7 @@ export interface RuntimeFlags {
 }
 
 // Bump when cached shape/semantics change so stale values (e.g. socialFeedEnabled stuck false) are not reused.
-const STORAGE_KEY = 'dagestaniDiscipline.runtimeFlags.v2'
+const STORAGE_KEY = 'matflow.runtimeFlags.v2'
 const DEFAULT_BILLING_CHECKOUT_DISABLED_MESSAGE = 'Premium upgrades are temporarily unavailable right now. Use Billing Help in Settings if you need purchase or access support.'
 const DEFAULT_BILLING_PORTAL_DISABLED_MESSAGE = 'Subscription management is temporarily unavailable right now. Use Billing Help in Settings for cancellation or billing help.'
 

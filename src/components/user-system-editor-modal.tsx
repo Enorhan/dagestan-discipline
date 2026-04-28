@@ -8,13 +8,15 @@ import {
   Link2,
   Network,
   Plus,
+  Route,
   Redo2,
   Sparkles,
+  Target,
   Trash2,
   Undo2,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { SystemGraphCanvas } from '@/components/system-graph-canvas'
+import { normalizeGraphEdgeKey, SystemGraphCanvas } from '@/components/system-graph-canvas'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/auth-context'
 import { useToast } from '@/contexts/toast-context'
@@ -259,7 +261,7 @@ export function UserSystemEditorModal({
   const modalShellRef = useRef<HTMLDivElement | null>(null)
   useModalFocusTrap(true, modalShellRef)
 
-  const [tab, setTab] = useState<EditorTab>('basics')
+  const [tab, setTab] = useState<EditorTab>('graph')
   const [title, setTitle] = useState(baseDraft.title)
   const [summary, setSummary] = useState(baseDraft.summary)
   const [visibility, setVisibility] = useState<BjjPrivacy>(baseDraft.visibility)
@@ -268,6 +270,7 @@ export function UserSystemEditorModal({
   const [hasStoredDraft, setHasStoredDraft] = useState(false)
   const [persistenceReady, setPersistenceReady] = useState(Boolean(initial) || Boolean(seedDraft))
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedEdgeKey, setSelectedEdgeKey] = useState<string | null>(null)
   const [linkPickActive, setLinkPickActive] = useState(false)
   const [linkSourceId, setLinkSourceId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -451,6 +454,7 @@ export function UserSystemEditorModal({
     setNodes(defaultDraftNodes())
     setEdges([])
     setSelectedNodeId(null)
+    setSelectedEdgeKey(null)
     setLinkPickActive(false)
     setLinkSourceId(null)
     setLinkFrom('')
@@ -588,6 +592,10 @@ export function UserSystemEditorModal({
       })
       setEdges((previous) => previous.filter((edge) => edge.from !== id && edge.to !== id))
       setSelectedNodeId((current) => (current === id ? null : current))
+      setSelectedEdgeKey((current) => {
+        if (!current) return current
+        return current.startsWith(`${id}->`) || current.endsWith(`->${id}`) ? null : current
+      })
       setLinkSourceId((current) => (current === id ? null : current))
       void haptics.light()
     },
@@ -601,6 +609,8 @@ export function UserSystemEditorModal({
     pushEditorHistory()
     const label = trimEdgeLabel(linkEdgeLabel)
     setEdges([...cur, { from: linkFrom, to: linkTo, label }])
+    setSelectedNodeId(null)
+    setSelectedEdgeKey(normalizeGraphEdgeKey(linkFrom, linkTo))
     setLinkEdgeLabel('')
     void haptics.light()
   }, [linkFrom, linkTo, linkEdgeLabel, pushEditorHistory])
@@ -612,6 +622,7 @@ export function UserSystemEditorModal({
       if (cur.some((edge) => edge.from === from && edge.to === to)) return
       pushEditorHistory()
       setEdges([...cur, { from, to }])
+      setSelectedEdgeKey(normalizeGraphEdgeKey(from, to))
       void haptics.light()
       setLinkPickActive(false)
       setLinkSourceId(null)
@@ -623,6 +634,7 @@ export function UserSystemEditorModal({
     (from: string, to: string) => {
       pushEditorHistory()
       setEdges((previous) => previous.filter((entry) => !(entry.from === from && entry.to === to)))
+      setSelectedEdgeKey((current) => (current === normalizeGraphEdgeKey(from, to) ? null : current))
       void haptics.light()
     },
     [pushEditorHistory],
@@ -689,6 +701,7 @@ export function UserSystemEditorModal({
     setNodes(next.nodes)
     setEdges(next.edges)
     setSelectedNodeId(null)
+    setSelectedEdgeKey(null)
     setLinkPickActive(false)
     setLinkSourceId(null)
     setTab('graph')
@@ -696,6 +709,37 @@ export function UserSystemEditorModal({
   }
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
+  const selectedEdge = edges.find((edge) => normalizeGraphEdgeKey(edge.from, edge.to) === selectedEdgeKey) ?? null
+  const selectedEdgeFrom = selectedEdge ? nodeOptions.find((option) => option.id === selectedEdge.from)?.label ?? 'Step' : ''
+  const selectedEdgeTo = selectedEdge ? nodeOptions.find((option) => option.id === selectedEdge.to)?.label ?? 'Step' : ''
+  const incomingCountByNode = useMemo(() => {
+    const map = new Map(nodes.map((node) => [node.id, 0]))
+    for (const edge of edges) map.set(edge.to, (map.get(edge.to) ?? 0) + 1)
+    return map
+  }, [edges, nodes])
+  const outgoingCountByNode = useMemo(() => {
+    const map = new Map(nodes.map((node) => [node.id, 0]))
+    for (const edge of edges) map.set(edge.from, (map.get(edge.from) ?? 0) + 1)
+    return map
+  }, [edges, nodes])
+  const graphStarts = useMemo(() => nodes.filter((node) => (incomingCountByNode.get(node.id) ?? 0) === 0), [incomingCountByNode, nodes])
+  const graphExits = useMemo(() => nodes.filter((node) => (outgoingCountByNode.get(node.id) ?? 0) === 0), [nodes, outgoingCountByNode])
+  const orphanNodes = useMemo(() => graphStarts.slice(1), [graphStarts])
+  const selectedIncomingEdges = selectedNode ? edges.filter((edge) => edge.to === selectedNode.id) : []
+  const selectedOutgoingEdges = selectedNode ? edges.filter((edge) => edge.from === selectedNode.id) : []
+  const selectedNeighborNodeIds = selectedNode
+    ? Array.from(new Set([...selectedIncomingEdges.map((edge) => edge.from), ...selectedOutgoingEdges.map((edge) => edge.to)]))
+    : []
+  const linkedTechniqueCount = new Set(nodes.flatMap((node) => node.linkedTechniqueIds)).size
+  const referencedNodeCount = nodes.filter((node) => node.linkedTechniqueIds.length > 0).length
+  const notedNodeCount = nodes.filter((node) => Boolean(node.trigger || node.details || node.commonMistake || node.videoUrl)).length
+  const graphPulse = [
+    { label: 'Starts', value: graphStarts.length, nodeId: graphStarts[0]?.id ?? null },
+    { label: 'Exits', value: graphExits.length, nodeId: graphExits[0]?.id ?? null },
+    { label: 'Orphans', value: orphanNodes.length, nodeId: orphanNodes[0]?.id ?? null },
+    { label: 'Refs', value: referencedNodeCount, nodeId: nodes.find((node) => node.linkedTechniqueIds.length > 0)?.id ?? null },
+  ] as const
+  const publishReady = title.trim().length > 0 && nodes.length > 0
 
   const toggleTechniqueOnNode = (nodeId: string, techniqueId: string) => {
     pushEditorHistory()
@@ -768,11 +812,12 @@ export function UserSystemEditorModal({
             <button
               key={key}
               type="button"
-              onClick={() => {
-                setTab(key)
-                setLinkPickActive(false)
-                setLinkSourceId(null)
-              }}
+                onClick={() => {
+                  setTab(key)
+                  setLinkPickActive(false)
+                  setLinkSourceId(null)
+                  setSelectedEdgeKey(null)
+                }}
               className={cn(
                 'flex flex-1 items-center justify-center gap-1.5 rounded-[12px] py-2.5 text-xs font-bold transition',
                 tab === key ? 'bg-[#4d7cff]/22 text-[#b8c9ff]' : 'text-white/45',
@@ -826,19 +871,38 @@ export function UserSystemEditorModal({
                   <p className="text-sm font-bold text-white">Templates</p>
                 </div>
                 <p className="mt-1 text-xs text-white/45">Start from a structured graph, then tune on the Graph tab.</p>
-                <div className="mt-3 flex flex-col gap-2">
-                  {USER_SYSTEM_TEMPLATES.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onClick={() => applyTemplate(template.id)}
-                      className="rounded-[16px] border border-white/10 bg-black/30 px-4 py-3 text-left transition hover:border-[#4d7cff]/35 hover:bg-[#4d7cff]/10"
-                    >
-                      <p className="font-bold text-white">{template.title}</p>
-                      <p className="mt-1 text-xs text-white/50">{template.summary}</p>
-                    </button>
-                  ))}
-                </div>
+	                <div className="mt-3 flex flex-col gap-2">
+	                  {USER_SYSTEM_TEMPLATES.map((template) => {
+	                    const preview = instantiateUserSystemTemplate(template, branch)
+	                    const previewPositions = computeGraphLayout(preview.nodes, preview.edges)
+	                    return (
+	                      <button
+	                        key={template.id}
+	                        type="button"
+	                        onClick={() => applyTemplate(template.id)}
+	                        className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 rounded-[16px] border border-white/10 bg-black/30 p-2 text-left transition hover:border-[#4d7cff]/35 hover:bg-[#4d7cff]/10"
+	                      >
+	                        <div className="h-20 overflow-hidden rounded-[12px] border border-white/8 bg-[#050914]">
+	                          <SystemGraphCanvas
+	                            variant="preview"
+	                            nodes={preview.nodes}
+	                            edges={preview.edges}
+	                            positions={previewPositions}
+	                            density="compact"
+	                            labelMode="none"
+	                            showControls={false}
+	                            showMiniMap={false}
+	                            className="h-full w-full"
+	                          />
+	                        </div>
+	                        <span className="min-w-0 self-center">
+	                          <span className="block font-bold text-white">{template.title}</span>
+	                          <span className="mt-1 line-clamp-2 block text-xs leading-5 text-white/50">{template.summary}</span>
+	                        </span>
+	                      </button>
+	                    )
+	                  })}
+	                </div>
               </div>
 
               {!isEdit ? (
@@ -872,48 +936,93 @@ export function UserSystemEditorModal({
 
           {tab === 'graph' && (
             <>
-              <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-[#070b14] shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-                <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3 py-2.5">
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Canvas</p>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button
+              <div className="relative overflow-hidden rounded-[26px] border border-white/10 bg-[#050914] shadow-[0_24px_70px_rgba(0,0,0,0.48)]">
+                <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3 py-3">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Graph builder</p>
+                    <p className="mt-1 text-xs font-semibold text-white/42">{nodes.length} steps · {edges.length} transitions · {linkedTechniqueCount} refs · {notedNodeCount} notes</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
                       type="button"
-                      variant="secondary"
-                      size="sm"
                       onClick={undoGraph}
                       disabled={!canUndo}
+                      title="Undo"
                       aria-label="Undo graph change"
-                      leftIcon={<Undo2 className="h-3.5 w-3.5" />}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/70 disabled:opacity-35"
                     >
-                      Undo
-                    </Button>
-                    <Button
+                      <Undo2 className="h-4 w-4" />
+                    </button>
+                    <button
                       type="button"
-                      variant="secondary"
-                      size="sm"
                       onClick={redoGraph}
                       disabled={!canRedo}
+                      title="Redo"
                       aria-label="Redo graph change"
-                      leftIcon={<Redo2 className="h-3.5 w-3.5" />}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/70 disabled:opacity-35"
                     >
-                      Redo
-                    </Button>
-                    <Button type="button" variant="secondary" size="sm" onClick={autoLayoutGraph}>
-                      Auto layout
-                    </Button>
-                    <Button
+                      <Redo2 className="h-4 w-4" />
+                    </button>
+                    <button
                       type="button"
-                      variant={linkPickActive ? 'primary' : 'secondary'}
-                      size="sm"
+                      onClick={autoLayoutGraph}
+                      title="Auto layout"
+                      aria-label="Auto layout graph"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/70"
+                    >
+                      <LayoutTemplate className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setLinkPickActive((previous) => !previous)
                         setLinkSourceId(null)
+                        setSelectedEdgeKey(null)
                       }}
-                      leftIcon={<Link2 className="h-3.5 w-3.5" />}
+                      title="Link steps"
+                      aria-label="Link steps"
+                      className={cn(
+                        'inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 text-xs font-black',
+                        linkPickActive
+                          ? 'border-[#4d7cff]/55 bg-[#4d7cff]/24 text-white'
+                          : 'border-white/10 bg-white/[0.06] text-white/70',
+                      )}
                     >
-                      {linkPickActive ? 'Linking…' : 'Link'}
-                    </Button>
+                      <Link2 className="h-4 w-4" />
+                      <span className="ml-1.5 hidden sm:inline">{linkPickActive ? 'On' : 'Link'}</span>
+                    </button>
                   </div>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 border-b border-white/8 px-3 py-2">
+                  {graphPulse.map((metric) => {
+                    const needsAttention = metric.label === 'Orphans' && metric.value > 0
+                    return (
+                      <button
+                        key={metric.label}
+                        type="button"
+                        disabled={!metric.nodeId}
+                        onClick={() => {
+                          if (!metric.nodeId) return
+                          setSelectedNodeId(metric.nodeId)
+                          setSelectedEdgeKey(null)
+                          setLinkPickActive(false)
+                          setLinkSourceId(null)
+                        }}
+                        className={cn(
+                          'min-h-[52px] rounded-[14px] border px-2 py-2 text-left transition disabled:opacity-50',
+                          needsAttention
+                            ? 'border-amber-300/28 bg-amber-300/10 text-amber-100'
+                            : 'border-white/8 bg-black/24 text-white/72 hover:bg-white/[0.06]',
+                        )}
+                      >
+                        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white/36">
+                          {metric.label === 'Orphans' ? <Target className="h-3 w-3" /> : <Route className="h-3 w-3" />}
+                          {metric.label}
+                        </span>
+                        <span className="mt-1 block text-lg font-black leading-none text-white">{metric.value}</span>
+                      </button>
+                    )
+                  })}
                 </div>
                 <div className="relative aspect-[4/3] w-full">
                   <SystemGraphCanvas
@@ -927,8 +1036,20 @@ export function UserSystemEditorModal({
                     keyboardFocusNodeId={selectedNodeId ?? nodes[0]?.id ?? null}
                     onNodeDragStart={pushEditorHistory}
                     selectedNodeId={selectedNodeId}
+                    selectedEdgeKey={selectedEdgeKey}
+                    highlightedNodeIds={selectedEdge ? [selectedEdge.from, selectedEdge.to] : selectedNode ? [selectedNode.id, ...selectedNeighborNodeIds] : []}
+                    highlightedEdgeKeys={selectedNode ? edges
+                      .filter((edge) => edge.from === selectedNode.id || edge.to === selectedNode.id)
+                      .map((edge) => normalizeGraphEdgeKey(edge.from, edge.to)) : []}
+                    dimUnhighlighted={Boolean(selectedNode || selectedEdge)}
+                    flowAnimation={Boolean(selectedNode || selectedEdge)}
                     linkPickActive={linkPickActive}
                     linkSourceId={linkSourceId}
+                    density="hero"
+                    labelMode="auto"
+                    showNodeIndex
+                    showControls={!linkPickActive}
+                    showMiniMap={!linkPickActive}
                     onSelectNode={(id) => {
                       if (linkPickActive) {
                         if (id === null) {
@@ -938,24 +1059,37 @@ export function UserSystemEditorModal({
                         if (!linkSourceId) {
                           setLinkSourceId(id)
                           setSelectedNodeId(id)
+                          setSelectedEdgeKey(null)
                           return
                         }
                         return
                       }
                       setSelectedNodeId(id)
+                      setSelectedEdgeKey(null)
+                    }}
+                    onSelectEdge={(key) => {
+                      setSelectedEdgeKey(key)
+                      if (key) setSelectedNodeId(null)
                     }}
                     onLinkNodes={addGraphLink}
                     onNodePosition={handleNodePosition}
                     onBackgroundPointerDown={() => {
                       setSelectedNodeId(null)
+                      setSelectedEdgeKey(null)
                       if (linkPickActive) setLinkSourceId(null)
                     }}
                   />
+                  {linkPickActive ? (
+                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-[#4d7cff]/40 bg-[#07101f]/86 px-3 py-2 text-xs font-black text-[#d9e4ff] shadow-[0_12px_34px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                      {linkSourceId ? `Source: ${nodeOptions.find((option) => option.id === linkSourceId)?.label ?? 'Step'}` : 'Pick source'}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={addNode}
                     className="absolute bottom-4 right-4 flex h-14 w-14 items-center justify-center rounded-full border border-white/15 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] text-white shadow-[0_14px_32px_rgba(47,88,255,0.4)]"
                     aria-label="Add step"
+                    title="Add step"
                   >
                     <Plus className="h-7 w-7" />
                   </button>
@@ -1001,16 +1135,56 @@ export function UserSystemEditorModal({
                     </div>
                   ) : null}
                 </div>
-                <p className="px-3 py-2 text-center text-[11px] font-semibold leading-5 text-white/38">
-                  {linkPickActive
-                    ? 'Tap a step, then another, to draw a transition. Tap Link again to cancel.'
-                    : 'Drag to arrange. Pinch or scroll to zoom; drag background to pan. Link mode pauses pan/zoom.'}
-                </p>
+              </div>
+
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">System details</p>
+                  <span className={cn(
+                    'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]',
+                    publishReady ? 'bg-emerald-500/12 text-emerald-200' : 'bg-amber-400/12 text-amber-100',
+                  )}>
+                    {publishReady ? 'Ready' : 'Draft'}
+                  </span>
+                </div>
+                <label className="mt-3 block text-sm font-semibold text-white/70" htmlFor="system-title-graph">
+                  Title
+                </label>
+                <input
+                  id="system-title-graph"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  onBlur={() => pushEditorHistory()}
+                  placeholder="e.g. Closed guard chain"
+                  className="mt-1.5 w-full rounded-[14px] border border-white/12 bg-black/40 px-4 py-3 text-base font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#4d7cff]/55"
+                />
+                <label className="mt-4 block text-sm font-semibold text-white/70" htmlFor="system-summary-graph">
+                  Summary
+                </label>
+                <textarea
+                  id="system-summary-graph"
+                  value={summary}
+                  onChange={(event) => setSummary(event.target.value)}
+                  onBlur={() => pushEditorHistory()}
+                  rows={2}
+                  placeholder="What problem does this map solve?"
+                  className="mt-1.5 w-full resize-none rounded-[14px] border border-white/12 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/30 focus:border-[#4d7cff]/55"
+                />
+                {!isEdit && user?.id && lastDraftSavedAt ? (
+                  <p className="mt-2 text-xs text-white/40">Autosaved · {formatRelativeDraftTime(lastDraftSavedAt)}</p>
+                ) : isEdit && initial?.updatedAt ? (
+                  <p className="mt-2 text-xs text-white/40">Saved · {formatAccountSavedAt(initial.updatedAt)}</p>
+                ) : null}
               </div>
 
               {selectedNode ? (
-                <div className="rounded-[22px] border border-[#4d7cff]/25 bg-[#4d7cff]/08 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9ab6ff]">Editing step</p>
+                <div className="rounded-[22px] border border-[#4d7cff]/25 bg-[#4d7cff]/08 p-4 shadow-[0_16px_44px_rgba(77,124,255,0.08)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9ab6ff]">Step inspector</p>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">
+                      {selectedNode.linkedTechniqueIds.length} refs
+                    </span>
+                  </div>
                   <input
                     value={selectedNode.label}
                     onChange={(event) => {
@@ -1022,6 +1196,47 @@ export function UserSystemEditorModal({
                     onBlur={() => pushEditorHistory()}
                     className="mt-2 w-full rounded-[12px] border border-white/12 bg-black/40 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-[#4d7cff]/45"
                   />
+                  <div className="mt-3 grid grid-cols-4 gap-1.5">
+                    {[
+                      ['In', selectedIncomingEdges.length],
+                      ['Out', selectedOutgoingEdges.length],
+                      ['Refs', selectedNode.linkedTechniqueIds.length],
+                      ['Notes', selectedNode.trigger || selectedNode.details || selectedNode.commonMistake || selectedNode.videoUrl ? 1 : 0],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-[12px] border border-white/8 bg-black/25 px-2 py-2 text-center">
+                        <p className="text-base font-black leading-none text-white">{value}</p>
+                        <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/34">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {[
+                      { title: 'Coming from', nodeId: selectedIncomingEdges[0]?.from },
+                      { title: 'Leads to', nodeId: selectedOutgoingEdges[0]?.to },
+                    ].map((entry) => {
+                      const nodeId = entry.nodeId
+                      const targetLabel = nodeId ? nodeOptions.find((option) => option.id === nodeId)?.label ?? 'Step' : 'None'
+                      return nodeId ? (
+                        <button
+                          key={entry.title}
+                          type="button"
+                          onClick={() => {
+                            setSelectedNodeId(nodeId)
+                            setSelectedEdgeKey(null)
+                          }}
+                          className="min-h-[50px] rounded-[12px] border border-white/8 bg-black/24 px-3 py-2 text-left transition hover:bg-white/[0.06]"
+                        >
+                          <span className="block text-[10px] font-bold uppercase tracking-[0.13em] text-white/34">{entry.title}</span>
+                          <span className="mt-0.5 block truncate text-xs font-black text-white/82">{targetLabel}</span>
+                        </button>
+                      ) : (
+                        <div key={entry.title} className="min-h-[50px] rounded-[12px] border border-white/8 bg-black/16 px-3 py-2">
+                          <span className="block text-[10px] font-bold uppercase tracking-[0.13em] text-white/28">{entry.title}</span>
+                          <span className="mt-0.5 block text-xs font-black text-white/25">None</span>
+                        </div>
+                      )
+                    })}
+                  </div>
                   <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-white/35">Color</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {NODE_COLORS.map((color) => (
@@ -1044,7 +1259,6 @@ export function UserSystemEditorModal({
                     ))}
                   </div>
                   <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-white/35">Library techniques</p>
-                  <p className="mt-1 text-[11px] text-white/40">Attach references from My Library to this step.</p>
                   <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-[12px] border border-white/8 bg-black/30 p-2">
                     {libraryTechniques.length === 0 ? (
                       <p className="px-2 py-3 text-xs text-white/45">Add techniques in My Library first.</p>
@@ -1158,7 +1372,38 @@ export function UserSystemEditorModal({
                     </div>
                   </details>
                 </div>
-              ) : null}
+              ) : selectedEdge ? (
+                <div className="rounded-[22px] border border-[#4d7cff]/25 bg-[#4d7cff]/08 p-4 shadow-[0_16px_44px_rgba(77,124,255,0.08)]">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9ab6ff]">Transition inspector</p>
+                  <div className="mt-3 rounded-[16px] border border-white/10 bg-black/30 p-3">
+                    <p className="truncate text-sm font-black text-white">{selectedEdgeFrom}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-white/35">to</p>
+                    <p className="mt-1 truncate text-sm font-black text-white">{selectedEdgeTo}</p>
+                  </div>
+                  <label className="mt-4 block text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">Transition note</label>
+                  <input
+                    value={selectedEdge.label ?? ''}
+                    onChange={(event) => updateEdgeLabel(selectedEdge.from, selectedEdge.to, event.target.value)}
+                    onBlur={() => pushEditorHistory()}
+                    placeholder="e.g. underhook, posture break, frame wins"
+                    className="mt-1 w-full rounded-[12px] border border-white/12 bg-black/40 px-3 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#4d7cff]/45"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={() => removeEdge(selectedEdge.from, selectedEdge.to)}
+                    leftIcon={<Trash2 className="h-4 w-4" />}
+                  >
+                    Remove transition
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-[22px] border border-dashed border-white/12 bg-white/[0.025] p-4 text-center">
+                  <p className="text-sm font-bold text-white/70">Select a step or transition</p>
+                </div>
+              )}
 
               <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">All steps</p>
@@ -1168,9 +1413,12 @@ export function UserSystemEditorModal({
                       key={node.id}
                       className="flex flex-wrap items-center gap-2 rounded-[14px] border border-white/8 bg-black/30 px-3 py-2"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedNodeId(node.id)}
+	                      <button
+	                        type="button"
+	                        onClick={() => {
+	                          setSelectedNodeId(node.id)
+	                          setSelectedEdgeKey(null)
+	                        }}
                         className={cn(
                           'min-w-0 flex-1 truncate text-left text-sm font-bold',
                           selectedNodeId === node.id ? 'text-[#9ab6ff]' : 'text-white/80',
@@ -1193,8 +1441,7 @@ export function UserSystemEditorModal({
               </div>
 
               <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">Links (list)</p>
-                <p className="mt-1 text-sm text-white/50">Optional precise control — same as drawing on the canvas.</p>
+	                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">Precision links</p>
                 <div className="mt-4 flex flex-col gap-2">
                   <div>
                     <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">Transition note</label>
@@ -1248,15 +1495,25 @@ export function UserSystemEditorModal({
                     {edges.map((edge) => {
                       const fromLabel = nodeOptions.find((option) => option.id === edge.from)?.label ?? edge.from
                       const toLabel = nodeOptions.find((option) => option.id === edge.to)?.label ?? edge.to
-                      return (
-                        <li
-                          key={`${edge.from}-${edge.to}`}
-                          className="rounded-[14px] border border-white/8 bg-black/30 p-3 text-sm font-semibold text-white/75"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="min-w-0 truncate">
-                              {fromLabel} → {toLabel}
-                            </span>
+	                      return (
+	                        <li
+	                          key={`${edge.from}-${edge.to}`}
+	                          className={cn(
+	                            'rounded-[14px] border bg-black/30 p-3 text-sm font-semibold text-white/75',
+	                            selectedEdgeKey === normalizeGraphEdgeKey(edge.from, edge.to) ? 'border-[#4d7cff]/45 bg-[#4d7cff]/10' : 'border-white/8',
+	                          )}
+	                        >
+	                          <div className="flex items-start justify-between gap-3">
+	                            <button
+	                              type="button"
+	                              onClick={() => {
+	                                setSelectedNodeId(null)
+	                                setSelectedEdgeKey(normalizeGraphEdgeKey(edge.from, edge.to))
+	                              }}
+	                              className="min-w-0 flex-1 truncate text-left"
+	                            >
+	                              {fromLabel} → {toLabel}
+	                            </button>
                             <button
                               type="button"
                               onClick={() => removeEdge(edge.from, edge.to)}
@@ -1286,33 +1543,56 @@ export function UserSystemEditorModal({
           )}
 
           {tab === 'publish' && (
-            <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">Visibility</p>
-              <div className="mt-3 flex gap-2">
-                {(['private', 'public'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => {
-                      if (value === visibility) return
-                      pushEditorHistory()
-                      setVisibility(value)
-                    }}
-                    className={cn(
-                      'flex-1 rounded-[14px] border px-3 py-2.5 text-sm font-bold transition',
-                      visibility === value
-                        ? 'border-[#4d7cff]/55 bg-[#4d7cff]/18 text-[#8cabff]'
-                        : 'border-white/10 bg-white/[0.04] text-white/55',
-                    )}
-                  >
-                    {value === 'private' ? 'Private (only you)' : 'Public (signed-in users)'}
-                  </button>
-                ))}
+            <div className="space-y-4">
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-[#8cabff]" />
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">Readiness</p>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {[
+                    ['Title', title.trim().length > 0],
+                    ['Graph steps', nodes.length > 0],
+                    ['Transitions', edges.length > 0],
+                    ['Technique refs', linkedTechniqueCount > 0],
+                  ].map(([label, ready]) => (
+                    <div key={String(label)} className="flex items-center justify-between rounded-[14px] border border-white/8 bg-black/30 px-3 py-2.5">
+                      <span className="text-sm font-bold text-white/78">{label}</span>
+                      <span className={cn(
+                        'h-2.5 w-2.5 rounded-full',
+                        ready ? 'bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.45)]' : 'bg-white/18',
+                      )} />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <p className="mt-6 text-sm leading-6 text-white/50">
-                Public systems share your graph, edge labels, and saved technique titles on each step so other signed-in users can
-                follow your chain. Your private library entries are not exposed beyond those snapshots.
-              </p>
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/38">Visibility</p>
+                <div className="mt-3 flex gap-2">
+                  {(['private', 'public'] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        if (value === visibility) return
+                        pushEditorHistory()
+                        setVisibility(value)
+                      }}
+                      className={cn(
+                        'flex-1 rounded-[14px] border px-3 py-2.5 text-sm font-bold transition',
+                        visibility === value
+                          ? 'border-[#4d7cff]/55 bg-[#4d7cff]/18 text-[#8cabff]'
+                          : 'border-white/10 bg-white/[0.04] text-white/55',
+                      )}
+                    >
+                      {value === 'private' ? 'Private' : 'Public'}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-6 text-sm leading-6 text-white/50">
+                  Public systems share graph labels and saved technique titles. Private library entries stay private.
+                </p>
+              </div>
             </div>
           )}
         </div>

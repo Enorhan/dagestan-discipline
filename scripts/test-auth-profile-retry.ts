@@ -9,8 +9,8 @@ async function main() {
 
   const baseProfile: UserProfile = {
     id: 'user-1',
-    username: 'dagestani_disciple',
-    displayName: 'Dagestani Disciple',
+    username: 'matflow_athlete',
+    displayName: 'MatFlow Athlete',
     sport: 'wrestling',
     createdAt: '2026-03-09T12:00:00.000Z',
     workoutCount: 0,

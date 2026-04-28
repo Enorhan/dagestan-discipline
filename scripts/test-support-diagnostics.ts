@@ -26,7 +26,7 @@ const snapshot = buildSupportDiagnosticsSnapshot({
   generatedAt: '2026-03-08T12:00:00.000Z',
 })
 
-assert.match(snapshot, /^Dagestani Disciple diagnostics/m)
+assert.match(snapshot, /^MatFlow diagnostics/m)
 assert.match(snapshot, /^Generated at: 2026-03-08T12:00:00.000Z$/m)
 assert.match(snapshot, /^Release: 2026.03.08$/m)
 assert.match(snapshot, /^Connection: offline$/m)

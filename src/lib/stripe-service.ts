@@ -265,7 +265,7 @@ export const stripeService = {
   },
 
   /**
-   * Subscribe to premium plan (25 SEK/month)
+   * Subscribe to premium plan (25 kr/month)
    */
   async subscribeToPremium(priceId?: string, email?: string): Promise<void> {
     const checkoutAvailability = getBillingCheckoutAvailability()

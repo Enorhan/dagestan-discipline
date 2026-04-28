@@ -26,6 +26,7 @@ export interface UserProfile {
   injuryNotes?: string | null
   isPremium?: boolean
   firstActiveAt?: string | null
+  matflowTrialStartedAt?: string | null
   stripeCustomerId?: string | null
   subscriptionStatus?: string | null
   subscriptionPeriodEnd?: string | null
