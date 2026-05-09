@@ -13,6 +13,26 @@ release notes.
 - [ ] Uploaded via `npm run ios:upload`
 - [ ] Build appears in App Store Connect → TestFlight processing
 
+## v1.0 fast-fail smoke (run first; abort and refile if any row fails)
+
+Run this end-to-end on a fresh install before working through the longer
+sections. It exercises the critical paths flagged in the v1.0 launch audit and
+fails the build fast if any one is broken.
+
+- [ ] Fresh install → **Continue with Apple** opens the native SIWA sheet
+  (no Capacitor "plugin not implemented" error, no fallback web sheet)
+- [ ] SIWA completes → onboarding (discipline / name / belt / gym) finishes
+  → main surface loads
+- [ ] Paywall shows "14 days free" + "25 kr/month"; remaining trial days
+  decrement after force-close + cold start with mocked clock
+- [ ] **Subscribe** opens the native StoreKit sheet for `matflow.monthly`
+  (no Stripe browser, no "product unavailable")
+- [ ] Sandbox purchase grants Pro entitlement immediately; entitlement
+  survives force-close + cold start
+- [ ] **Restore purchases** restores the same sandbox subscription
+- [ ] Settings → **Delete account** with typed `DELETE` confirmation signs
+  the user out; fresh signup with the same email succeeds
+
 ## Cold-start & offline
 
 - [ ] Cold start from quit state lands on signed-in surface within 3 s
@@ -103,8 +123,9 @@ release notes.
 
 - [ ] `npm run verify:ci` green on the release branch
 - [ ] `npm audit --omit=dev` reports 0 vulnerabilities
-- [ ] App Store Connect: subscription product status **Ready to Submit** for
-  every locale that ships
+- [ ] App Store Connect: subscription product `matflow.monthly` exists and is
+  **Ready to Submit** in every locale that ships (must match
+  `NEXT_PUBLIC_APPLE_IAP_MONTHLY_PRODUCT_ID` / `MATFLOW_IOS_MONTHLY_PRODUCT_ID`)
 - [ ] Review notes describe the payment flow (Apple IAP only on iOS, Stripe
   for web) and provide a sandbox tester account
 - [ ] Privacy policy + Terms of Service URLs reachable without auth
