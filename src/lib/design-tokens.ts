@@ -1,12 +1,60 @@
 /**
  * Design System Tokens
- * 
+ *
  * Centralized design tokens for the MatFlow app.
  * These values are the source of truth for all UI components.
- * 
+ *
  * Usage: Import these tokens in components for programmatic access.
- * CSS variables are defined in globals.css for Tailwind usage.
+ * CSS variables (--matflow-*) are also exposed in globals.css so they can
+ * be used inline (e.g. `style={{ color: 'var(--matflow-brand-500)' }}`)
+ * or via Tailwind arbitrary values (`bg-[var(--matflow-surface-900)]`).
+ *
+ * NEW CODE: prefer these tokens over inline hex values.
  */
+
+// ============================================
+// COLOR PALETTE
+// ============================================
+// Brand blue is the MatFlow accent. The numeric scale follows Tailwind
+// conventions (50 = lightest, 900 = darkest). 500 is the canonical brand.
+export const colors = {
+  brand: {
+    50: '#d9e4ff',
+    100: '#b8c9ff',
+    200: '#a9c0ff',
+    300: '#9ab6ff',
+    400: '#8cabff',
+    500: '#4d7cff', // canonical brand
+    600: '#4c6fff',
+    700: '#2f58ff',
+    800: '#2c52ff',
+    900: '#2563eb',
+  },
+  brandSoft: {
+    highlight: '#7ea4ff',
+  },
+  surface: {
+    950: '#04060a',
+    925: '#05070d',
+    900: '#050914',
+    850: '#07101f',
+    800: '#090d16',
+  },
+  accent: {
+    gold: '#ffba33',
+    goldBright: '#ffd84d',
+    crimson: '#8b0000',
+  },
+  status: {
+    success: '#22c55e',
+    warning: '#eab308',
+    danger: '#ef4444',
+    info: '#3b82f6',
+  },
+  neutral: {
+    foreground: '#fafafa',
+  },
+} as const
 
 // ============================================
 // SPACING SCALE

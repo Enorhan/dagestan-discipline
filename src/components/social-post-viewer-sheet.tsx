@@ -232,7 +232,7 @@ export function SocialPostViewerSheet({
             {commentsLoading ? (
               <div className="space-y-2">
                 {[0, 1].map((key) => (
-                  <div key={key} className="h-12 animate-pulse rounded-xl bg-white/[0.06]" />
+                  <div key={key} className="skeleton-shimmer h-12 rounded-xl bg-white/[0.06]" />
                 ))}
               </div>
             ) : previewComments.length === 0 ? (

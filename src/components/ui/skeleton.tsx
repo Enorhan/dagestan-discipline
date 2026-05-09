@@ -13,7 +13,7 @@ export function Skeleton({
   width,
   height 
 }: SkeletonProps) {
-  const baseClass = 'animate-pulse bg-card/80'
+  const baseClass = 'skeleton-shimmer bg-card/80'
   
   const variantClass = {
     text: 'rounded',

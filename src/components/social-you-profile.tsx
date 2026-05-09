@@ -21,6 +21,8 @@ type SocialYouProfileProps = {
   onOpenTechnique: (techniqueId: string) => void
   onShareProfile: () => void
   onTabChange: (tab: YouProfileTab) => void
+  onBrowseDiscoverTechniques?: () => void
+  onCreateGameplan?: () => void
   overview: SocialProfileOverview
   systems: BjjSystem[]
   techniques: BjjTechnique[]
@@ -32,16 +34,18 @@ function TechniqueList({
   items,
   loading,
   onOpen,
+  onBrowse,
 }: {
   items: BjjTechnique[]
   loading?: boolean
   onOpen: (techniqueId: string) => void
+  onBrowse?: () => void
 }) {
   if (loading && items.length === 0) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="h-20 rounded-[18px] bg-white/[0.06] animate-pulse" />
+          <div key={index} className="skeleton-shimmer h-20 rounded-[18px] bg-white/[0.06]" />
         ))}
       </div>
     )
@@ -54,6 +58,15 @@ function TechniqueList({
         <p className="mt-2 max-w-[280px] text-sm leading-6 text-white/56">
           Techniques you create or save appear here.
         </p>
+        {onBrowse ? (
+          <button
+            type="button"
+            onClick={onBrowse}
+            className="mt-6 rounded-full border border-[#4d7cff]/45 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-6 py-3 text-sm font-bold text-white shadow-[0_10px_28px_rgba(47,88,255,0.35)]"
+          >
+            Browse Discover
+          </button>
+        ) : null}
       </div>
     )
   }
@@ -95,16 +108,18 @@ function SystemList({
   items,
   loading,
   onOpen,
+  onCreate,
 }: {
   items: BjjSystem[]
   loading?: boolean
   onOpen: (system: BjjSystem) => void
+  onCreate?: () => void
 }) {
   if (loading && items.length === 0) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-24 rounded-[18px] bg-white/[0.06] animate-pulse" />
+          <div key={index} className="skeleton-shimmer h-24 rounded-[18px] bg-white/[0.06]" />
         ))}
       </div>
     )
@@ -117,6 +132,15 @@ function SystemList({
         <p className="mt-2 max-w-[280px] text-sm leading-6 text-white/56">
           Gameplans you create appear here.
         </p>
+        {onCreate ? (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="mt-6 rounded-full border border-[#4d7cff]/45 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-6 py-3 text-sm font-bold text-white shadow-[0_10px_28px_rgba(47,88,255,0.35)]"
+          >
+            Build a gameplan
+          </button>
+        ) : null}
       </div>
     )
   }
@@ -159,6 +183,8 @@ export function SocialYouProfile({
   onOpenTechnique,
   onShareProfile,
   onTabChange,
+  onBrowseDiscoverTechniques,
+  onCreateGameplan,
   overview,
   systems,
   techniques,
@@ -318,9 +344,9 @@ export function SocialYouProfile({
       <div className="isolate mt-3 min-h-0 flex-1 overflow-y-auto pb-6">
         <div className="px-1">
           {activeTab === 'techniques' ? (
-            <TechniqueList items={techniques} loading={loading} onOpen={onOpenTechnique} />
+            <TechniqueList items={techniques} loading={loading} onOpen={onOpenTechnique} onBrowse={onBrowseDiscoverTechniques} />
           ) : (
-            <SystemList items={systems} loading={loading} onOpen={onOpenSystem} />
+            <SystemList items={systems} loading={loading} onOpen={onOpenSystem} onCreate={onCreateGameplan} />
           )}
         </div>
       </div>

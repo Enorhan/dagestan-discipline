@@ -4,6 +4,7 @@
 
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 import { prefersReducedMotion } from '@/lib/hooks/use-reduced-motion'
+import { logger } from '@/lib/logger'
 
 export const haptics = {
   // Light impact - for button presses
@@ -15,7 +16,7 @@ export const haptics = {
       await Haptics.impact({ style: ImpactStyle.Light })
     } catch (error) {
       // Silently fail on web or if haptics unavailable
-      console.debug('Haptics not available:', error)
+      logger.debug('Haptics not available:', error)
     }
   },
 
@@ -26,7 +27,7 @@ export const haptics = {
     try {
       await Haptics.impact({ style: ImpactStyle.Medium })
     } catch (error) {
-      console.debug('Haptics not available:', error)
+      logger.debug('Haptics not available:', error)
     }
   },
 
@@ -37,7 +38,7 @@ export const haptics = {
     try {
       await Haptics.impact({ style: ImpactStyle.Heavy })
     } catch (error) {
-      console.debug('Haptics not available:', error)
+      logger.debug('Haptics not available:', error)
     }
   },
 
@@ -47,7 +48,7 @@ export const haptics = {
     try {
       await Haptics.notification({ type: NotificationType.Success })
     } catch (error) {
-      console.debug('Haptics not available:', error)
+      logger.debug('Haptics not available:', error)
     }
   },
 
@@ -56,7 +57,7 @@ export const haptics = {
     try {
       await Haptics.notification({ type: NotificationType.Warning })
     } catch (error) {
-      console.debug('Haptics not available:', error)
+      logger.debug('Haptics not available:', error)
     }
   },
 
@@ -65,7 +66,7 @@ export const haptics = {
     try {
       await Haptics.notification({ type: NotificationType.Error })
     } catch (error) {
-      console.debug('Haptics not available:', error)
+      logger.debug('Haptics not available:', error)
     }
   }
 }

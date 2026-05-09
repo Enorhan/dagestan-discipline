@@ -12,7 +12,7 @@ import type {
 } from './user-profile-types'
 import type { AppleIapResult } from './apple-iap-service'
 
-const db = supabase as any
+const db = supabase
 
 type DbProfile = {
   id: string
@@ -427,6 +427,54 @@ async function signInWithNativeGoogle(): Promise<void> {
   }
 }
 
+type MatFlowSIWAPlugin = {
+  authorize(options: { nonce: string; scopes?: string; state?: string }): Promise<{
+    user: string
+    identityToken: string
+    authorizationCode?: string
+    email?: string
+    givenName?: string
+    familyName?: string
+    state?: string
+  }>
+}
+
+async function signInWithNativeApple(): Promise<void> {
+  const { registerPlugin } = await import('@capacitor/core')
+  const MatFlowSIWA = registerPlugin<MatFlowSIWAPlugin>('MatFlowSIWA')
+
+  const rawNonce = crypto.randomUUID()
+  const hashedNonce = await sha256Hex(rawNonce)
+
+  const result = await MatFlowSIWA.authorize({
+    nonce: hashedNonce,
+    scopes: 'email name',
+    state: crypto.randomUUID(),
+  })
+
+  if (!result.identityToken) {
+    throw new Error('Apple sign-in did not return an identity token')
+  }
+
+  const { error } = await db.auth.signInWithIdToken({
+    provider: 'apple',
+    token: result.identityToken,
+    nonce: rawNonce,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const buffer = new TextEncoder().encode(value)
+  const digest = await crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 function toHttpAuthCallbackUrl(baseUrl: string | undefined): string | null {
   if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
     return null
@@ -499,7 +547,7 @@ function getSupabaseAuthCallbackUrl(): string | null {
 }
 
 function formatOAuthErrorMessage(params: {
-  provider: 'google'
+  provider: 'google' | 'apple'
   redirectTo: string
   supabaseCallbackUrl: string | null
   rawMessage: string
@@ -740,7 +788,7 @@ export const supabaseService = {
     return profile
   },
 
-  async signInWithOAuth(provider: 'google'): Promise<void> {
+  async signInWithOAuth(provider: 'google' | 'apple'): Promise<void> {
     const { Capacitor } = await import('@capacitor/core')
 
     if (provider === 'google' && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
@@ -749,6 +797,18 @@ export const supabaseService = {
         return
       } catch (error) {
         captureException('supabase-native-google-sign-in', error, {
+          step: 'auth.signInWithIdToken',
+        }, 'warning')
+        throw error
+      }
+    }
+
+    if (provider === 'apple' && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+      try {
+        await signInWithNativeApple()
+        return
+      } catch (error) {
+        captureException('supabase-native-apple-sign-in', error, {
           step: 'auth.signInWithIdToken',
         }, 'warning')
         throw error
@@ -835,7 +895,7 @@ export const supabaseService = {
 
     const { data, error } = await db.rpc('username_is_available', {
       p_username: normalized,
-      p_exclude_user_id: excludeUserId ?? null,
+      p_exclude_user_id: excludeUserId ?? undefined,
     })
 
     if (error) {
@@ -923,7 +983,7 @@ export const supabaseService = {
         .eq('id', userId)
         .maybeSingle()
 
-      profile = fallbackResult.data
+      profile = fallbackResult.data as typeof profile
       error = fallbackResult.error
     }
 

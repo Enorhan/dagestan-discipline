@@ -30,8 +30,8 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-          NEXT_PUBLIC_SUPPORT_EMAIL: support@dagestanidisciple.com
-          NEXT_PUBLIC_BILLING_SUPPORT_EMAIL: support@dagestanidisciple.com
+          NEXT_PUBLIC_SUPPORT_EMAIL: support@matflow.app
+          NEXT_PUBLIC_BILLING_SUPPORT_EMAIL: support@matflow.app
         run: npm run verify:ci
 
   payment-smoke:

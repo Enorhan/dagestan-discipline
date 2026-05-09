@@ -14,7 +14,7 @@ interface AuthContextType {
   error: string | null
   signIn: (email: string, password: string) => Promise<UserProfile>
   signUp: (email: string, password: string, username: string, displayName: string, sport: SportType) => Promise<UserProfile>
-  signInWithOAuth: (provider: 'google') => Promise<void>
+  signInWithOAuth: (provider: 'google' | 'apple') => Promise<void>
   requestPasswordReset: (email: string) => Promise<void>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<UserProfile>) => Promise<UserProfile>
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const signInWithOAuth = useCallback(async (provider: 'google'): Promise<void> => {
+  const signInWithOAuth = useCallback(async (provider: 'google' | 'apple'): Promise<void> => {
     setIsLoading(true)
     setError(null)
     try {

@@ -35,6 +35,14 @@ import { useToast } from '@/contexts/toast-context'
 import { bjjService } from '@/lib/bjj-service'
 import { useOverlayLock } from '@/lib/hooks/use-overlay-lock'
 import {
+  hasSeenPermissionPrimer,
+  inspectCameraPermission,
+  markPermissionPrimerSeen,
+  openAppSettings,
+  requestCameraPermission,
+} from '@/lib/permission-primer'
+import { ConfirmationModal } from '@/components/ui/confirmation-modal'
+import {
   createSocialCreativeEdit,
   createSocialTextOverlay,
   getMusicDurationOptions,
@@ -258,6 +266,8 @@ export function SocialCreationStudio({
   const [trimEndMs, setTrimEndMs] = useState(0)
   const [trimStartMs, setTrimStartMs] = useState(0)
   const [visibility, setVisibility] = useState<SocialPostVisibility>('public')
+  const [cameraPrimerOpen, setCameraPrimerOpen] = useState(false)
+  const [cameraDeniedOpen, setCameraDeniedOpen] = useState(false)
 
   const draftStorageKey = `dd.social.studio.${userId}.${target}`
   const hasMedia = Boolean(previewUrl || sourceMediaUrl)
@@ -578,12 +588,7 @@ export function SocialCreationStudio({
     await handleHydrateSource(file)
   }
 
-  const handlePickNativePhoto = async () => {
-    if (!Capacitor.isNativePlatform()) {
-      photoCaptureInputRef.current?.click()
-      return
-    }
-
+  const launchNativeCamera = async () => {
     try {
       const photo = await CapacitorCamera.getPhoto({
         allowEditing: false,
@@ -608,6 +613,49 @@ export function SocialCreationStudio({
       if (/cancel/i.test(message)) return
       showError(message || 'Unable to access the camera')
     }
+  }
+
+  const handlePickNativePhoto = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      photoCaptureInputRef.current?.click()
+      return
+    }
+
+    const status = await inspectCameraPermission()
+    if (status.granted) {
+      await launchNativeCamera()
+      return
+    }
+    if (status.denied) {
+      setCameraDeniedOpen(true)
+      return
+    }
+    if (!hasSeenPermissionPrimer('camera')) {
+      setCameraPrimerOpen(true)
+      return
+    }
+    const outcome = await requestCameraPermission()
+    if (outcome === 'granted') {
+      await launchNativeCamera()
+    } else if (outcome === 'denied') {
+      setCameraDeniedOpen(true)
+    }
+  }
+
+  const handleConfirmCameraPrimer = async () => {
+    markPermissionPrimerSeen('camera')
+    setCameraPrimerOpen(false)
+    const outcome = await requestCameraPermission()
+    if (outcome === 'granted') {
+      await launchNativeCamera()
+    } else if (outcome === 'denied') {
+      setCameraDeniedOpen(true)
+    }
+  }
+
+  const handleOpenCameraSettings = () => {
+    setCameraDeniedOpen(false)
+    void openAppSettings()
   }
 
   const handleFramePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1697,6 +1745,24 @@ export function SocialCreationStudio({
           </div>
         </div>
       )}
+      <ConfirmationModal
+        isOpen={cameraPrimerOpen}
+        title="Use your camera?"
+        message="MatFlow needs camera and photo access so you can capture and share training moments. We never read photos in the background — only when you tap to add one."
+        confirmText="Continue"
+        cancelText="Not now"
+        onConfirm={() => { void handleConfirmCameraPrimer() }}
+        onClose={() => setCameraPrimerOpen(false)}
+      />
+      <ConfirmationModal
+        isOpen={cameraDeniedOpen}
+        title="Camera access is off"
+        message="To capture a photo, enable Camera and Photos for MatFlow in iOS Settings."
+        confirmText="Open Settings"
+        cancelText="Cancel"
+        onConfirm={handleOpenCameraSettings}
+        onClose={() => setCameraDeniedOpen(false)}
+      />
     </div>
   )
 }

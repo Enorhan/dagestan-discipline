@@ -1054,7 +1054,7 @@ async function collectReddit(source: ContentSourceRow, maxItems: number): Promis
   endpoint.searchParams.set('raw_json', '1')
 
   const payload = (await fetchJson(endpoint.toString(), {
-    'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'DagestaniDiscipleDataPipeline/1.0',
+    'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'MatFlowDataPipeline/1.0',
   })) as {
     data?: {
       children?: Array<{
@@ -1185,7 +1185,7 @@ async function collectWebSearch(source: ContentSourceRow, maxItems: number): Pro
           endpoint.searchParams.set('hl', language)
 
           const payload = (await fetchJson(endpoint.toString(), {
-            'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'DagestaniDiscipleDataPipeline/1.0',
+            'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'MatFlowDataPipeline/1.0',
           })) as JsonMap
 
           const rawItems = payload.items
@@ -1267,7 +1267,7 @@ async function collectWebSearch(source: ContentSourceRow, maxItems: number): Pro
 
     const minIntervalMs = parseInteger(process.env.PIPELINE_BRAVE_MIN_INTERVAL_MS, 1100)
     const payload = (await fetchJsonWithRetry(endpoint.toString(), {
-      'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'DagestaniDiscipleDataPipeline/1.0',
+      'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'MatFlowDataPipeline/1.0',
       'X-Subscription-Token': braveToken,
       Accept: 'application/json',
     }, {
@@ -1338,7 +1338,7 @@ async function collectWebSearch(source: ContentSourceRow, maxItems: number): Pro
   endpoint.searchParams.set('q', query)
 
   const xml = await fetchText(endpoint.toString(), {
-    'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'DagestaniDiscipleDataPipeline/1.0',
+    'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'MatFlowDataPipeline/1.0',
   })
 
   const results = extractLinksFromBingRss(xml).slice(0, maxItems)
@@ -1571,7 +1571,7 @@ async function collectWebUrl(source: ContentSourceRow): Promise<CollectedDocumen
   }
 
   const html = await fetchText(targetUrl, {
-    'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'DagestaniDiscipleDataPipeline/1.0',
+    'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'MatFlowDataPipeline/1.0',
   })
   const picked = chooseBestWebText(html, FALLBACK_OPTIONS.webMaxTextChars)
   const combined = `${picked.title} ${picked.description}`
@@ -2464,7 +2464,7 @@ async function extractSignalsFromWeb(
   if (text.length < 1200) {
     try {
       const html = await fetchText(document.url, {
-        'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'DagestaniDiscipleDataPipeline/1.0',
+        'User-Agent': process.env.PIPELINE_USER_AGENT ?? 'MatFlowDataPipeline/1.0',
       })
       const picked = chooseBestWebText(html, options.webMaxTextChars)
       pageTitle = picked.title || pageTitle

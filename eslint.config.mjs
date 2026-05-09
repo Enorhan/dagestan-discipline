@@ -17,10 +17,23 @@ const config = [
   ...nextCoreWebVitals,
   {
     rules: {
-      'react-hooks/purity': 'warn',
-      'react-hooks/rules-of-hooks': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
-      'react/no-unescaped-entities': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
+      'react-hooks/purity': 'error',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/set-state-in-effect': 'error',
+      'react/no-unescaped-entities': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx,js,jsx,mjs}'],
+    rules: {
+      'no-console': 'error',
+    },
+  },
+  {
+    files: ['src/lib/logger.ts', 'src/lib/monitoring.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
 ]

@@ -10,6 +10,55 @@ import { normalizeSubscriptionReturnStatus, SubscriptionReturnStatus } from './s
 // Deep link URL scheme
 const URL_SCHEME = 'matflow://'
 
+// Auth-bearing query/fragment params that must be redacted before any URL is logged or reported.
+const SENSITIVE_DEEP_LINK_PARAMS = new Set([
+  'access_token',
+  'refresh_token',
+  'provider_token',
+  'provider_refresh_token',
+  'id_token',
+  'code',
+  'token',
+  'token_hash',
+])
+
+/**
+ * Returns a copy of the deep-link URL with auth-bearing params replaced by `redacted`.
+ * Use this whenever a deep-link URL is forwarded to logs, monitoring, or analytics
+ * so Supabase auth tokens never leak into observable surfaces.
+ */
+export function redactDeepLinkUrl(url: string): string {
+  if (!url) return url
+  try {
+    const redactParams = (input: string): string => {
+      const params = new URLSearchParams(input)
+      let mutated = false
+      for (const key of SENSITIVE_DEEP_LINK_PARAMS) {
+        if (params.has(key)) {
+          params.set(key, 'redacted')
+          mutated = true
+        }
+      }
+      return mutated ? params.toString() : input
+    }
+
+    const hashIndex = url.indexOf('#')
+    const queryIndex = url.indexOf('?')
+    const base = hashIndex !== -1 ? url.slice(0, hashIndex) : queryIndex !== -1 ? url.slice(0, queryIndex) : url
+    const query = queryIndex !== -1 && (hashIndex === -1 || queryIndex < hashIndex)
+      ? url.slice(queryIndex + 1, hashIndex === -1 ? undefined : hashIndex)
+      : ''
+    const fragment = hashIndex !== -1 ? url.slice(hashIndex + 1) : ''
+
+    const redactedQuery = query ? redactParams(query) : ''
+    const redactedFragment = fragment ? redactParams(fragment) : ''
+
+    return `${base}${redactedQuery ? `?${redactedQuery}` : ''}${redactedFragment ? `#${redactedFragment}` : ''}`
+  } catch {
+    return '[unparseable-url]'
+  }
+}
+
 /**
  * Extracts auth tokens from a deep link URL
  * Supabase sends tokens in the URL fragment (after #) or as query params
@@ -48,7 +97,6 @@ function extractAuthTokens(url: string): { accessToken?: string; refreshToken?: 
     
     return null
   } catch (error) {
-    console.error('Error extracting auth tokens:', error)
     captureException('deep-link-auth-parse', error, { step: 'extractAuthTokens' }, 'warning')
     return null
   }
@@ -82,14 +130,12 @@ async function handleAuthCallback(url: string): Promise<boolean> {
     }
     
     if (error) {
-      console.error('Error setting session from deep link:', error)
       captureException('deep-link-auth-session', error, { step: 'handleAuthCallback' }, 'warning')
       return false
     }
-    
+
     return true
   } catch (error) {
-    console.error('Error handling auth callback:', error)
     captureException('deep-link-auth-callback', error, { step: 'handleAuthCallback' }, 'warning')
     return false
   }
@@ -174,16 +220,15 @@ export function initDeepLinkHandler(
   void App.getLaunchUrl()
     .then((launch) => processUrl(launch?.url ?? ''))
     .catch((error) => {
-      console.error('Failed to read launch URL:', error)
       captureException('deep-link-launch-url', error, { step: 'App.getLaunchUrl' }, 'warning')
     })
 
-  // Return cleanup function
+  // Return cleanup function. Only the appUrlOpen listener registered above is removed -
+  // do not call App.removeAllListeners(), which would tear down unrelated Capacitor listeners.
   return () => {
     void appUrlOpenListener
       .then((listener) => listener.remove())
       .catch((error) => {
-        console.error('Failed to remove deep link listener:', error)
         captureException('deep-link-listener-cleanup', error, { step: 'listener.remove' }, 'warning')
       })
   }

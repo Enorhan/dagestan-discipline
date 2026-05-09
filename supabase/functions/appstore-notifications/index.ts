@@ -1,40 +1,24 @@
 // ============================================================================
-// DAGestan Disciple - App Store Server Notifications (v2) handler
+// MatFlow — App Store Server Notifications (v2) handler
 // ============================================================================
-// This is intentionally minimal: it stores a transaction snapshot and updates
-// profiles.is_premium + provenance fields so iOS IAP and Stripe share the same
-// entitlement surface.
+// Apple posts `{ "signedPayload": "<JWS>" }` server-to-server.  We:
+//   1) verify the JWS x5c chain back to Apple Root CA - G3
+//   2) verify the inner signedTransactionInfo JWS the same way
+//   3) enforce bundleId match
+//   4) idempotently record the notificationUUID
+//   5) upsert app_store_transactions and update profiles entitlement
 //
-// NOTE: This endpoint requires APPSTORE_NOTIFICATION_BEARER_TOKEN and rejects
-// unauthenticated requests. Full JWS chain verification should still be added.
+// User mapping uses the verified `appAccountToken` field that the iOS client
+// sets at purchase time (see MatFlowIAPPlugin) — never client-supplied.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+import { verifyNotification, verifyTransaction } from './verify.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-type NotificationPayload = {
-  notificationUUID?: string
-  notificationType?: string
-  subtype?: string | null
-  data?: {
-    appAppleId?: number
-    bundleId?: string
-    environment?: string
-    signedTransactionInfo?: string
-    signedRenewalInfo?: string
-  }
-  // Optional helper fields if you post decoded values from a client/worker.
-  userId?: string
-  originalTransactionId?: string
-  transactionId?: string
-  productId?: string
-  status?: string
-  purchasedAt?: string | null
-  expiresAt?: string | null
 }
 
 function trimEnv(value: string | undefined): string {
@@ -47,52 +31,55 @@ function requireEnv(name: string): string {
   return value
 }
 
-function extractBearerToken(authHeader: string | null): string | null {
-  if (!authHeader) return null
-  const [scheme, token] = authHeader.trim().split(/\s+/, 2)
-  if (!scheme || !token) return null
-  if (scheme.toLowerCase() !== 'bearer') return null
-  return token.trim() || null
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
+  })
 }
 
-function toIsoOrNull(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  const parsed = Date.parse(trimmed)
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null
+function appleEpochMillisToIso(value: number | undefined): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  // Apple emits transaction timestamps as ms since epoch.
+  return new Date(value).toISOString()
+}
+
+interface ProcessedTransactionResult {
+  userId: string
+  originalTransactionId: string
+  productId: string
+  transactionId: string | null
+  environment: string | null
+  status: string | null
+  purchasedAt: string | null
+  expiresAt: string | null
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ ok: false, error: 'Method not allowed' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 405,
-    })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'Method not allowed' }, 405)
 
   try {
-    const expectedBearerToken = requireEnv('APPSTORE_NOTIFICATION_BEARER_TOKEN')
-    const providedBearerToken = extractBearerToken(req.headers.get('authorization'))
-    if (!providedBearerToken || providedBearerToken !== expectedBearerToken) {
-      return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 401,
-      })
+    const body = await req.json().catch(() => ({})) as { signedPayload?: string }
+    const signedPayload = (body.signedPayload ?? '').trim()
+    if (!signedPayload) {
+      return jsonResponse({ ok: false, error: 'Missing signedPayload' }, 400)
     }
 
+    const expectedBundleId = requireEnv('APPSTORE_BUNDLE_ID')
     const supabaseAdmin = createClient(
       requireEnv('SUPABASE_URL'),
       requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
       { auth: { autoRefreshToken: false, persistSession: false } },
     )
 
-    const body = (await req.json()) as NotificationPayload
-    const notificationUUID = (body.notificationUUID ?? '').trim()
+    const notification = await verifyNotification(signedPayload)
+    const notificationUUID = (notification.notificationUUID ?? '').trim()
+    const data = notification.data ?? {}
+
+    if (data.bundleId && data.bundleId !== expectedBundleId) {
+      return jsonResponse({ ok: false, error: 'Bundle ID mismatch' }, 400)
+    }
 
     if (notificationUUID) {
       const { data: existing } = await supabaseAdmin
@@ -102,80 +89,82 @@ Deno.serve(async (req) => {
         .maybeSingle()
 
       if (existing?.id) {
-        return new Response(JSON.stringify({ ok: true, deduped: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        })
+        return jsonResponse({ ok: true, deduped: true }, 200)
       }
 
       await supabaseAdmin
         .from('processed_app_store_notifications')
         .insert({
           notification_uuid: notificationUUID,
-          notification_type: body.notificationType ?? null,
-          subtype: body.subtype ?? null,
+          notification_type: notification.notificationType ?? null,
+          subtype: notification.subtype ?? null,
         })
     }
 
-    const userId = (body.userId ?? '').trim()
-    const originalTransactionId = (body.originalTransactionId ?? '').trim()
-    const productId = (body.productId ?? '').trim()
-
-    if (!userId || !originalTransactionId || !productId) {
-      // For a hardened implementation we'd decode signedTransactionInfo and map
-      // it to user_id. MVP requires explicit mapping.
-      throw new Error('Missing required fields: userId, originalTransactionId, productId')
+    const signedTransactionInfo = (data.signedTransactionInfo ?? '').trim()
+    if (!signedTransactionInfo) {
+      return jsonResponse({ ok: true, ignored: 'no signedTransactionInfo' }, 200)
     }
 
-    const environment = (body.data?.environment ?? body.data?.environment ?? null) as string | null
-    const status = (body.status ?? '').trim() || null
-    const purchasedAt = toIsoOrNull(body.purchasedAt)
-    const expiresAt = toIsoOrNull(body.expiresAt)
+    const transaction = await verifyTransaction(signedTransactionInfo)
+    if (transaction.bundleId && transaction.bundleId !== expectedBundleId) {
+      return jsonResponse({ ok: false, error: 'Transaction bundle ID mismatch' }, 400)
+    }
+
+    const userId = (transaction.appAccountToken ?? '').trim()
+    const originalTransactionId = (transaction.originalTransactionId ?? '').trim()
+    const productId = (transaction.productId ?? '').trim()
+
+    if (!userId || !originalTransactionId || !productId) {
+      return jsonResponse({ ok: false, error: 'Missing appAccountToken / originalTransactionId / productId' }, 400)
+    }
+
+    const result: ProcessedTransactionResult = {
+      userId,
+      originalTransactionId,
+      productId,
+      transactionId: (transaction.transactionId ?? '').trim() || null,
+      environment: transaction.environment ?? data.environment ?? null,
+      status: notification.notificationType ?? null,
+      purchasedAt: appleEpochMillisToIso(transaction.purchaseDate),
+      expiresAt: appleEpochMillisToIso(transaction.expiresDate),
+    }
 
     await supabaseAdmin
       .from('app_store_transactions')
       .upsert(
         {
-          user_id: userId,
-          original_transaction_id: originalTransactionId,
-          transaction_id: (body.transactionId ?? '').trim() || null,
-          product_id: productId,
-          environment,
-          status,
-          purchased_at: purchasedAt,
-          expires_at: expiresAt,
+          user_id: result.userId,
+          original_transaction_id: result.originalTransactionId,
+          transaction_id: result.transactionId,
+          product_id: result.productId,
+          environment: result.environment,
+          status: result.status,
+          purchased_at: result.purchasedAt,
+          expires_at: result.expiresAt,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,original_transaction_id,product_id' },
       )
 
-    const nowIso = new Date().toISOString()
-    const isPremium = expiresAt ? Date.parse(expiresAt) > Date.now() : true
-
+    const isPremium = result.expiresAt ? Date.parse(result.expiresAt) > Date.now() : true
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({
         is_premium: isPremium,
         premium_source: 'apple_iap',
-        premium_provider_id: originalTransactionId,
-        premium_updated_at: nowIso,
+        premium_provider_id: result.originalTransactionId,
+        premium_updated_at: new Date().toISOString(),
       })
-      .eq('id', userId)
+      .eq('id', result.userId)
 
-    if (profileError) {
-      throw new Error(profileError.message)
-    }
+    if (profileError) throw new Error(profileError.message)
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    return jsonResponse({ ok: true }, 200)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return new Response(JSON.stringify({ ok: false, error: message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+    console.error('[appstore-notifications]', message)
+    return jsonResponse({ ok: false, error: message }, 400)
   }
 })
 

@@ -12,7 +12,7 @@ interface HttpResult {
 const CHECKOUT_PATH = '/functions/v1/stripe-checkout'
 const WEBHOOK_PATH = '/functions/v1/stripe-webhook'
 const HTTP_TIMEOUT_MS = Number(process.env.PAYMENT_SMOKE_TIMEOUT_MS ?? '45000')
-const DEFAULT_FALLBACK_CHECKOUT_REDIRECT_URL = 'https://enorhan.github.io/dagestan-discipline/redirect.html'
+const DEFAULT_FALLBACK_CHECKOUT_REDIRECT_URL = 'https://enorhan.github.io/matflow/redirect.html'
 
 function requireEnv(name: string): string {
   const value = process.env[name]

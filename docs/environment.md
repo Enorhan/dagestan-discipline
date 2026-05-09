@@ -16,7 +16,8 @@
 - `NEXT_PUBLIC_STRIPE_PREMIUM_PRICE_ID`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `APPSTORE_NOTIFICATION_BEARER_TOKEN` (required by `supabase/functions/appstore-notifications`)
+- `APPSTORE_BUNDLE_ID` (required by `supabase/functions/appstore-notifications` — must equal the iOS app bundle id, e.g. `com.dagestani.disciple`)
+- `APPLE_ROOT_CA_PEM` (optional override for the embedded Apple Root CA - G3 trust anchor; supply a PEM block if you need to pin to a different root)
 - `NEXT_PUBLIC_APP_URL`
 
 ## Recommended app metadata variables
@@ -31,7 +32,7 @@
   - `GOOGLE_IOS_CLIENT_ID` (iOS OAuth client ID from Google Cloud)
   - `GOOGLE_IOS_REVERSED_CLIENT_ID` (reversed iOS client ID, e.g. `com.googleusercontent.apps.123...`)
 - `ios/App/App/Info.plist` and `ios/App/App/Info-Debug.plist` read these keys via `GIDClientID` and URL scheme entries.
-- For Capacitor iOS browser-based fallback flows, keep the native return scheme aligned to `dagestanidiscipline://auth/callback`.
+- For Capacitor iOS browser-based fallback flows, keep the native return scheme aligned to `matflow://auth/callback`.
 - Verify the same redirect inventory is present in Supabase auth settings before every release:
   - production web origin
   - preview/staging web origin
@@ -85,7 +86,7 @@ The optional remote JSON payload currently supports:
 
 ## Support and legal variables
 
-- `NEXT_PUBLIC_SUPPORT_EMAIL` - defaults to `support@dagestanidisciple.com`
+- `NEXT_PUBLIC_SUPPORT_EMAIL` - defaults to `support@matflow.app`
 - `NEXT_PUBLIC_BILLING_SUPPORT_EMAIL` - defaults to the support email
 - `NEXT_PUBLIC_PRIVACY_POLICY_URL` - defaults to `/legal/privacy-policy.html`
 - `NEXT_PUBLIC_TERMS_OF_SERVICE_URL` - defaults to `/legal/terms-of-service.html`

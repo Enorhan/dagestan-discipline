@@ -5,11 +5,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
+# Production builds must never bake a live-reload server URL into capacitor.config.json.
+unset CAPACITOR_LIVE_RELOAD_URL
+export NODE_ENV=production
+
 npm run build
 npx cap sync ios
 
-ARCHIVE="${ARCHIVE_PATH:-/tmp/DagestaniDisciple-Signed.xcarchive}"
-EXPORT_DIR="${EXPORT_DIR:-/tmp/DagestaniDisciple-Export}"
+ARCHIVE="${ARCHIVE_PATH:-/tmp/MatFlow-Signed.xcarchive}"
+EXPORT_DIR="${EXPORT_DIR:-/tmp/MatFlow-Export}"
 PLIST="$ROOT/scripts/ios/ExportOptions-appstore.plist"
 
 rm -rf "$EXPORT_DIR"
@@ -20,6 +24,7 @@ mkdir -p "$EXPORT_DIR"
   xcodebuild -scheme App -configuration Release \
     -destination 'generic/platform=iOS' \
     -archivePath "$ARCHIVE" \
+    -allowProvisioningUpdates \
     archive
 )
 

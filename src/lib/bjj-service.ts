@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger'
 import { captureException } from '@/lib/monitoring'
 import { socialInteractionsService } from '@/lib/social-interactions-service'
 import { socialRelationshipsService } from '@/lib/social-relationships-service'
@@ -212,11 +213,12 @@ async function isPremiumUser(userId: string): Promise<boolean> {
     throw new Error(error.message)
   }
 
-  const isPremium = Boolean((data as any)?.is_premium)
-  const status = String((data as any)?.subscription_status ?? '')
+  const profile = data as { is_premium?: boolean | null; subscription_status?: string | null; subscription_period_end?: string | null } | null
+  const isPremium = Boolean(profile?.is_premium)
+  const status = String(profile?.subscription_status ?? '')
   if (isPremium || status === 'active' || status === 'trialing') return true
 
-  const periodEnd = String((data as any)?.subscription_period_end ?? '')
+  const periodEnd = String(profile?.subscription_period_end ?? '')
   if (periodEnd) {
     const parsed = Date.parse(periodEnd)
     if (Number.isFinite(parsed) && parsed > Date.now()) return true
@@ -304,22 +306,13 @@ function buildProfilePatch(profile: UserProfile | null, cachedState: BjjPersiste
   const paywallCompleted = Boolean(premiumUnlocked || profile?.paywallCompleted || cachedState?.profile.paywallCompleted || fallback.paywallCompleted)
   const coachMarksSeen = Boolean(profile?.coachMarksSeen || cachedState?.profile.coachMarksSeen || fallback.coachMarksSeen)
 
-  // #region agent log (dd-techniques-tour)
-  console.debug('[DD_DEBUG_TOUR]', {
-    runId: 'pre-fix',
-    hypothesisId: 'H_A',
-    location: 'src/lib/bjj-service.ts:buildProfilePatch',
-    message: 'Computed profilePatch coachMarksSeen',
-    data: {
-      hasProfile: profile != null,
-      profileCoachMarksSeen: profile?.coachMarksSeen,
-      cachedCoachMarksSeen: cachedState?.profile.coachMarksSeen,
-      fallbackCoachMarksSeen: fallback.coachMarksSeen,
-      resultCoachMarksSeen: coachMarksSeen,
-    },
-    timestamp: Date.now(),
+  logger.debug('[bjj-service:buildProfilePatch]', {
+    hasProfile: profile != null,
+    profileCoachMarksSeen: profile?.coachMarksSeen,
+    cachedCoachMarksSeen: cachedState?.profile.coachMarksSeen,
+    fallbackCoachMarksSeen: fallback.coachMarksSeen,
+    resultCoachMarksSeen: coachMarksSeen,
   })
-  // #endregion agent log (dd-techniques-tour)
 
   return {
     displayName: profile?.displayName ?? fallback.displayName,
@@ -1670,7 +1663,7 @@ async function migrateLocalCache(user: UserProfile, cachedState: BjjPersistedSta
         session_date: session.date,
         started_at: toStartedAt(session.date, session.time),
         source: 'manual',
-        kind: session.type === 'Wrestling' ? 'mat' : 'mat',
+        kind: 'mat',
         notes: session.notes,
         location: session.location,
         session_type: session.type,
@@ -1959,7 +1952,7 @@ export const bjjService = {
         session_date: input.date,
         started_at: toStartedAt(input.date, input.time),
         source: 'manual',
-        kind: input.type === 'Wrestling' ? 'mat' : 'mat',
+        kind: 'mat',
         notes: input.notes,
         location: input.location,
         session_type: input.type,

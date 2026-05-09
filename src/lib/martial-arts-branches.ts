@@ -1,12 +1,6 @@
 export type MartialArtsBranchId =
   | 'bjj'
   | 'grappling'
-  | 'boxing'
-  | 'wrestling'
-  | 'mma'
-  | 'muay-thai'
-  | 'judo'
-  | 'taekwondo'
 
 export type MartialArtsBranch = {
   id: MartialArtsBranchId
@@ -17,12 +11,6 @@ export type MartialArtsBranch = {
 export const MARTIAL_ARTS_BRANCHES: MartialArtsBranch[] = [
   { id: 'bjj', label: 'BJJ', aliases: ['bjj', 'jiu jitsu', 'jiu-jitsu', 'brazilian jiu jitsu', 'brazilian jiu-jitsu'] },
   { id: 'grappling', label: 'Grappling', aliases: ['grappling', 'submission grappling', 'nogi grappling', 'no-gi grappling'] },
-  { id: 'boxing', label: 'Boxing', aliases: ['boxing', 'striking / boxing', 'striking'] },
-  { id: 'wrestling', label: 'Wrestling', aliases: ['wrestling'] },
-  { id: 'mma', label: 'MMA', aliases: ['mma', 'mixed martial arts'] },
-  { id: 'muay-thai', label: 'Muay Thai', aliases: ['muay thai', 'thai boxing'] },
-  { id: 'judo', label: 'Judo', aliases: ['judo'] },
-  { id: 'taekwondo', label: 'Taekwondo', aliases: ['taekwondo', 'tae kwon do', 'tkd'] },
 ]
 
 export const MARTIAL_ARTS_BRANCH_IDS = MARTIAL_ARTS_BRANCHES.map((branch) => branch.id) as MartialArtsBranchId[]

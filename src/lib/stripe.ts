@@ -3,6 +3,7 @@
 // ============================================
 
 import { loadStripe, Stripe } from '@stripe/stripe-js'
+import { captureException } from './monitoring'
 
 let stripePromise: Promise<Stripe | null> | null = null
 
@@ -15,7 +16,7 @@ export const getStripe = (): Promise<Stripe | null> => {
     const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
     if (!publishableKey) {
-      console.error('Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable')
+      captureException('stripe-init', new Error('Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable'), {}, 'warning')
       return Promise.resolve(null)
     }
 

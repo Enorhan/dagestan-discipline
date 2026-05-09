@@ -4,10 +4,10 @@
 # upload behavior and avoids requiring App Store Connect API-key env vars.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-ARCHIVE="${1:-${ARCHIVE_PATH:-/tmp/DagestaniDisciple-Signed.xcarchive}}"
-EXPORT_DIR="${UPLOAD_EXPORT_DIR:-/tmp/DagestaniDisciple-Upload}"
+ARCHIVE="${1:-${ARCHIVE_PATH:-/tmp/MatFlow-Signed.xcarchive}}"
+EXPORT_DIR="${UPLOAD_EXPORT_DIR:-/tmp/MatFlow-Upload}"
 BASE_PLIST="$ROOT/scripts/ios/ExportOptions-appstore.plist"
-UPLOAD_PLIST="$(mktemp /tmp/DagestaniDisciple-UploadOptions.XXXXXX.plist)"
+UPLOAD_PLIST="$(mktemp /tmp/MatFlow-UploadOptions.XXXXXX.plist)"
 
 cleanup() {
   rm -f "$UPLOAD_PLIST"

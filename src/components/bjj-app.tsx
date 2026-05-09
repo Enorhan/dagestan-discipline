@@ -2,11 +2,7 @@
 
 import Image from 'next/image'
 import {
-  type ButtonHTMLAttributes,
   type FormEvent,
-  type HTMLAttributes,
-  type InputHTMLAttributes,
-  type ReactNode,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -16,17 +12,12 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ArrowLeft,
   Bell,
   BookOpen,
-  Calendar,
   Camera,
   Check,
   Copy,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
   Compass,
   Crown,
   Flame,
@@ -35,8 +26,6 @@ import {
   Info,
   Link2,
   Lock,
-  MapPin,
-  Network,
   Pencil,
   Play,
   Medal,
@@ -47,7 +36,6 @@ import {
   Search,
   Settings,
   Share2,
-  Shield,
   Sparkles,
   Star,
   Target,
@@ -57,18 +45,20 @@ import {
   Video,
   X,
   Zap,
-  type LucideIcon,
 } from 'lucide-react'
 import { SocialCommentsSheet } from '@/components/social-comments-sheet'
 import { SocialConnectionsSheet } from '@/components/social-connections-sheet'
 import { SocialCreationStudio } from '@/components/social-creation-studio'
-import { CommunitySurface } from '@/components/community-surface'
-import { SocialInsightsSheet } from '@/components/social-insights-sheet'
+import { CommunityShell } from '@/components/bjj-app/community-shell'
+import { LibraryGameplansShell } from '@/components/bjj-app/library-gameplans-shell'
+import { TodayShell } from '@/components/bjj-app/today-shell'
 import { SocialMomentsSheet } from '@/components/social-moments-sheet'
 import { SocialPostViewerSheet } from '@/components/social-post-viewer-sheet'
 import { SocialReelsViewerModal } from '@/components/social-reels-viewer-modal'
 import { SocialStoryViewer } from '@/components/social-story-viewer'
-import { SocialYouProfile, type YouProfileTab } from '@/components/social-you-profile'
+import { type YouProfileTab } from '@/components/social-you-profile'
+import { YouLegacyShell } from '@/components/bjj-app/you-legacy-shell'
+import { YouSocialShell } from '@/components/bjj-app/you-social-shell'
 import { SystemForkersSheet } from '@/components/system-forkers-sheet'
 import { SystemGraphCanvas } from '@/components/system-graph-canvas'
 import { TargetCommentsSheet } from '@/components/target-comments-sheet'
@@ -82,6 +72,8 @@ import { toastCopy } from '@/lib/toast-messages'
 import { bjjService, type BjjPublicUserProfileBundle, type SaveUserSystemInput, type SaveUserSystemResult } from '@/lib/bjj-service'
 import { communityService, type PublicProfileReviewRow, type CommentTargetType } from '@/lib/community-service'
 import { haptics } from '@/lib/haptics'
+import { getAnalyticsConsent, setAnalyticsConsent } from '@/lib/analytics-consent'
+import { supabase } from '@/lib/supabase'
 import { supabaseService } from '@/lib/supabase-service'
 import { computeGraphLayout } from '@/lib/system-graph-layout'
 import { duplicateUserSystemDraft } from '@/lib/user-system-draft'
@@ -89,7 +81,6 @@ import { SOCIAL_MUSIC_TRACK_FALLBACKS } from '@/lib/social-creative'
 import {
   branchFromPrimaryDiscipline,
   getMartialArtsBranchLabel,
-  MARTIAL_ARTS_BRANCHES,
   normalizeMartialArtsBranchId,
   type MartialArtsBranchId,
 } from '@/lib/martial-arts-branches'
@@ -102,9 +93,7 @@ import {
   normalizeBjjState,
   normalizePersistedShellProfileFlags,
   normalizePersistedShellUiPrefs,
-  resolveOnboardingDisplayNameDraft,
 } from '@/lib/bjj-state'
-import { createDisplayNameInputBehavior, shouldIgnoreDisplayNameRefill } from '@/lib/display-name-input'
 import { Preferences } from '@capacitor/preferences'
 import {
   BJJ_CATEGORY_META,
@@ -125,9 +114,8 @@ import {
   loadUserTechniqueLabelPrefs,
   removeTechniqueLabelFromPalette,
 } from '@/lib/user-technique-label-prefs'
-import { getAuthErrorMessage } from '@/lib/action-feedback'
-import { BILLING_SUPPORT_MAILTO, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL, openSupportLink } from '@/lib/app-support'
-import { purchaseMatFlowMonthly, restoreMatFlowPurchases, shouldUseAppleInAppPurchase, type AppleIapResult } from '@/lib/apple-iap-service'
+import { openSupportLink } from '@/lib/app-support'
+import { useBillingCoordinator } from '@/lib/hooks/use-billing-coordinator'
 import { socialFeedService } from '@/lib/social-feed-service'
 import { socialRelationshipsService } from '@/lib/social-relationships-service'
 import type {
@@ -138,22 +126,18 @@ import type {
   SocialFeedPost,
   SocialMomentSummary,
   SocialMusicTrack,
-  SocialPostKind,
   SocialProfileOverview,
   SocialProfileTab,
   SocialPostVisibility,
   SocialPublishTarget,
   SocialStory,
   SocialTopicSummary,
-  SocialUploadStatus,
-  SocialVideoProvider,
 } from '@/lib/social-models'
-import { getMatFlowAccessState, MATFLOW_PRICE_LABEL } from '@/lib/matflow-access'
+import { getMatFlowAccessState } from '@/lib/matflow-access'
 import type {
   BjjAchievement,
   BjjAnalyticsWindow,
   BjjAuthMode,
-  BjjBottomTab,
   BjjChallenge,
   BjjFeedComment,
   BjjFeedPost,
@@ -162,8 +146,6 @@ import type {
   BjjSocialHomeRail,
   BjjSocialSurface,
   BjjSession,
-  BjjSessionType,
-  BjjSessionVisibility,
   BjjSuggestedGrappler,
   BjjSurface,
   BjjSystem,
@@ -171,925 +153,79 @@ import type {
   BjjTechniqueCategory,
 } from '@/lib/bjj-types'
 import type { UserProfile } from '@/lib/user-profile-types'
-import stripeService from '@/lib/stripe-service'
 import { cn } from '@/lib/utils'
 
-type SessionDraft = {
-  branch: MartialArtsBranchId
-  date: string
-  time: string
-  location: string
-  type: BjjSessionType
-  submissions: string
-  taps: string
-  durationMinutes: number
-  notes: string
-  satisfaction: number
-  taggedFriends: string
-  visibility: BjjSessionVisibility
-  caption: string
-  linkedTechniqueIds: string[]
-}
-
-type TechniqueDraft = {
-  title: string
-  category: BjjTechniqueCategory
-  tags: string
-  notes: string
-  description: string
-  tutorialTitle: string
-  links: string
-  linkedTechniqueIds: string[]
-}
-
-type DiscoverTechniqueDraft = {
-  title: string
-  category: BjjTechniqueCategory
-  tags: string
-  description: string
-  tutorialTitle: string
-  videoUrl: string
-}
-
-type ProfileDraft = {
-  displayName: string
-  username: string
-  belt: BjjPersistedState['profile']['belt']
-  stripes: number
-  gymName: string
-  bio: string
-  privacy: BjjPersistedState['profile']['privacy']
-}
-
-type SocialComposerDraft = {
-  id?: string
-  caption: string
-  mediaUrl: string
-  thumbnailUrl: string
-  postKind: SocialPostKind
-  visibility: SocialPostVisibility
-  scheduledFor: string
-  coverTimestampMs: number
-  trimStartMs: number
-  trimEndMs: number
-  durationMs?: number
-  aspectRatio?: number
-  uploadStatus: SocialUploadStatus
-  uploadProgress: number
-  failedReason?: string
-  videoAssetId?: string
-  videoProvider?: SocialVideoProvider
-}
-
-type NativeInputLike = Event & {
-  inputType?: string
-  isComposing?: boolean
-}
-
-const SESSION_TYPES_BY_BRANCH: Record<MartialArtsBranchId, BjjSessionType[]> = {
-  bjj: ['Gi', 'No-Gi', 'Open Mat', 'Drilling', 'Competition'],
-  grappling: ['No-Gi', 'Open Mat', 'Drilling', 'Sparring', 'Competition'],
-  wrestling: ['Wrestling', 'Drilling', 'Sparring', 'Competition'],
-  boxing: ['Sparring', 'Pad Work', 'Bag Work', 'Drilling', 'Competition'],
-  'muay-thai': ['Muay Thai', 'Sparring', 'Pad Work', 'Bag Work', 'Competition'],
-  mma: ['MMA', 'Sparring', 'Drilling', 'Pad Work', 'Competition'],
-  judo: ['Judo', 'Drilling', 'Sparring', 'Competition'],
-  taekwondo: ['Taekwondo', 'Sparring', 'Drilling', 'Competition'],
-}
-const DURATION_PRESETS: number[] = [30, 45, 60, 90, 120]
-const DURATION_MIN = 5
-const DURATION_MAX = 360
-const BELTS: Array<BjjPersistedState['profile']['belt']> = ['white', 'blue', 'purple', 'brown', 'black']
-const VISIBILITY_OPTIONS: BjjSessionVisibility[] = ['everyone', 'friends', 'private']
-
-function createSessionDraft(branch: MartialArtsBranchId = 'bjj'): SessionDraft {
-  const now = new Date()
-  const date = now.toISOString().slice(0, 10)
-  const time = now.toTimeString().slice(0, 5)
-  const types = SESSION_TYPES_BY_BRANCH[branch] ?? SESSION_TYPES_BY_BRANCH.bjj
-
-  return {
-    branch,
-    date,
-    time,
-    location: '',
-    type: types[0] ?? 'No-Gi',
-    submissions: '',
-    taps: '',
-    durationMinutes: 90,
-    notes: '',
-    satisfaction: 3,
-    taggedFriends: '',
-    visibility: 'everyone',
-    caption: '',
-    linkedTechniqueIds: [],
-  }
-}
-
-function sessionToDraft(session: BjjSession): SessionDraft {
-  const types = SESSION_TYPES_BY_BRANCH[session.branch] ?? SESSION_TYPES_BY_BRANCH.bjj
-  const type = types.includes(session.type) ? session.type : (types[0] ?? session.type)
-  return {
-    branch: session.branch,
-    date: session.date,
-    time: session.time,
-    location: session.location,
-    type,
-    submissions: session.submissions.join(', '),
-    taps: session.taps.join(', '),
-    durationMinutes: session.durationMinutes,
-    notes: session.notes,
-    satisfaction: session.satisfaction,
-    taggedFriends: session.taggedFriends.join(', '),
-    visibility: session.visibility,
-    caption: session.caption,
-    linkedTechniqueIds: [...session.linkedTechniqueIds],
-  }
-}
-
-function createTechniqueDraft(): TechniqueDraft {
-  return {
-    title: '',
-    category: 'submission',
-    tags: '',
-    notes: '',
-    description: '',
-    tutorialTitle: '',
-    links: '',
-    linkedTechniqueIds: [],
-  }
-}
-
-function createDiscoverTechniqueDraft(): DiscoverTechniqueDraft {
-  return {
-    title: '',
-    category: 'submission',
-    tags: '',
-    description: '',
-    tutorialTitle: '',
-    videoUrl: '',
-  }
-}
-
-function createSocialComposerDraft(): SocialComposerDraft {
-  return {
-    caption: '',
-    mediaUrl: '',
-    thumbnailUrl: '',
-    postKind: 'moment',
-    visibility: 'public',
-    scheduledFor: '',
-    coverTimestampMs: 0,
-    trimStartMs: 0,
-    trimEndMs: 0,
-    durationMs: undefined,
-    aspectRatio: undefined,
-    uploadStatus: 'idle',
-    uploadProgress: 0,
-    failedReason: undefined,
-    videoAssetId: undefined,
-    videoProvider: undefined,
-  }
-}
-
-const USERNAME_MIN_LEN = 3
-const USERNAME_MAX_LEN = 30
-
-function slugifyUsername(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
-
-function isAutoGeneratedUsername(username: string): boolean {
-  const u = username.trim().toLowerCase()
-  return (
-    u === ''
-    || u === 'grappler'
-    || u.startsWith('grappler_')
-    || u.startsWith('user_')
-  )
-}
-
-function formatPrettyDate(date: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date))
-  } catch {
-    return date
-  }
-}
-
-function formatPrettyDateTime(date: string, time: string): string {
-  return `${formatPrettyDate(date)} · ${time}`
-}
-
-type SessionBucketKey = 'today' | 'yesterday' | 'this-week' | 'this-month' | 'older'
-
-const SESSION_BUCKET_LABELS: Record<SessionBucketKey, string> = {
-  'today': 'Today',
-  'yesterday': 'Yesterday',
-  'this-week': 'This week',
-  'this-month': 'This month',
-  'older': 'Earlier',
-}
-
-const SESSION_BUCKET_ORDER: SessionBucketKey[] = ['today', 'yesterday', 'this-week', 'this-month', 'older']
-
-function startOfDay(date: Date): Date {
-  const copy = new Date(date)
-  copy.setHours(0, 0, 0, 0)
-  return copy
-}
-
-function bucketForSessionDate(sessionDate: string, now: Date = new Date()): SessionBucketKey {
-  const parsed = new Date(sessionDate)
-  if (Number.isNaN(parsed.getTime())) return 'older'
-  const target = startOfDay(parsed).getTime()
-  const todayStart = startOfDay(now).getTime()
-  const yesterdayStart = todayStart - 24 * 60 * 60 * 1000
-  const dayOfWeek = now.getDay()
-  const weekStart = todayStart - dayOfWeek * 24 * 60 * 60 * 1000
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-  if (target === todayStart) return 'today'
-  if (target === yesterdayStart) return 'yesterday'
-  if (target >= weekStart) return 'this-week'
-  if (target >= monthStart) return 'this-month'
-  return 'older'
-}
-
-function computeWeekStart(now: Date = new Date()): number {
-  const todayStart = startOfDay(now).getTime()
-  return todayStart - now.getDay() * 24 * 60 * 60 * 1000
-}
-
-function computeTrainingStreakDays(sessions: readonly BjjSession[], now: Date = new Date()): number {
-  if (sessions.length === 0) return 0
-  const dayMs = 24 * 60 * 60 * 1000
-  const days = new Set<number>()
-  for (const session of sessions) {
-    const parsed = new Date(session.date)
-    if (Number.isNaN(parsed.getTime())) continue
-    days.add(startOfDay(parsed).getTime())
-  }
-  const todayStart = startOfDay(now).getTime()
-  let cursor = days.has(todayStart) ? todayStart : todayStart - dayMs
-  if (!days.has(cursor)) return 0
-  let streak = 0
-  while (days.has(cursor)) {
-    streak += 1
-    cursor -= dayMs
-  }
-  return streak
-}
-
-const BRANCH_DOT_COLORS: Record<MartialArtsBranchId, string> = {
-  'bjj': '#4d7cff',
-  'grappling': '#7c5cff',
-  'boxing': '#ff8a3d',
-  'wrestling': '#ff5d73',
-  'mma': '#ffba33',
-  'muay-thai': '#ff5d3d',
-  'judo': '#22c55e',
-  'taekwondo': '#06b6d4',
-}
-
-const CALENDAR_WEEKDAY_LABELS: readonly string[] = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-
-function formatDayKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function parseDayKey(key: string): Date | null {
-  const parts = key.split('-')
-  if (parts.length !== 3) return null
-  const year = Number(parts[0])
-  const month = Number(parts[1])
-  const day = Number(parts[2])
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
-  const date = new Date(year, month - 1, day)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-function getMonthAnchor(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-function addMonths(anchor: Date, delta: number): Date {
-  return new Date(anchor.getFullYear(), anchor.getMonth() + delta, 1)
-}
-
-function getMonthMatrix(anchor: Date): Date[] {
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
-  const startOffset = first.getDay()
-  const cells: Date[] = []
-  for (let i = 0; i < 42; i += 1) {
-    cells.push(new Date(anchor.getFullYear(), anchor.getMonth(), 1 - startOffset + i))
-  }
-  return cells
-}
-
-function formatMonthTitle(date: Date): string {
-  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-}
-
-function formatSelectedDayTitle(date: Date): string {
-  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-}
-
-function computeStreakDayKeys(sessions: readonly BjjSession[], now: Date = new Date()): Set<string> {
-  const result = new Set<string>()
-  if (sessions.length === 0) return result
-  const dayMs = 24 * 60 * 60 * 1000
-  const keys = new Set<string>()
-  for (const session of sessions) {
-    if (session.date) keys.add(session.date.slice(0, 10))
-  }
-  const todayKey = formatDayKey(now)
-  const yesterdayKey = formatDayKey(new Date(now.getTime() - dayMs))
-  let cursorKey = keys.has(todayKey) ? todayKey : yesterdayKey
-  if (!keys.has(cursorKey)) return result
-  const cursorStart = parseDayKey(cursorKey)
-  if (!cursorStart) return result
-  let cursorMs = cursorStart.getTime()
-  while (keys.has(formatDayKey(new Date(cursorMs)))) {
-    result.add(formatDayKey(new Date(cursorMs)))
-    cursorMs -= dayMs
-  }
-  return result
-}
-
-function toTechniqueColor(category: BjjTechniqueCategory): string {
-  return BJJ_CATEGORY_META[category].color
-}
-
-const ANALYTICS_CARDS: Array<{ label: string; background: string; Icon: LucideIcon }> = [
-  { label: 'Submissions', background: '#3b0f14', Icon: Target },
-  { label: 'Taps', background: '#36270a', Icon: Shield },
-  { label: 'Sessions', background: '#091c3b', Icon: Zap },
-  { label: 'Techniques', background: '#101d3a', Icon: BookOpen },
-]
-
-const MAX_REEL_DURATION_MS = 180_000
-
-async function readVideoMetadata(file: File): Promise<{ previewUrl: string; durationMs: number; aspectRatio: number }> {
-  const previewUrl = URL.createObjectURL(file)
-
-  return await new Promise((resolve, reject) => {
-    const video = document.createElement('video')
-    video.preload = 'metadata'
-    video.src = previewUrl
-    video.onloadedmetadata = () => {
-      const durationMs = Math.round((video.duration || 0) * 1000)
-      const width = video.videoWidth || 0
-      const height = video.videoHeight || 0
-      resolve({
-        previewUrl,
-        durationMs,
-        aspectRatio: width > 0 && height > 0 ? width / height : 9 / 16,
-      })
-    }
-    video.onerror = () => {
-      URL.revokeObjectURL(previewUrl)
-      reject(new Error('Unable to read this video file'))
-    }
-  })
-}
-
-function formatDurationSeconds(valueMs: number): string {
-  return `${Math.max(0, Math.round(valueMs / 1000))}s`
-}
-
-const ONBOARDING_PREVIEW_TECHNIQUES = [
-  { id: 'preview-triangle', title: 'Triangle Choke', category: 'submission', tags: ['Submission', 'Closed Guard'] },
-  { id: 'preview-scissor', title: 'Scissor Sweep', category: 'sweep', tags: ['Sweep', 'Fundamental'] },
-  { id: 'preview-knee-cut', title: 'Knee Cut Pass', category: 'guard-pass', tags: ['Guard Pass', 'Pressure'] },
-  { id: 'preview-arm-drag', title: 'Arm Drag', category: 'transition', tags: ['Transition', 'Back Take'] },
-] as const
-
-const BOTTOM_NAV_ITEMS: Array<{ value: BjjBottomTab; label: string; Icon: LucideIcon }> = [
-  { value: 'today', label: 'Today', Icon: Zap },
-  { value: 'library', label: 'Library', Icon: BookOpen },
-  { value: 'gameplans', label: 'Gameplans', Icon: Network },
-  { value: 'community', label: 'Community', Icon: Trophy },
-  { value: 'you', label: 'You', Icon: UserRound },
-]
-
-type ScreenBackdropVariant =
-  | 'auth'
-  | 'onboarding-welcome'
-  | 'onboarding-mission'
-  | 'onboarding-name'
-  | 'onboarding-discipline'
-  | 'onboarding-experience'
-  | 'onboarding-content'
-  | 'onboarding-challenges'
-  | 'onboarding-attribution'
-  | 'onboarding-setup'
-  | 'onboarding-proof'
-  | 'onboarding-analytics'
-  | 'onboarding-ready'
-  | 'paywall-founder'
-  | 'paywall-pro'
-  | 'paywall-pricing'
-  | 'sessions'
-  | 'social'
-  | 'techniques'
-  | 'profile'
-  | 'modal'
-
-const SCREEN_BACKDROP_ASSETS: Record<ScreenBackdropVariant, { src: string; imageClassName?: string; overlayClassName?: string }> = {
-  auth: {
-    src: '/backgrounds/onboarding-proof.svg',
-    imageClassName: 'scale-105 opacity-70',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0.72))]',
-  },
-  'onboarding-welcome': {
-    src: '/backgrounds/onboarding-welcome.svg',
-    imageClassName: 'scale-[1.08] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.78))]',
-  },
-  'onboarding-mission': {
-    src: '/backgrounds/onboarding-mission.svg',
-    imageClassName: 'scale-[1.06] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.8))]',
-  },
-  'onboarding-name': {
-    src: '/backgrounds/onboarding-name.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.8))]',
-  },
-  'onboarding-discipline': {
-    src: '/backgrounds/onboarding-discipline.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.82))]',
-  },
-  'onboarding-experience': {
-    src: '/backgrounds/onboarding-experience.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.82))]',
-  },
-  'onboarding-content': {
-    src: '/backgrounds/onboarding-content.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.84))]',
-  },
-  'onboarding-challenges': {
-    src: '/backgrounds/onboarding-challenges.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.84))]',
-  },
-  'onboarding-attribution': {
-    src: '/backgrounds/onboarding-attribution.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.84))]',
-  },
-  'onboarding-setup': {
-    src: '/backgrounds/onboarding-setup.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.84))]',
-  },
-  'onboarding-proof': {
-    src: '/backgrounds/onboarding-proof.svg',
-    imageClassName: 'scale-[1.06] opacity-76',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.8))]',
-  },
-  'onboarding-analytics': {
-    src: '/backgrounds/onboarding-analytics.svg',
-    imageClassName: 'scale-[1.05] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.82))]',
-  },
-  'onboarding-ready': {
-    src: '/backgrounds/onboarding-ready.svg',
-    imageClassName: 'scale-[1.04] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.76))]',
-  },
-  'paywall-founder': {
-    src: '/backgrounds/paywall-founder.svg',
-    imageClassName: 'scale-[1.04] opacity-76',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.82))]',
-  },
-  'paywall-pro': {
-    src: '/backgrounds/paywall-pro.svg',
-    imageClassName: 'scale-[1.04] opacity-76',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.82))]',
-  },
-  'paywall-pricing': {
-    src: '/backgrounds/paywall-pricing.svg',
-    imageClassName: 'scale-[1.03] opacity-78',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.84))]',
-  },
-  sessions: {
-    src: '/backgrounds/sessions-shell.svg',
-    imageClassName: 'scale-[1.03] opacity-72',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.8))]',
-  },
-  social: {
-    src: '/backgrounds/profile-shell.svg',
-    imageClassName: 'scale-[1.01] opacity-[0.12]',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.04),rgba(0,0,0,0.38))]',
-  },
-  techniques: {
-    src: '/backgrounds/techniques-shell.svg',
-    imageClassName: 'scale-[1.03] opacity-72',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.82))]',
-  },
-  profile: {
-    src: '/backgrounds/profile-shell.svg',
-    imageClassName: 'scale-[1.03] opacity-74',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.8))]',
-  },
-  modal: {
-    src: '/backgrounds/techniques-shell.svg',
-    imageClassName: 'scale-[1.04] opacity-68',
-    overlayClassName: 'bg-[linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.86))]',
-  },
-}
-
-function ScreenBackdrop({
-  className,
-  variant = 'auth',
-}: {
-  className?: string
-  variant?: ScreenBackdropVariant
-}) {
-  const asset = SCREEN_BACKDROP_ASSETS[variant]
-
-  return (
-    <>
-      <div className={cn('pointer-events-none absolute inset-0 bg-[#04060a]', className)} />
-      <div className={cn(
-        'pointer-events-none absolute inset-0',
-        variant === 'social'
-          ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.01),transparent_28%,rgba(0,0,0,0.18))]'
-          : 'bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.18),_transparent_32%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_34%)]',
-      )} />
-      <div className="pointer-events-none absolute inset-0">
-        <Image
-          src={asset.src}
-          alt=""
-          fill
-          unoptimized
-          sizes="100vw"
-          className={cn('h-full w-full object-cover', asset.imageClassName)}
-        />
-      </div>
-      <div className={cn('pointer-events-none absolute inset-0', asset.overlayClassName)} />
-      <div className={cn(
-        'pointer-events-none absolute inset-0',
-        variant === 'social'
-          ? 'bg-[linear-gradient(180deg,rgba(0,0,0,0.26)_0%,rgba(0,0,0,0.44)_18%,rgba(0,0,0,0.74)_100%)]'
-          : 'bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_24%),linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.62)_14%,rgba(0,0,0,0.84)_100%)]',
-      )} />
-    </>
-  )
-}
-
-function PrimaryButton({
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type={props.type ?? 'button'}
-      className={cn(
-        'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[18px] border border-[#4d7cff]/55',
-        'bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-5 text-[16px] font-semibold text-white',
-        'shadow-[0_18px_40px_rgba(37,99,235,0.35)] transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  )
-}
-
-function SecondaryButton({
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type={props.type ?? 'button'}
-      className={cn(
-        'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[18px] border border-white/12 bg-white/6 px-5',
-        'text-[16px] font-semibold text-white transition hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  )
-}
-
-function CircleIconButton({
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type={props.type ?? 'button'}
-      className={cn(
-        'inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white transition hover:bg-white/10',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  )
-}
-
-function SearchField({
-  value,
-  onChange,
-  placeholder,
-  className,
-  inputRef,
-}: {
-  value: string
-  onChange: InputHTMLAttributes<HTMLInputElement>['onChange']
-  placeholder: string
-  className?: string
-  inputRef?: React.RefObject<HTMLInputElement | null>
-}) {
-  return (
-    <div className={cn('relative', className)}>
-      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
-      <input
-        ref={inputRef as any}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        className="h-10 w-full rounded-[18px] border border-white/10 bg-white/7 pl-11 pr-4 text-sm font-medium text-white placeholder:text-white/35 outline-none transition focus:border-[#4d7cff]/55"
-      />
-    </div>
-  )
-}
-
-function BranchSelect({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: MartialArtsBranchId
-  onChange: (branch: MartialArtsBranchId) => void
-}) {
-  return (
-    <label className="mb-2 block">
-      <span className="sr-only">{label}</span>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(event) => onChange(event.target.value as MartialArtsBranchId)}
-          className="h-10 w-full appearance-none rounded-[18px] border border-white/10 bg-white/7 px-4 pr-10 text-sm font-black text-white outline-none transition focus:border-[#4d7cff]/55"
-        >
-          {MARTIAL_ARTS_BRANCHES.map((branch) => (
-            <option key={branch.id} value={branch.id} className="bg-[#10131c] text-white">
-              {branch.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
-      </div>
-    </label>
-  )
-}
-
-function ShellCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        'rounded-[22px] border border-white/8 bg-[linear-gradient(180deg,rgba(28,30,36,0.94),rgba(14,15,20,0.92))] shadow-[0_18px_38px_rgba(0,0,0,0.28)]',
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
-type TipModalContent = {
-  title: string
-  body: string
-  bullets?: string[]
-}
-
-function TipModal({
-  content,
-  onClose,
-}: {
-  content: TipModalContent
-  onClose: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 px-6">
-      <div className="mx-auto flex h-full w-full max-w-[430px] items-center justify-center">
-        <ShellCard className="relative w-full max-w-[360px] overflow-hidden p-6">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(77,124,255,0.12),transparent_55%)]" />
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 transition hover:bg-white/10"
-            aria-label="Close tip"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <div className="relative">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/45">Tip</p>
-            <h3 className="mt-2 text-[28px] font-black leading-[1.02] text-white">{content.title}</h3>
-            <p className="mt-3 text-[16px] leading-7 text-white/65">{content.body}</p>
-            {content.bullets && content.bullets.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {content.bullets.map((item) => (
-                  <div key={item} className="flex items-start gap-3 rounded-[18px] border border-white/10 bg-white/6 px-4 py-3">
-                    <span className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4d7cff]/18 text-[#8cabff]">
-                      <Info className="h-4 w-4" />
-                    </span>
-                    <p className="text-sm leading-6 text-white/70">{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="mt-6">
-              <PrimaryButton onClick={onClose}>Got it</PrimaryButton>
-            </div>
-          </div>
-        </ShellCard>
-      </div>
-    </div>
-  )
-}
-
-function ProgressDots({ count, active }: { count: number; active: number }) {
-  return (
-    <div className="flex items-center justify-center gap-2">
-      {Array.from({ length: count }, (_, index) => (
-        <span
-          key={index}
-          className={cn(
-            'h-2 w-2 rounded-full bg-white/20 transition',
-            index === active && 'w-5 bg-[#4d7cff]',
-          )}
-        />
-      ))}
-    </div>
-  )
-}
-
-function BeltBar({ belt }: { belt: BjjPersistedState['profile']['belt'] }) {
-  const colors: Record<BjjPersistedState['profile']['belt'], string> = {
-    white: '#f6f6f6',
-    blue: '#2747ff',
-    purple: '#5b21b6',
-    brown: '#7c2d12',
-    black: '#090909',
-  }
-
-  return (
-    <div className="h-12 rounded-[14px] border border-white/10 bg-black/80 p-1">
-      <div className="flex h-full items-center overflow-hidden rounded-[11px]">
-        <div className="flex h-full flex-1 items-center bg-white px-4 text-[12px] font-black uppercase tracking-[0.22em] text-black">
-          {belt} belt
-        </div>
-        <div className="h-full w-14 border-l border-black/30" style={{ backgroundColor: colors[belt] }} />
-        <div className="h-full w-3 rounded-r-[11px] bg-white" />
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({
-  title,
-  body,
-  actionLabel,
-  onAction,
-  secondaryLabel,
-  onSecondaryAction,
-}: {
-  title: string
-  body: string
-  actionLabel?: string
-  onAction?: () => void
-  secondaryLabel?: string
-  onSecondaryAction?: () => void
-}) {
-  return (
-    <div className="flex min-h-[36vh] flex-col items-center justify-center px-8 text-center">
-      <h3 className="text-[28px] font-bold leading-[1.05] text-white">{title}</h3>
-      <p className="mt-3 max-w-[280px] text-[17px] leading-7 text-white/58">{body}</p>
-      {actionLabel && onAction ? (
-        <button
-          type="button"
-          onClick={() => { void haptics.light(); onAction() }}
-          className="mt-6 rounded-full border border-[#4d7cff]/45 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-6 py-3 text-sm font-bold text-white shadow-[0_10px_28px_rgba(47,88,255,0.35)]"
-        >
-          {actionLabel}
-        </button>
-      ) : null}
-      {secondaryLabel && onSecondaryAction ? (
-        <button
-          type="button"
-          onClick={() => { void haptics.light(); onSecondaryAction() }}
-          className="mt-3 text-sm font-semibold text-white/60 underline-offset-4 hover:text-white hover:underline"
-        >
-          {secondaryLabel}
-        </button>
-      ) : null}
-    </div>
-  )
-}
-
-function SystemPreviewGraph({ system }: { system: BjjSystem }) {
-  const positions = useMemo(() => {
-    const base = computeGraphLayout(system.nodes, system.edges)
-    const out = { ...base }
-    for (const node of system.nodes) {
-      if (node.layout) out[node.id] = { x: node.layout.x, y: node.layout.y }
-    }
-    return out
-  }, [system])
-
-  return (
-    <div className="relative h-48 overflow-hidden rounded-[24px] border border-white/10 bg-[#050914] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-      <SystemGraphCanvas
-        variant="preview"
-        nodes={system.nodes}
-        edges={system.edges}
-        positions={positions}
-        density="hero"
-        labelMode="auto"
-        showGrid
-        showControls={false}
-        showMiniMap={false}
-        className="absolute inset-0 h-full w-full"
-      />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-[linear-gradient(180deg,transparent,rgba(3,6,12,0.82))]" />
-    </div>
-  )
-}
-
-function ModalShell({
-  title,
-  onBack,
-  children,
-  action,
-  variant = 'modal',
-  headerMode = 'default',
-}: {
-  title: string
-  onBack: () => void
-  children: ReactNode
-  action?: ReactNode
-  variant?: ScreenBackdropVariant
-  headerMode?: 'default' | 'instagram'
-}) {
-  return (
-    <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden bg-[#04060a] text-white">
-      <ScreenBackdrop variant={variant} />
-      <div className="relative mx-auto flex h-full w-full max-w-[430px] flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-[calc(env(safe-area-inset-top)+12px)]">
-        {headerMode === 'instagram' ? (
-          <div className="relative mb-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onBack}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white"
-              aria-label={`Close ${title}`}
-            >
-              <X className="h-6 w-6" />
-            </button>
-            <p className="absolute left-1/2 -translate-x-1/2 text-base font-bold text-white">{title}</p>
-            <div className="min-w-[56px] text-right">{action}</div>
-          </div>
-        ) : (
-          <div className="mb-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onBack}
-              className="inline-flex items-center gap-2 text-base font-semibold text-white"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              {title}
-            </button>
-            {action}
-          </div>
-        )}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[max(1.5rem,env(safe-area-inset-bottom,0px)+12px)] [-webkit-overflow-scrolling:touch]">
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
+import {
+  ANALYTICS_CARDS,
+  BOTTOM_NAV_ITEMS,
+  BRANCH_DOT_COLORS,
+  CALENDAR_WEEKDAY_LABELS,
+  DURATION_PRESETS,
+  MAX_REEL_DURATION_MS,
+  USERNAME_MAX_LEN,
+  USERNAME_MIN_LEN,
+} from './bjj-app/constants'
+import type {
+  DiscoverTechniqueDraft,
+  ProfileDraft,
+  SessionDraft,
+  SocialComposerDraft,
+  TechniqueDraft,
+} from './bjj-app/types'
+import {
+  createDiscoverTechniqueDraft,
+  createSessionDraft,
+  createSocialComposerDraft,
+  createTechniqueDraft,
+  sessionToDraft,
+} from './bjj-app/draft-factories'
+import {
+  type SessionBucketKey,
+  SESSION_BUCKET_LABELS,
+  SESSION_BUCKET_ORDER,
+  addMonths,
+  bucketForSessionDate,
+  computeStreakDayKeys,
+  computeTrainingStreakDays,
+  computeWeekStart,
+  formatDayKey,
+  formatMonthTitle,
+  formatPrettyDate,
+  formatPrettyDateTime,
+  formatSelectedDayTitle,
+  getMonthAnchor,
+  getMonthMatrix,
+  parseDayKey,
+  startOfDay,
+} from './bjj-app/date-utils'
+import {
+  formatDurationSeconds,
+  readVideoMetadata,
+  slugifyUsername,
+  toTechniqueColor,
+} from './bjj-app/format-utils'
+import {
+  ScreenBackdrop,
+  type ScreenBackdropVariant,
+} from './bjj-app/screen-backdrop'
+import {
+  BeltBar,
+  BranchSelect,
+  CircleIconButton,
+  EmptyState,
+  PrimaryButton,
+  SearchField,
+  ShellCard,
+} from './bjj-app/primitives'
+import { ModalShell } from './bjj-app/modal-shell'
+import { TipModal, type TipModalContent } from './bjj-app/tip-modal'
+import { SystemPreviewGraph } from './bjj-app/system-preview-graph'
+import { AuthScreen } from './bjj-app/auth-screen'
+import { OnboardingScreen } from './bjj-app/onboarding-screen'
+import { PaywallScreen } from './bjj-app/paywall-screen'
+import { SessionDetailModal } from './bjj-app/session-detail-modal'
+import { SessionFormModal } from './bjj-app/session-form-modal'
+import { EditProfileModal } from './bjj-app/edit-profile-modal'
 
 function BjjAppInner() {
   const {
@@ -1259,7 +395,7 @@ function BjjAppInner() {
   const [feedReplyParentId, setFeedReplyParentId] = useState<string | null>(null)
   const [feedCommentsLoading, setFeedCommentsLoading] = useState(false)
   const [authNameInputUnlocked, setAuthNameInputUnlocked] = useState(false)
-  const [authAuxAction, setAuthAuxAction] = useState<'google' | 'reset' | null>(null)
+  const [authAuxAction, setAuthAuxAction] = useState<'google' | 'apple' | 'reset' | null>(null)
   const [onboardingNameDraft, setOnboardingNameDraft] = useState('')
   const [onboardingNameDirty, setOnboardingNameDirty] = useState(false)
   const [onboardingNameInputUnlocked, setOnboardingNameInputUnlocked] = useState(false)
@@ -1295,8 +431,6 @@ function BjjAppInner() {
   const onboardingPreviewWidthClass = isShortHeight ? 'w-[236px]' : isCompactHeight ? 'w-[248px]' : 'w-[264px]'
   const welcomeMediaHeightClass = isShortHeight ? 'h-[260px]' : isCompactHeight ? 'h-[304px]' : 'h-[min(52dvh,380px)]'
   const onboardingSectionGapClass = isShortHeight ? 'space-y-4' : isCompactHeight ? 'space-y-5' : 'space-y-6'
-  const paywallTitleClass = isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]'
-  const paywallBodyClass = isShortHeight ? 'text-[16px] leading-6' : isCompactHeight ? 'text-[18px] leading-6' : 'text-[20px] leading-7'
   const shellSectionTitleClass = isCompactHeight ? 'text-[28px]' : 'text-[34px]'
   const shellCardTitleClass = isCompactHeight ? 'text-[20px]' : 'text-[22px]'
   const shellCompactCardPaddingClass = isCompactHeight ? 'p-3.5' : 'p-4'
@@ -1507,6 +641,15 @@ function BjjAppInner() {
   useEffect(() => {
     if (!user || !hasAppState) return
 
+    // P1-04: When offline with cached state already in hand, skip the network
+    // fetch and let the existing UI render. The global OfflineBanner already
+    // surfaces connectivity state, so no inline shellError is needed. A
+    // separate effect re-arms the snapshot when `online` fires.
+    const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false
+    if (isOffline && cachedStateRef.current) {
+      return
+    }
+
     let active = true
 
     const hydrateShell = async () => {
@@ -1534,7 +677,7 @@ function BjjAppInner() {
 
         setAppState((previous) => {
           if (!previous) return previous
-          return normalizeBjjState({
+          const merged = normalizeBjjState({
             ...previous,
             profile: {
               ...mergeShellProfilePatch(previous.profile, snapshot.profilePatch),
@@ -1559,17 +702,36 @@ function BjjAppInner() {
             likedPostIds: snapshot.feedPosts.filter((post) => post.likedByViewer).map((post) => post.id),
             notifications: snapshot.notifications,
           }, snapshot.profilePatch.displayName ?? identityDisplayName, snapshot.profilePatch.username ?? identityUsername)
-        })
 
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(storageKey)
-        }
-        cachedStateRef.current = null
+          // P1-04: Persist the freshly synced shell so the next cold start can
+          // render immediately from cache before the network responds.
+          if (typeof window !== 'undefined') {
+            try {
+              window.localStorage.setItem(storageKey, JSON.stringify(merged))
+            } catch {
+              // Quota exceeded or serialization failure — fall through.
+            }
+          }
+          cachedStateRef.current = merged
+
+          return merged
+        })
       } catch (error) {
         if (active) {
-          const message = error instanceof Error ? error.message : 'Unable to sync your MatFlow workspace'
-          setShellError(message)
-          showError(message)
+          // P1-04: When offline AND we have nothing cached to fall back on,
+          // surface a friendly inline message instead of the raw network
+          // error. With cached state present the global OfflineBanner is
+          // sufficient and we leave the existing UI undisturbed.
+          const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+          if (offline) {
+            if (!cachedStateRef.current) {
+              setShellError('You\u2019re offline. Reconnect to sync your MatFlow workspace.')
+            }
+          } else {
+            const message = error instanceof Error ? error.message : 'Unable to sync your MatFlow workspace'
+            setShellError(message)
+            showError(message)
+          }
         }
       } finally {
         if (active) {
@@ -1584,6 +746,14 @@ function BjjAppInner() {
       active = false
     }
   }, [debugTourLog, hasAppState, identityDisplayName, identityUsername, showError, snapshotRefreshKey, storageKey, user])
+
+  // P1-04: When connectivity is restored, re-arm the shell snapshot effect.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleOnline = () => setSnapshotRefreshKey((previous) => previous + 1)
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [])
 
   useEffect(() => {
     if (
@@ -1788,6 +958,11 @@ function BjjAppInner() {
   const refreshShellSnapshot = () => {
     setSnapshotRefreshKey((previous) => previous + 1)
   }
+
+  const handlePullToRefresh = useCallback(async () => {
+    setSnapshotRefreshKey((previous) => previous + 1)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+  }, [])
 
   const navigateToForkedSystem = (branch: MartialArtsBranchId, forkedId: string | null = null) => {
     updateAppState((previous) => ({
@@ -3395,35 +2570,26 @@ function BjjAppInner() {
     setActiveSurface('new-discover-technique')
   }
 
-  const handleDeleteAccount = async () => {
-    if (!user) {
-      showError('Sign in required')
-      return
-    }
-    if (typeof window === 'undefined') return
-    if (!window.confirm('Delete your account? This permanently removes your profile, sessions, gameplans, and uploads. This cannot be undone.')) {
-      return
-    }
-    const typed = window.prompt('Type DELETE to confirm account deletion.')
-    if (typed !== 'DELETE') {
-      showInfo('Account deletion cancelled')
-      return
-    }
-    setIsDeletingAccount(true)
-    try {
-      await bjjService.deleteAccount()
-      showSuccess('Account deleted')
-      try {
-        await signOut()
-      } catch {
-        // Session is already invalid server-side; ignore.
-      }
-    } catch (error) {
-      showError(error instanceof Error ? error.message : 'Could not delete account')
-    } finally {
-      setIsDeletingAccount(false)
-    }
-  }
+  const {
+    applyAppleEntitlement,
+    handleSubscribe,
+    handleRestorePurchase,
+    handleManageSubscription,
+    completePaywall,
+    handleDeleteAccount,
+  } = useBillingCoordinator({
+    userId: user?.id,
+    isAuthenticated,
+    appState,
+    updateAppState,
+    updateProfile,
+    refreshShellSnapshot,
+    signOut,
+    setIsDeletingAccount,
+    showSuccess,
+    showError,
+    showInfo,
+  })
 
   const handleDeleteDiscoverTechnique = async (technique: BjjTechnique) => {
     if (!user) {
@@ -3772,99 +2938,49 @@ function BjjAppInner() {
     }
   }
 
-  const applyAppleEntitlement = async (result: AppleIapResult): Promise<boolean> => {
-    if (!user?.id) return false
-
-    const entitlements = result.entitlements?.length ? result.entitlements : [result]
-    let updatedProfile: Awaited<ReturnType<typeof supabaseService.recordAppStoreTransaction>> = null
-
-    for (const entitlement of entitlements) {
-      if (!entitlement.originalTransactionId || !entitlement.productId) continue
-      updatedProfile = await supabaseService.recordAppStoreTransaction(user.id, entitlement)
-    }
-
-    if (!updatedProfile) return false
-
-    const access = getMatFlowAccessState(updatedProfile)
-    updateAppState((previous) => ({
-      ...previous,
-      profile: {
-        ...previous.profile,
-        proUnlocked: access.hasAccess,
-        matflowTrialStartedAt: updatedProfile.matflowTrialStartedAt ?? previous.profile.matflowTrialStartedAt ?? null,
-        subscriptionStatus: updatedProfile.subscriptionStatus ?? previous.profile.subscriptionStatus ?? null,
-        subscriptionPeriodEnd: updatedProfile.subscriptionPeriodEnd ?? previous.profile.subscriptionPeriodEnd ?? null,
-      },
-    }))
-    refreshShellSnapshot()
-    return access.hasAccess
+  const [isExportingData, setIsExportingData] = useState(false)
+  const [analyticsConsent, setAnalyticsConsentState] = useState<boolean>(true)
+  useEffect(() => {
+    setAnalyticsConsentState(getAnalyticsConsent())
+  }, [])
+  const handleToggleAnalyticsConsent = () => {
+    setAnalyticsConsentState((previous) => {
+      const next = !previous
+      setAnalyticsConsent(next)
+      return next
+    })
   }
-
-  const handleSubscribe = async (plan: 'monthly' = 'monthly') => {
-    if (!isAuthenticated) {
-      showInfo(toastCopy.createAccountBeforePaywall)
+  const handleExportData = async () => {
+    if (!user?.id) {
+      showError('Sign in to export your data')
       return
     }
-
+    setIsExportingData(true)
     try {
-      if (shouldUseAppleInAppPurchase()) {
-        const result = await purchaseMatFlowMonthly(user?.id)
-        if (result.status === 'purchased' || result.status === 'restored') {
-          const accessUnlocked = await applyAppleEntitlement(result)
-          showSuccess(accessUnlocked ? 'MatFlow access unlocked' : 'Purchase received. Restoring MatFlow access...')
-          return
-        }
-        if (result.status === 'pending') {
-          showInfo('Purchase is pending Apple approval.')
-          return
-        }
-        if (result.status === 'cancelled') {
-          showInfo('Purchase cancelled')
-          return
-        }
-        showError('This App Store product is not available yet.')
-        return
+      const { data, error } = await supabase.functions.invoke<Record<string, unknown>>('export-account-data', {
+        body: { confirm: 'EXPORT' },
+      })
+      if (error) throw error
+      if (!data || typeof data !== 'object') {
+        throw new Error('Empty export response')
       }
-      const monthlyPriceId = (process.env.NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY_PRICE_ID ?? '').trim()
-      void plan
-      await stripeService.subscribeToPremium(monthlyPriceId || undefined)
-    } catch (error) {
-      showError(error instanceof Error ? error.message : 'Unable to open checkout')
-    }
-  }
-
-  const handleRestorePurchase = async () => {
-    try {
-      if (shouldUseAppleInAppPurchase()) {
-        const result = await restoreMatFlowPurchases()
-        if (result.status === 'restored') {
-          const accessUnlocked = await applyAppleEntitlement(result)
-          showSuccess(accessUnlocked ? 'MatFlow access restored' : 'Purchases restored. Refreshing access...')
-          return
-        }
-        showInfo('No active App Store subscription found')
-        return
+      const archiveJson = JSON.stringify(data, null, 2)
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const blob = new Blob([archiveJson], { type: 'application/json' })
+        const objectUrl = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = objectUrl
+        anchor.download = `matflow-export-${user.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+        URL.revokeObjectURL(objectUrl)
       }
-      await openSupportLink(BILLING_SUPPORT_MAILTO)
+      showSuccess('Your data export was downloaded')
     } catch (error) {
-      showError(error instanceof Error ? error.message : 'Unable to restore purchases')
-    }
-  }
-
-  const completePaywall = async () => {
-    if (!appState) return
-    try {
-      const updatedProfile = await updateProfile({ paywallCompleted: true })
-      if (!updatedProfile.paywallCompleted) {
-        throw new Error('Paywall state did not persist')
-      }
-      updateAppState((previous) => ({
-        ...previous,
-        profile: { ...previous.profile, paywallCompleted: updatedProfile.paywallCompleted ?? true },
-      }))
-      refreshShellSnapshot()
-    } catch (error) {
-      showError(error instanceof Error ? error.message : 'Unable to persist paywall state')
+      showError(error instanceof Error ? error.message : 'Unable to start data export')
+    } finally {
+      setIsExportingData(false)
     }
   }
 
@@ -4068,756 +3184,56 @@ function BjjAppInner() {
   }
 
   if (!isAuthenticated) {
-    const authPreviewCards = 2
-
     return (
-      <div className="relative h-[100dvh] overflow-hidden bg-[#04060a] text-white">
-        <ScreenBackdrop variant="auth" />
-        <div className="relative mx-auto flex h-full w-full max-w-[430px] flex-col px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-[calc(env(safe-area-inset-top)+12px)]">
-          <div className="flex items-center justify-between text-sm font-semibold text-white/70">
-            <span>MatFlow</span>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">NoGi</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Closed Guard</span>
-            </div>
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col pt-4">
-            <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-              <p className="text-base font-semibold text-white/58">Preview techniques</p>
-              <div className="mt-3 space-y-2.5">
-                {[
-                  { title: 'Straight Arm Lock', tags: ['Submission', 'Closed Guard', '+2'], color: '#ef4444' },
-                  { title: 'Side control frame escape', tags: ['Escape', 'NoGi', 'Side Control'], color: '#eab308' },
-                  { title: 'Side control underhook escape', tags: ['Escape', 'NoGi', 'Side Control'], color: '#eab308' },
-                ].slice(0, authPreviewCards).map((card) => (
-                  <ShellCard key={card.title} className="relative overflow-hidden p-3">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_right,rgba(255,255,255,0.04),transparent_45%)]" />
-                    <div className="relative flex items-start gap-3">
-                      <div className="mt-1 h-12 w-1 rounded-full" style={{ backgroundColor: card.color }} />
-                      <div className="flex-1">
-                        <h3 className={cn(isCompactHeight ? 'text-[18px]' : 'text-[20px]', 'font-bold')}>{card.title}</h3>
-                        <p className="mt-1 text-sm text-white/35">Mar 15 4:50 PM</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {card.tags.map((tag) => (
-                            <span key={tag} className="rounded-full border border-white/8 bg-white/7 px-3 py-1 text-xs font-semibold text-white/58">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <CircleIconButton className="h-8 w-8 self-center">
-                        <ChevronDown className="h-4 w-4" />
-                      </CircleIconButton>
-                    </div>
-                  </ShellCard>
-                ))}
-              </div>
-
-              <div className="pb-1 pt-5 text-center">
-                <h1 className={cn('mx-auto max-w-[300px] font-black leading-[0.98] text-white', isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[38px]')}>
-                  Never forget a technique again!
-                </h1>
-                <div className="mt-3 flex items-center justify-center gap-2">
-                  <span className="h-2 w-8 rounded-full bg-white" />
-                  <span className="h-2 w-2 rounded-full bg-white/35" />
-                  <span className="h-2 w-2 rounded-full bg-white/35" />
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 bg-[linear-gradient(180deg,rgba(4,6,10,0),rgba(4,6,10,0.88)_18%,#04060a_100%)] pt-2.5">
-              <ShellCard className="overflow-hidden border-white/10 bg-black/60 p-4 backdrop-blur-xl">
-                {!emailSheetOpen ? (
-                  <div className="space-y-3">
-                    <SecondaryButton
-                      disabled={authLoading}
-                      onClick={async () => {
-                        setAuthAuxAction('google')
-                        try {
-                          await signInWithOAuth('google')
-                        } catch (error) {
-                          showError(getAuthErrorMessage(error, 'Google sign-in failed'))
-                        } finally {
-                          setAuthAuxAction(null)
-                        }
-                      }}
-                    >
-                      <Globe className="h-5 w-5" />
-                      {authLoading && authAuxAction === 'google' ? 'Opening Google…' : 'Continue with Google'}
-                    </SecondaryButton>
-                    <PrimaryButton disabled={authLoading} onClick={() => setEmailSheetOpen(true)}>
-                      <NotebookPen className="h-5 w-5" />
-                      Sign in with Email
-                    </PrimaryButton>
-                    <button
-                      type="button"
-                      disabled={authLoading}
-                      onClick={async () => {
-                        setAuthAuxAction('reset')
-                        const email = authForm.email.trim()
-                        if (!email) {
-                          setEmailSheetOpen(true)
-                          showInfo('Enter your email first, then recover the account.')
-                          setAuthAuxAction(null)
-                          return
-                        }
-
-                        try {
-                          await requestPasswordReset(email)
-                          showSuccess('Password reset email sent')
-                        } catch (error) {
-                          showError(getAuthErrorMessage(error, 'Unable to send reset email'))
-                        } finally {
-                          setAuthAuxAction(null)
-                        }
-                      }}
-                      className="block w-full pt-1 text-center text-sm font-semibold text-white/40 disabled:cursor-not-allowed disabled:text-white/25"
-                    >
-                      {authLoading && authAuxAction === 'reset' ? 'Sending…' : 'Recover Account'}
-                    </button>
-                  </div>
-                ) : (
-                  <form className="space-y-3" onSubmit={handleAuthSubmit}>
-                    <div className="flex items-center justify-between pb-1">
-                      <div className="flex rounded-full border border-white/10 bg-white/5 p-1">
-                        {(['sign-up', 'sign-in'] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => setAuthMode(mode)}
-                            className={cn(
-                              'rounded-full px-4 py-2 text-sm font-semibold capitalize transition',
-                              authMode === mode ? 'bg-[#4d7cff] text-white' : 'text-white/45',
-                            )}
-                          >
-                            {mode.replace('-', ' ')}
-                          </button>
-                        ))}
-                      </div>
-                      <CircleIconButton className="h-8 w-8" onClick={() => setEmailSheetOpen(false)}>
-                        <X className="h-4 w-4" />
-                      </CircleIconButton>
-                    </div>
-
-                    {authMode === 'sign-up' && (
-                      <input
-                        {...createDisplayNameInputBehavior('signup', authNameInputUnlocked, () => setAuthNameInputUnlocked(true))}
-                        value={authForm.name}
-                        onChange={(event) => setAuthForm((previous) => ({ ...previous, name: event.target.value }))}
-                        placeholder="What should we call you?"
-                        className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none focus:border-[#4d7cff]/55"
-                      />
-                    )}
-                    {authMode === 'sign-up' && (
-                      <div className="space-y-1.5">
-                        <input
-                          value={authForm.username}
-                          onChange={(event) => setAuthForm((previous) => ({
-                            ...previous,
-                            username: slugifyUsername(event.target.value),
-                          }))}
-                          autoCapitalize="off"
-                          autoCorrect="off"
-                          spellCheck={false}
-                          autoComplete="username"
-                          placeholder="Choose a unique username"
-                          className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-base font-medium text-white placeholder:text-white/35 outline-none focus:border-[#4d7cff]/55"
-                        />
-                        <p className="px-1 text-xs font-medium text-white/38">
-                          {USERNAME_MIN_LEN}–{USERNAME_MAX_LEN} characters: lowercase letters, numbers, underscores. Must not be taken.
-                        </p>
-                      </div>
-                    )}
-                    <input
-                      value={authForm.email}
-                      onChange={(event) => setAuthForm((previous) => ({ ...previous, email: event.target.value }))}
-                      type="email"
-                      placeholder="Email"
-                      className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none focus:border-[#4d7cff]/55"
-                    />
-                    <input
-                      value={authForm.password}
-                      onChange={(event) => setAuthForm((previous) => ({ ...previous, password: event.target.value }))}
-                      type="password"
-                      placeholder="Password"
-                      className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none focus:border-[#4d7cff]/55"
-                    />
-                    {authMode === 'sign-up' && (
-                      <input
-                        value={authForm.confirmPassword}
-                        onChange={(event) => setAuthForm((previous) => ({ ...previous, confirmPassword: event.target.value }))}
-                        type="password"
-                        placeholder="Confirm password"
-                        className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none focus:border-[#4d7cff]/55"
-                      />
-                    )}
-                    {authError && (
-                      <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-200">
-                        {authError}
-                      </div>
-                    )}
-                    <PrimaryButton type="submit" disabled={authLoading}>
-                      {authLoading
-                        ? authMode === 'sign-up'
-                          ? 'Creating account…'
-                          : 'Signing in…'
-                        : authMode === 'sign-up'
-                          ? 'Create account'
-                          : 'Sign in'}
-                      <ChevronRight className="h-5 w-5" />
-                    </PrimaryButton>
-                  </form>
-                )}
-              </ShellCard>
-            </div>
-          </div>
-        </div>
-      </div>
+      <AuthScreen
+        authLoading={authLoading}
+        authError={authError}
+        authMode={authMode}
+        setAuthMode={setAuthMode}
+        authForm={authForm}
+        setAuthForm={setAuthForm}
+        emailSheetOpen={emailSheetOpen}
+        setEmailSheetOpen={setEmailSheetOpen}
+        authAuxAction={authAuxAction}
+        setAuthAuxAction={setAuthAuxAction}
+        authNameInputUnlocked={authNameInputUnlocked}
+        setAuthNameInputUnlocked={setAuthNameInputUnlocked}
+        isCompactHeight={isCompactHeight}
+        isShortHeight={isShortHeight}
+        signInWithOAuth={signInWithOAuth}
+        requestPasswordReset={requestPasswordReset}
+        handleAuthSubmit={handleAuthSubmit}
+        showError={showError}
+        showInfo={showInfo}
+        showSuccess={showSuccess}
+      />
     )
   }
-
   if (!appState.profile.onboardingCompleted) {
-    const step = BJJ_ONBOARDING_STEPS[onboardingIndex]
-    const onboardingBackdropVariant: ScreenBackdropVariant = step === 'welcome'
-      ? 'onboarding-welcome'
-      : step === 'mission'
-        ? 'onboarding-mission'
-        : step === 'name'
-          ? 'onboarding-name'
-          : step === 'discipline'
-            ? 'onboarding-discipline'
-            : step === 'experience'
-              ? 'onboarding-experience'
-              : step === 'content'
-                ? 'onboarding-content'
-                : step === 'pain-points'
-                  ? 'onboarding-challenges'
-                  : step === 'attribution'
-                    ? 'onboarding-attribution'
-                    : step === 'setup'
-                      ? 'onboarding-setup'
-                      : 'onboarding-ready'
-    const onboardingActionLabel = step === 'ready' ? 'Welcome' : 'Continue'
-    const onboardingActionDisabled =
-      (step === 'name' && onboardingNameDraft.trim().length === 0)
-      || (step === 'discipline' && !appState.profile.primaryDiscipline)
-      || (step === 'experience' && !appState.profile.experienceLevel)
-      || (step === 'content' && appState.profile.favoriteContentTypes.length === 0)
-      || (step === 'pain-points' && appState.profile.biggestChallenges.length === 0)
-      || (step === 'attribution' && !appState.profile.heardFrom)
-      || (step === 'setup' && setupProgress < 100)
-
-    const syncOnboardingProfile = async (updates: Partial<UserProfile>): Promise<UserProfile> => {
-      const updatedProfile = await updateProfile(updates)
-      updateAppState((previous) => ({
-        ...previous,
-        profile: {
-          ...previous.profile,
-          displayName: updatedProfile.displayName,
-          username: updatedProfile.username,
-          belt: updatedProfile.belt ?? previous.profile.belt,
-          stripes: updatedProfile.stripes ?? previous.profile.stripes,
-          primaryDiscipline: updatedProfile.primaryDiscipline ?? previous.profile.primaryDiscipline,
-          experienceLevel: updatedProfile.experienceLevel ?? previous.profile.experienceLevel,
-          favoriteContentTypes: updatedProfile.favoriteContentTypes ?? previous.profile.favoriteContentTypes,
-          biggestChallenges: updatedProfile.biggestChallenges ?? previous.profile.biggestChallenges,
-          heardFrom: updatedProfile.heardFrom ?? previous.profile.heardFrom,
-          onboardingCompleted: updatedProfile.onboardingCompleted ?? previous.profile.onboardingCompleted,
-        },
-      }))
-      return updatedProfile
-    }
-
-    const handleOnboardingContinue = async () => {
-      if (step === 'setup') {
-        if (setupProgress < 100) return
-        setOnboardingIndex(BJJ_ONBOARDING_STEPS.indexOf('ready'))
-        return
-      }
-
-      try {
-        if (step === 'name') {
-          const { error, value } = resolveOnboardingDisplayNameDraft(onboardingNameDraft)
-          if (error) {
-            showError(error)
-            return
-          }
-
-          const slugFromName = slugifyUsername(value)
-          const username = isAutoGeneratedUsername(appState.profile.username)
-            ? (slugFromName || appState.profile.username)
-            : appState.profile.username
-
-          setOnboardingNameDraft(value)
-          setOnboardingNameDirty(false)
-          updateAppState((previous) => ({
-            ...previous,
-            profile: {
-              ...previous.profile,
-              displayName: value,
-              username,
-            },
-          }))
-
-          await syncOnboardingProfile({
-            displayName: value,
-            username,
-          })
-        }
-
-        if (step === 'discipline') {
-          await syncOnboardingProfile({
-            primaryDiscipline: appState.profile.primaryDiscipline,
-          })
-        }
-
-        if (step === 'experience') {
-          await syncOnboardingProfile({
-            experienceLevel: appState.profile.experienceLevel as UserProfile['experienceLevel'] | undefined,
-            belt: appState.profile.belt,
-            stripes: appState.profile.stripes,
-          })
-        }
-
-        if (step === 'content') {
-          await syncOnboardingProfile({
-            favoriteContentTypes: appState.profile.favoriteContentTypes,
-          })
-        }
-
-        if (step === 'pain-points') {
-          await syncOnboardingProfile({
-            biggestChallenges: appState.profile.biggestChallenges,
-          })
-        }
-
-        if (step === 'attribution') {
-          await syncOnboardingProfile({
-            heardFrom: appState.profile.heardFrom,
-          })
-          setSetupProgress(27)
-        }
-
-        if (step === 'ready') {
-          const updatedProfile = await syncOnboardingProfile({
-            displayName: appState.profile.displayName.trim(),
-            username: appState.profile.username.trim(),
-            belt: appState.profile.belt,
-            stripes: appState.profile.stripes,
-            primaryDiscipline: appState.profile.primaryDiscipline,
-            experienceLevel: appState.profile.experienceLevel as UserProfile['experienceLevel'] | undefined,
-            favoriteContentTypes: appState.profile.favoriteContentTypes,
-            heardFrom: appState.profile.heardFrom,
-            biggestChallenges: appState.profile.biggestChallenges,
-            onboardingCompleted: true,
-          })
-          updateAppState((previous) => ({
-            ...previous,
-            profile: {
-              ...previous.profile,
-              onboardingCompleted: updatedProfile.onboardingCompleted ?? true,
-            },
-          }))
-          refreshShellSnapshot()
-          setPaywallIndex(0)
-          return
-        }
-      } catch (error) {
-        showError(error instanceof Error ? error.message : 'Unable to persist onboarding progress')
-        return
-      }
-
-      setOnboardingIndex((previous) => Math.min(previous + 1, BJJ_ONBOARDING_STEPS.length - 1))
-    }
-
     return (
-      <div className="relative h-[100dvh] overflow-hidden bg-[#04060a] text-white">
-        <ScreenBackdrop variant={onboardingBackdropVariant} />
-        <div className="relative mx-auto flex h-full w-full max-w-[430px] flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-[calc(env(safe-area-inset-top)+12px)]">
-          <div className="flex items-center justify-between">
-            <CircleIconButton
-              onClick={() => setOnboardingIndex((previous) => Math.max(0, previous - 1))}
-              className={cn(onboardingIndex === 0 && 'invisible')}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </CircleIconButton>
-            <ProgressDots count={BJJ_ONBOARDING_STEPS.length} active={onboardingIndex} />
-            <div className="h-11 w-11" />
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col pt-4">
-            <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-            <p className="pb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-white/45">
-              Step {onboardingIndex + 1} of {BJJ_ONBOARDING_STEPS.length}
-            </p>
-            {step === 'welcome' && (
-              <>
-                <div className={cn('pt-2 text-center', onboardingSectionGapClass)}>
-                  <h1 className={cn(onboardingTitleClass, 'font-black leading-[0.95]')}>Congratulations!</h1>
-                  <p className={cn('mx-auto mt-3 max-w-[310px] text-white/70', onboardingBodyClass)}>
-                    You’re joining the martial artists building a real technical memory, not winging it class to class.
-                  </p>
-                </div>
-                <div
-                  className={cn(
-                    'relative mt-4 w-full',
-                    welcomeMediaHeightClass,
-                    'min-h-[220px]',
-                  )}
-                >
-                  <div
-                    className={cn(
-                      'relative h-full w-full',
-                      /* Feather the whole hero (image + letterbox) into the screen — WebKit needs both */
-                      '[mask-image:radial-gradient(ellipse_102%_96%_at_50%_51%,#000_22%,#000_46%,transparent_88%)]',
-                      '[-webkit-mask-image:radial-gradient(ellipse_102%_96%_at_50%_51%,#000_22%,#000_46%,transparent_88%)]',
-                      '[mask-size:100%_100%]',
-                      '[-webkit-mask-size:100%_100%]',
-                      '[mask-position:center]',
-                      '[-webkit-mask-position:center]',
-                      '[mask-repeat:no-repeat]',
-                      '[-webkit-mask-repeat:no-repeat]',
-                    )}
-                  >
-                    <Image
-                      src="/loading-screen.png"
-                      alt=""
-                      fill
-                      sizes="(max-width: 430px) 100vw, 430px"
-                      className="object-contain object-center"
-                      priority
-                    />
-                    <div
-                      className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#04060a]/55 via-transparent to-[#04060a]/78"
-                      aria-hidden
-                    />
-                    <div
-                      className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_92%_at_50%_50%,transparent_28%,rgba(4,6,10,0.35)_58%,rgba(4,6,10,0.92)_88%,rgba(4,6,10,1)_100%)]"
-                      aria-hidden
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {step === 'mission' && (
-              <>
-                <div className="pt-2 text-center">
-                  <h2 className={cn(onboardingTitleClass, 'font-black leading-[0.97]')}>Train with purpose</h2>
-                  <p className={cn('mx-auto mt-3 max-w-[300px] text-white/68', onboardingBodyClass)}>
-                    This is where grapplers, strikers, and combat athletes level up with a clear technical system.
-                  </p>
-                </div>
-                <ShellCard className={cn('mx-auto mt-4 rounded-[30px] p-3', onboardingPreviewWidthClass)}>
-                  <div className="rounded-[24px] border border-white/10 bg-black/70 p-3">
-                    <div className="mb-3 flex items-center justify-between text-[11px] text-white/60">
-                      <span>Weekly Focus</span>
-                      <span>System Builder</span>
-                    </div>
-                    <div className="space-y-2.5">
-                      {[
-                        ['Capture class notes', 'Build memory after each session'],
-                        ['Link techniques together', 'Create flow chains and counters'],
-                        ['Review with intention', 'Stop random repetition'],
-                      ].map(([title, body]) => (
-                        <div key={title} className="rounded-[18px] border border-white/8 bg-white/4 p-2.5">
-                          <p className="text-[15px] font-bold">{title}</p>
-                          <p className="mt-1 text-[12px] text-white/58">{body}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </ShellCard>
-              </>
-            )}
-
-            {step === 'discipline' && (
-              <>
-                <div className="pt-2 text-center">
-                  <h2 className={cn(onboardingTitleClass, 'font-black leading-[0.97]')}>What is your primary discipline?</h2>
-                  <p className={cn('mx-auto mt-3 max-w-[305px] text-white/68', onboardingBodyClass)}>
-                    We tailor your feed and starter system to your base style.
-                  </p>
-                </div>
-                <div className="mt-6 space-y-1">
-                  {BJJ_PRIMARY_DISCIPLINE_OPTIONS.map((discipline) => (
-                    <button
-                      key={discipline}
-                      type="button"
-                      onClick={() => updateAppState((previous) => ({
-                        ...previous,
-                        profile: {
-                          ...previous.profile,
-                          primaryDiscipline: discipline,
-                        },
-                      }))}
-                      className="flex w-full items-center justify-between border-b border-white/10 py-3.5 text-left"
-                    >
-                      <span className={cn('font-medium text-white/85', isCompactHeight ? 'text-[18px]' : 'text-[21px]')}>{discipline}</span>
-                      <span className={cn('h-7 w-7 rounded-full border', appState.profile.primaryDiscipline === discipline ? 'border-[#4d7cff] bg-[#4d7cff]' : 'border-white/20')} />
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {step === 'name' && (
-              <>
-                <div className="pt-3 text-center">
-                  <h2 className={cn(onboardingTitleClass, 'font-black leading-[1]')}>What should we call you?</h2>
-                </div>
-                <div className="flex flex-1 flex-col justify-center">
-                  <input
-                    {...createDisplayNameInputBehavior('onboarding', onboardingNameInputUnlocked, () => setOnboardingNameInputUnlocked(true))}
-                    value={onboardingNameDraft}
-                    onChange={(event) => {
-                      const nextValue = event.target.value
-                      const nativeEvent = event.nativeEvent as NativeInputLike
-                      if (shouldIgnoreDisplayNameRefill({
-                        sentinelValue: onboardingNameSentinel,
-                        currentValue: onboardingNameDraft,
-                        nextValue,
-                        hasManualEdit: onboardingNameDirty,
-                        inputType: nativeEvent.inputType,
-                        isComposing: nativeEvent.isComposing,
-                      })) {
-                        return
-                      }
-
-                      setOnboardingNameDirty(true)
-                      setOnboardingNameDraft(nextValue)
-                    }}
-                    placeholder="Enter your name"
-                    className={cn(
-                      'border-b border-white/20 bg-transparent px-1 py-3 font-semibold text-white placeholder:text-white/28 outline-none',
-                      isShortHeight ? 'text-[22px]' : isCompactHeight ? 'text-[24px]' : 'text-[28px]',
-                    )}
-                  />
-                </div>
-              </>
-            )}
-
-            {step === 'experience' && (
-              <>
-                <div className="pt-3 text-center">
-                  <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'font-black leading-[1]')}>Experience level</h2>
-                </div>
-                <div className="mt-6 space-y-1">
-                  {BJJ_EXPERIENCE_LEVEL_OPTIONS.map((experience) => (
-                    <button
-                      key={experience.id}
-                      type="button"
-                      onClick={() => updateAppState((previous) => ({
-                        ...previous,
-                        profile: {
-                          ...previous.profile,
-                          experienceLevel: experience.experienceLevel,
-                          belt: experience.belt,
-                          stripes: experience.stripes,
-                        },
-                      }))}
-                      className="flex w-full items-center justify-between border-b border-white/10 py-3.5 text-left"
-                    >
-                      <span className={cn('font-medium text-white/85', isCompactHeight ? 'text-[18px]' : 'text-[21px]')}>{experience.label}</span>
-                      <span className={cn('h-7 w-7 rounded-full border', appState.profile.experienceLevel === experience.experienceLevel ? 'border-[#4d7cff] bg-[#4d7cff]' : 'border-white/20')} />
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {step === 'content' && (
-              <>
-                <div className="pt-3 text-center">
-                  <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'font-black leading-[1]')}>Favorite content type</h2>
-                  <p className="mt-3 text-sm font-medium text-white/58">Select all that apply</p>
-                </div>
-                <div className="mt-6 space-y-1">
-                  {BJJ_FAVORITE_CONTENT_OPTIONS.map((contentType) => {
-                    const selected = appState.profile.favoriteContentTypes.includes(contentType)
-                    return (
-                      <button
-                        key={contentType}
-                        type="button"
-                        onClick={() => updateAppState((previous) => ({
-                          ...previous,
-                          profile: {
-                            ...previous.profile,
-                            favoriteContentTypes: selected
-                              ? previous.profile.favoriteContentTypes.filter((entry) => entry !== contentType)
-                              : [...previous.profile.favoriteContentTypes, contentType],
-                          },
-                        }))}
-                        className="flex w-full items-center justify-between border-b border-white/10 py-3.5 text-left"
-                      >
-                        <span className={cn('max-w-[260px] font-medium text-white/85', isCompactHeight ? 'text-[18px]' : 'text-[21px]')}>{contentType}</span>
-                        <span className={cn('flex h-7 w-7 items-center justify-center rounded-full border', selected ? 'border-[#4d7cff] bg-[#4d7cff]' : 'border-white/20')}>
-                          {selected && <Check className="h-4 w-4" />}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-
-            {step === 'pain-points' && (
-              <>
-                <div className="pt-3 text-center">
-                  <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'font-black leading-[1]')}>What are your biggest challenges in martial arts?</h2>
-                  <p className="mt-3 text-sm font-medium text-white/58">Select all that apply</p>
-                </div>
-                <div className="mt-6 space-y-1">
-                  {BJJ_CHALLENGE_OPTIONS.map((challenge) => {
-                    const selected = appState.profile.biggestChallenges.includes(challenge)
-                    return (
-                      <button
-                        key={challenge}
-                        type="button"
-                        onClick={() => updateAppState((previous) => ({
-                          ...previous,
-                          profile: {
-                            ...previous.profile,
-                            biggestChallenges: selected
-                              ? previous.profile.biggestChallenges.filter((entry) => entry !== challenge)
-                              : [...previous.profile.biggestChallenges, challenge],
-                          },
-                        }))}
-                        className="flex w-full items-center justify-between border-b border-white/10 py-3.5 text-left"
-                      >
-                        <span className={cn('max-w-[250px] font-medium text-white/85', isCompactHeight ? 'text-[18px]' : 'text-[21px]')}>{challenge}</span>
-                        <span className={cn('flex h-7 w-7 items-center justify-center rounded-full border', selected ? 'border-[#4d7cff] bg-[#4d7cff]' : 'border-white/20')}>
-                          {selected && <Check className="h-4 w-4" />}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-
-            {step === 'attribution' && (
-              <>
-                <div className="pt-3 text-center">
-                  <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'font-black leading-[1]')}>Where did you hear about us?</h2>
-                </div>
-                <div className="mt-6 space-y-1">
-                  {BJJ_HEARD_FROM_OPTIONS.map((source) => (
-                    <button
-                      key={source}
-                      type="button"
-                      onClick={() => updateAppState((previous) => ({
-                        ...previous,
-                        profile: {
-                          ...previous.profile,
-                          heardFrom: source,
-                        },
-                      }))}
-                      className="flex w-full items-center justify-between border-b border-white/10 py-3.5 text-left"
-                    >
-                      <span className={cn('font-medium text-white/85', isCompactHeight ? 'text-[18px]' : 'text-[22px]')}>{source}</span>
-                      <span className={cn('h-7 w-7 rounded-full border', appState.profile.heardFrom === source ? 'border-[#4d7cff] bg-[#4d7cff]' : 'border-white/20')} />
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {step === 'setup' && (
-              <>
-                <div className="flex-1 pt-6 text-center">
-                  <div className={cn(
-                    'mx-auto flex items-center justify-center rounded-full border border-[#4d7cff]/25 bg-[#0d1732]/80 shadow-[0_0_0_18px_rgba(29,78,216,0.12)]',
-                    isShortHeight ? 'h-24 w-24' : 'h-28 w-28',
-                  )}>
-                    <div className="text-center">
-                      <div className={cn(isCompactHeight ? 'text-[32px]' : 'text-[38px]', 'font-black')}>{setupProgress}%</div>
-                    </div>
-                  </div>
-                  <div className="mt-7">
-                    <div className="flex items-center justify-center gap-2 text-[#ffd84d]">
-                      <Star className="h-5 w-5 fill-current" />
-                      <Star className="h-5 w-5 fill-current" />
-                      <Star className="h-5 w-5 fill-current" />
-                      <Star className="h-5 w-5 fill-current" />
-                      <Star className="h-5 w-5 fill-current" />
-                    </div>
-                    <p className="mt-3 text-sm font-semibold uppercase tracking-[0.24em] text-white/65">
-                      Trusted by 30,000+ combat athletes
-                    </p>
-                  </div>
-                  <h2 className={cn(isShortHeight ? 'mt-6 text-[30px]' : isCompactHeight ? 'mt-7 text-[34px]' : 'mt-8 text-[38px]', 'font-black leading-[1.02]')}>Setting up MatFlow…</h2>
-                  <p className={cn('mx-auto mt-3 max-w-[310px] text-white/58', paywallBodyClass)}>
-                    Identifying growth opportunities and shaping your first technical system.
-                  </p>
-                  <div className="mx-auto mt-8 max-w-[360px] overflow-hidden rounded-[22px] border border-white/10 bg-white/8 text-left">
-                    <div className="p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[16px] font-bold">KaitCox</p>
-                        <div className="flex items-center gap-1 text-[#ffd84d]">
-                          {Array.from({ length: 5 }, (_, index) => <Star key={index} className="h-4 w-4 fill-current" />)}
-                        </div>
-                      </div>
-                      <p className="mt-3 text-[15px] leading-6 text-white/70">
-                        “This is the best app out of the many I tried. I love that I can search moves by category and link techniques together.”
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {step === 'ready' && (
-              <>
-                <div className="flex-1 pt-6 text-center">
-                  <div className={cn(
-                    'mx-auto relative overflow-hidden rounded-[24px] border border-white/10 bg-white/8',
-                    isShortHeight ? 'h-20 w-20' : 'h-24 w-24',
-                  )}>
-                    <Image src="/app-icon.png" alt="MatFlow icon" fill className="object-cover" />
-                  </div>
-                  <h2 className={cn(isShortHeight ? 'mt-6 text-[30px]' : isCompactHeight ? 'mt-7 text-[34px]' : 'mt-8 text-[42px]', 'font-black leading-[1]')}>
-                    Everything is ready.
-                  </h2>
-                  <p className={cn('mx-auto mt-3 max-w-[310px] text-white/68', onboardingBodyClass)}>
-                    Welcome! Your training system is set up and tailored for your progression.
-                  </p>
-
-                  <div className="mt-7 space-y-4 text-left">
-                    {[
-                      ['Log trainings & techniques', 'Make every class searchable.'],
-                      ['Review your notes', 'Stop resetting every week.'],
-                      ['Improve 2x faster', 'Use analytics and system thinking.'],
-                    ].map(([title, body]) => (
-                      <div key={title} className="flex items-start gap-4">
-                        <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/6">
-                          <BookOpen className="h-5 w-5 text-white/80" />
-                        </div>
-                        <div>
-                          <p className={cn(isCompactHeight ? 'text-[18px]' : 'text-[21px]', 'font-bold')}>{title}</p>
-                          <p className="mt-1 text-[15px] text-white/52">{body}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-            </div>
-
-            <div className="shrink-0 bg-[linear-gradient(180deg,rgba(4,6,10,0),rgba(4,6,10,0.88)_22%,#04060a_100%)] pb-1 pt-2.5">
-              <PrimaryButton onClick={() => void handleOnboardingContinue()} disabled={onboardingActionDisabled}>
-                {onboardingActionLabel}
-                <ChevronRight className="h-5 w-5" />
-              </PrimaryButton>
-            </div>
-          </div>
-        </div>
-      </div>
+      <OnboardingScreen
+        appState={appState}
+        updateAppState={updateAppState}
+        updateProfile={updateProfile}
+        refreshShellSnapshot={refreshShellSnapshot}
+        onboardingIndex={onboardingIndex}
+        setOnboardingIndex={setOnboardingIndex}
+        onboardingNameDraft={onboardingNameDraft}
+        setOnboardingNameDraft={setOnboardingNameDraft}
+        onboardingNameDirty={onboardingNameDirty}
+        setOnboardingNameDirty={setOnboardingNameDirty}
+        onboardingNameSentinel={onboardingNameSentinel}
+        onboardingNameInputUnlocked={onboardingNameInputUnlocked}
+        setOnboardingNameInputUnlocked={setOnboardingNameInputUnlocked}
+        setupProgress={setupProgress}
+        setSetupProgress={setSetupProgress}
+        setPaywallIndex={setPaywallIndex}
+        isCompactHeight={isCompactHeight}
+        isShortHeight={isShortHeight}
+        showError={showError}
+      />
     )
   }
-
   const matflowAccess = getMatFlowAccessState({
     createdAt: user?.createdAt,
     firstActiveAt: user?.firstActiveAt,
@@ -4829,257 +3245,21 @@ function BjjAppInner() {
   const forcedPaywallStep = BJJ_PAYWALL_STEPS[paywallIndex] as BjjPaywallStep
   const showingForcedPaywall = !appState.profile.paywallCompleted || matflowAccess.trialExpired
   if (showingForcedPaywall) {
-    const paywallBackdropVariant: ScreenBackdropVariant = forcedPaywallStep === 'founder'
-      ? 'paywall-founder'
-      : forcedPaywallStep === 'pro'
-        ? 'paywall-pro'
-        : 'paywall-pricing'
-    const paywallActionLabel = forcedPaywallStep === 'pricing'
-      ? matflowAccess.trialExpired ? 'Subscribe to unlock' : 'Start 14-day trial'
-      : 'Continue'
-
-    const handlePaywallContinue = async () => {
-      if (forcedPaywallStep === 'founder') {
-        setPaywallIndex(1)
-        return
-      }
-
-      if (forcedPaywallStep === 'pro') {
-        setPaywallIndex(2)
-        return
-      }
-
-      if (forcedPaywallStep === 'trial') {
-        setPaywallIndex(3)
-        return
-      }
-
-      await handleSubscribe(paywallPlan)
-    }
-
     return (
-      <div className="relative h-[100dvh] overflow-hidden bg-[#04060a] text-white">
-        <ScreenBackdrop variant={paywallBackdropVariant} />
-        <div className="relative mx-auto flex h-full w-full max-w-[430px] flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-[calc(env(safe-area-inset-top)+12px)]">
-          <div className="flex items-center justify-between">
-            <CircleIconButton
-              onClick={() => setPaywallIndex((previous) => Math.max(0, previous - 1))}
-              className={cn(paywallIndex === 0 && 'invisible')}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </CircleIconButton>
-            <ProgressDots count={BJJ_PAYWALL_STEPS.length} active={paywallIndex} />
-            {matflowAccess.trialExpired ? (
-              <span className="text-sm font-semibold text-[#ff8a8a]">Trial ended</span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void completePaywall()}
-                className="text-sm font-semibold text-white/45"
-              >
-                Not now
-              </button>
-            )}
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col pt-4">
-            <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-            {forcedPaywallStep === 'founder' && (
-              <>
-                <div className="flex-1 text-center">
-                  <div className={cn('mx-auto max-w-[250px]', isShortHeight ? 'mt-4' : 'mt-7')}>
-                    <div className={cn(
-                      'mx-auto rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.25),transparent_60%)]',
-                      isShortHeight ? 'h-32 w-32' : isCompactHeight ? 'h-40 w-40' : 'h-52 w-52',
-                    )} />
-                  </div>
-                  <h2 className={cn(paywallTitleClass, 'mt-5 font-black leading-[1]')}>
-                    MatFlow starts with <span className="text-[#4d7cff]">14 days free</span>
-                  </h2>
-                  <p className={cn('mx-auto mt-3 max-w-[310px] text-white/64', paywallBodyClass)}>
-                    Build a real combat-sports training system before the subscription begins.
-                  </p>
-                </div>
-              </>
-            )}
-
-            {forcedPaywallStep === 'pro' && (
-              <>
-                <div className="flex-1 text-center">
-                  <h2 className={cn(paywallTitleClass, 'mt-3 font-black leading-[1]')}>
-                    Meet <span className="text-[#4d7cff]">MatFlow Pro</span>
-                  </h2>
-                  <ShellCard className={cn('mt-5', isCompactHeight ? 'p-4' : 'p-6')}>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-[24px] border border-white/10 bg-[#0b1020] p-3">
-                        <p className="text-sm text-white/50">Submissions</p>
-                        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/40 p-3 text-sm text-white/70">
-                          Analytics
-                        </div>
-                      </div>
-                      <div className="rounded-[24px] border border-white/10 bg-[#0b1020] p-3">
-                        <p className="text-sm text-white/50">Gameplans</p>
-                        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/40 p-3 text-sm text-white/70">
-                          Branching maps
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-5 space-y-3 text-left">
-                      {[
-                        ['Gameplan maps', 'Build decision trees instead of random move lists.'],
-                        ['Expanded training analytics', 'See what you actually hit and where you stall.'],
-                        ['Structured technique library', 'Keep connected notes without deleting older details.'],
-                        ['Unlimited techniques', 'Stop deleting important notes to stay under a cap.'],
-                      ].map(([title, summary]) => (
-                        <div key={title} className="flex items-start gap-3">
-                          <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-white/7">
-                            <Sparkles className="h-4 w-4 text-[#7ea4ff]" />
-                          </div>
-                          <div>
-                            <p className="text-[16px] font-bold">{title}</p>
-                            <p className="text-sm text-white/52">{summary}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ShellCard>
-                </div>
-              </>
-            )}
-
-            {forcedPaywallStep === 'trial' && (
-              <>
-                <div className="flex-1 pt-2 text-center">
-                  <div className="flex items-center justify-center gap-2 text-[#ffd84d]">
-                    <Star className="h-5 w-5 fill-current" />
-                    <Star className="h-5 w-5 fill-current" />
-                    <Star className="h-5 w-5 fill-current" />
-                    <Star className="h-5 w-5 fill-current" />
-                    <Star className="h-5 w-5 fill-current" />
-                  </div>
-                  <p className="mt-2 text-sm font-semibold uppercase tracking-[0.22em] text-white/65">4.9 top-rated app</p>
-                  <h2 className={cn(paywallTitleClass, 'mt-5 font-black leading-[1]')}>
-                    How <span className="text-[#4d7cff]">Pro access</span> works
-                  </h2>
-                  <div className="mt-6 space-y-6 text-left">
-                    {[
-                      ['Today', 'Start with 14 days free, including gameplans, analytics, and unlimited technique tracking.'],
-                      ['Billing', `After the trial, MatFlow is ${MATFLOW_PRICE_LABEL} until you cancel it from subscription settings.`],
-                      ['Control', 'You can cancel before the next renewal and keep access through the paid period.'],
-                    ].map(([title, body], index) => (
-                      <div key={title} className="flex gap-4">
-                        <div className="flex flex-col items-center">
-                          <div className={cn('flex h-11 w-11 items-center justify-center rounded-full border', index === 0 ? 'border-white bg-white text-black' : 'border-white/18 bg-white/6 text-white/70')}>
-                            {index === 0 ? <Check className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
-                          </div>
-                          {index < 2 && <div className="mt-2 h-16 w-px bg-white/12" />}
-                        </div>
-                        <div>
-                          <p className={cn(isCompactHeight ? 'text-[20px]' : 'text-[24px]', 'font-bold')}>{title}</p>
-                          <p className="mt-2 max-w-[270px] text-[16px] leading-6 text-white/54">{body}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {forcedPaywallStep === 'pricing' && (
-              <>
-                <div className="flex-1">
-                  <ShellCard className={cn('overflow-hidden', isCompactHeight ? 'p-4' : 'p-6')}>
-                    <div className={cn('rounded-[24px] bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.28),transparent_48%)]', isCompactHeight ? 'p-4' : 'p-5')}>
-                      <div className={cn(
-                        'mx-auto mb-4 rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.4),transparent_58%)]',
-                        isShortHeight ? 'h-20 w-20' : isCompactHeight ? 'h-24 w-24' : 'h-28 w-28',
-                      )} />
-                      <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'text-center font-black leading-[1]')}>14 days free, then {MATFLOW_PRICE_LABEL}</h2>
-                      <p className="mx-auto mt-3 max-w-[280px] text-center text-[16px] leading-6 text-white/60">
-                        Premium access unlocks gameplans, advanced analytics, unlimited techniques, and challenge tracking.
-                      </p>
-                    </div>
-                    <div className="mt-4 space-y-2.5">
-                      {[
-                        'Gameplan maps and study mode',
-                        'Advanced Training Analytics',
-                        'Unlimited Techniques',
-                        'Challenges & Achievements',
-                      ].map((line) => (
-                        <div key={line} className="flex items-center gap-3 text-[15px] font-semibold">
-                          <Check className="h-4 w-4 text-[#7ea4ff]" />
-                          <span>{line}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <ShellCard className="mt-5 bg-white text-black">
-                      <div className={cn(isCompactHeight ? 'p-3.5' : 'p-4')}>
-                        <p className="text-[20px] font-bold">Great app!</p>
-                        <p className="mt-2 text-[15px] leading-6 text-black/74">
-                          “I use it after every class. This is the first training app that actually helps me remember and connect techniques.”
-                        </p>
-                      </div>
-                    </ShellCard>
-                    <div className="mt-4 space-y-3">
-                      <div className="flex w-full items-center justify-between rounded-[18px] border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-4 py-3.5 text-left">
-                        <div>
-                          <p className="text-base font-bold">Monthly</p>
-                          <p className="mt-1 text-sm text-white/52">14-day trial included. Cancel anytime.</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-black">25 kr</p>
-                          <p className="text-sm text-white/52">per month</p>
-                        </div>
-                      </div>
-                    </div>
-                  </ShellCard>
-                </div>
-              </>
-            )}
-            </div>
-
-            <div className="shrink-0 bg-[linear-gradient(180deg,rgba(4,6,10,0),rgba(4,6,10,0.9)_22%,#04060a_100%)] pb-1 pt-2.5">
-              <div className="space-y-3">
-                <PrimaryButton onClick={() => void handlePaywallContinue()}>
-                  {paywallActionLabel}
-                  <ChevronRight className="h-5 w-5" />
-                </PrimaryButton>
-                {forcedPaywallStep === 'pricing' && (
-                  <div className="space-y-2">
-                    {!matflowAccess.trialExpired ? (
-                      <button
-                        type="button"
-                        onClick={() => void completePaywall()}
-                        className="w-full text-center text-sm font-semibold text-white/50"
-                      >
-                        Continue trial
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => { void handleRestorePurchase() }}
-                      className="w-full text-center text-sm font-semibold text-white/50"
-                    >
-                      Restore purchases
-                    </button>
-                    <div className="flex items-center justify-center gap-4 text-xs font-semibold text-white/35">
-                      <button type="button" onClick={() => { void openSupportLink(PRIVACY_POLICY_URL) }} className="underline underline-offset-4">
-                        Privacy Policy
-                      </button>
-                      <button type="button" onClick={() => { void openSupportLink(TERMS_OF_SERVICE_URL) }} className="underline underline-offset-4">
-                        Terms
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PaywallScreen
+        forcedPaywallStep={forcedPaywallStep}
+        paywallIndex={paywallIndex}
+        setPaywallIndex={setPaywallIndex}
+        paywallPlan={paywallPlan}
+        matflowAccess={matflowAccess}
+        isCompactHeight={isCompactHeight}
+        isShortHeight={isShortHeight}
+        handleSubscribe={handleSubscribe}
+        handleRestorePurchase={handleRestorePurchase}
+        completePaywall={completePaywall}
+      />
     )
   }
-
   const selectedBottomTab = appState.selectedBottomTab
   const selectedTechniquesTab = selectedBottomTab === 'gameplans'
     ? 'systems'
@@ -5263,411 +3443,49 @@ function BjjAppInner() {
         )}
 
         {selectedBottomTab === 'today' && (
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-            <div className="mb-4 space-y-3">
-              <ShellCard className="overflow-hidden border-[#4d7cff]/18 bg-[#07101f]/78 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.34)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8cabff]">Today</p>
-                    <h1 className="mt-1 text-[28px] font-black leading-none text-white">Training cockpit</h1>
-                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-white/58">
-                      {activeGameplan
-                        ? `Review ${activeGameplan.title} or log the next session.`
-                        : 'Log a session, build a gameplan, or save your next technical note.'}
-                    </p>
-                  </div>
-                  <span className={cn(
-                    'shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]',
-                    matflowAccess.trialExpired
-                      ? 'border-red-400/30 bg-red-500/12 text-red-100'
-                      : matflowAccess.hasPaidAccess
-                        ? 'border-emerald-400/30 bg-emerald-500/12 text-emerald-100'
-                        : 'border-[#4d7cff]/35 bg-[#4d7cff]/16 text-[#d9e4ff]',
-                  )}>
-                    {matflowAccess.hasPaidAccess
-                      ? 'Pro'
-                      : matflowAccess.trialExpired
-                        ? 'Locked'
-                        : `${matflowAccess.trialDaysRemaining}d trial`}
-                  </span>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  {[
-                    ['Sessions', sessionStats.weekCount],
-                    ['Mat min', sessionStats.weekMinutes],
-                    ['Gameplans', systemsState.filter((system) => system.status !== 'draft').length],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.045] px-3 py-2.5">
-                      <p className="text-lg font-black leading-none text-white">{value}</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/38">{label}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void haptics.light()
-                      openCreateSession()
-                    }}
-                    className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-[16px] bg-white px-4 text-sm font-black text-black"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Log session
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeGameplan) {
-                        openSystemReader(activeGameplan)
-                        return
-                      }
-                      updateAppState((previous) => ({ ...previous, selectedBottomTab: 'gameplans', selectedTechniquesTab: 'systems' }))
-                    }}
-                    className="inline-flex min-h-[46px] items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white/78"
-                  >
-                    {activeGameplan ? 'Open map' : 'New map'}
-                  </button>
-                </div>
-              </ShellCard>
-              {matflowAccess.trialExpired ? (
-                <ShellCard className="border-red-500/20 bg-red-500/10 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-black text-red-100">Your MatFlow trial has ended</p>
-                      <p className="mt-1 text-sm leading-6 text-red-100/70">Training creation and community actions unlock with Pro.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSurface('paywall')}
-                      className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-black text-black"
-                    >
-                      Subscribe
-                    </button>
-                  </div>
-                </ShellCard>
-              ) : null}
-            </div>
-            <SearchField inputRef={sessionSearchInputRef} value={sessionSearchInput} onChange={(event) => setSessionSearchInput(event.target.value)} placeholder="Search sessions" />
-            {(appState?.sessions ?? []).length > 0 && (
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">This week</p>
-                  <p className="mt-1 text-lg font-black text-white">{sessionStats.weekCount}</p>
-                  <p className="text-[11px] font-semibold text-white/50">sessions</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">Mat time</p>
-                  <p className="mt-1 text-lg font-black text-white">{sessionStats.weekMinutes}</p>
-                  <p className="text-[11px] font-semibold text-white/50">min this wk</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">Streak</p>
-                  <p className="mt-1 text-lg font-black text-white">{sessionStats.streak}</p>
-                  <p className="text-[11px] font-semibold text-white/50">{sessionStats.streak === 1 ? 'day' : 'days'}</p>
-                </div>
-              </div>
-            )}
-            {(appState?.sessions ?? []).length > 0 && (
-              <div
-                role="tablist"
-                aria-label="Sessions view"
-                className="mt-3 inline-flex w-full rounded-full border border-white/10 bg-white/6 p-1"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sessionsView === 'list'}
-                  onClick={() => {
-                    if (sessionsView !== 'list') void haptics.light()
-                    setSessionsView('list')
-                  }}
-                  className={cn(
-                    'flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition',
-                    sessionsView === 'list' ? 'bg-white text-black' : 'text-white/65 hover:text-white/85',
-                  )}
-                >
-                  List
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sessionsView === 'calendar'}
-                  onClick={() => {
-                    if (sessionsView !== 'calendar') void haptics.light()
-                    setSessionsView('calendar')
-                  }}
-                  className={cn(
-                    'flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition',
-                    sessionsView === 'calendar' ? 'bg-white text-black' : 'text-white/65 hover:text-white/85',
-                  )}
-                >
-                  Calendar
-                </button>
-              </div>
-            )}
-            {sessionsView === 'list' && (
-              <div className="mt-2.5 flex items-center justify-between px-1 text-sm font-semibold text-white/70">
-                <span>{filteredSessions.length} sessions found</span>
-                <span>New</span>
-              </div>
-            )}
-            {sessionsView === 'list' && (filteredSessions.length === 0 ? (
-              <EmptyState
-                title={(appState?.sessions ?? []).length === 0 ? 'Start tracking your training' : 'No matches'}
-                body={(appState?.sessions ?? []).length === 0
-                  ? 'Log your first session to see your rolls, rounds, and progress build up over time.'
-                  : 'Try a different search, or clear the query to see every session you have logged.'}
-                actionLabel={(appState?.sessions ?? []).length === 0 ? 'Log a session' : undefined}
-                onAction={(appState?.sessions ?? []).length === 0 ? () => openCreateSession() : undefined}
-              />
-            ) : (
-              <div className={cn(shellSubsectionSpacingClass, 'space-y-5')}>
-                {groupedSessions.map((group) => (
-                  <div key={group.key} className="space-y-3">
-                    <div className="flex items-center gap-3 px-1">
-                      <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">{group.label}</span>
-                      <span className="h-px flex-1 bg-white/8" />
-                      <span className="text-[11px] font-semibold text-white/35">{group.sessions.length}</span>
-                    </div>
-                    <div className="space-y-3">
-                      {group.sessions.map((session) => (
-                        <ShellCard key={session.id} className={cn(shellCompactCardPaddingClass, 'relative')}>
-                          <button
-                            type="button"
-                            aria-label={`Open ${session.type} session at ${session.location}`}
-                            onClick={() => {
-                              void haptics.light()
-                              openSessionDetail(session.id)
-                            }}
-                            className="absolute inset-0 rounded-[inherit]"
-                          />
-                          <div className="pointer-events-none relative flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <p className={cn(shellCardTitleClass, 'font-bold')}>{session.type} @ {session.location}</p>
-                              <p className="mt-1 text-sm text-white/40">{formatPrettyDateTime(session.date, session.time)}</p>
-                            </div>
-                            <div className="pointer-events-auto flex shrink-0 items-center gap-2">
-                              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/55">
-                                {session.durationMinutes} min
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  void haptics.light()
-                                  openEditSession(session)
-                                }}
-                                aria-label={`Edit session at ${session.location}`}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 transition hover:bg-white/10"
-                              >
-                                <Pencil className="h-3.5 w-3.5" aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleRequestDeleteSession(session)
-                                }}
-                                aria-label={`Delete session at ${session.location}`}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 transition hover:bg-red-500/15 hover:text-red-200"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="pointer-events-none relative mt-4 grid grid-cols-2 gap-3 text-sm font-semibold">
-                            <div className="rounded-[18px] bg-white/6 p-3">
-                              <p className="text-white/45">Submissions</p>
-                              <p className="mt-1 text-lg">{session.submissions.length}</p>
-                            </div>
-                            <div className="rounded-[18px] bg-white/6 p-3">
-                              <p className="text-white/45">Taps</p>
-                              <p className="mt-1 text-lg">{session.taps.length}</p>
-                            </div>
-                          </div>
-                          {session.linkedTechniqueIds.length > 0 && (
-                            <div className="pointer-events-none relative mt-4 flex flex-wrap gap-2">
-                              {session.linkedTechniqueIds.map((id) => {
-                                const technique = libraryTechniques.find((entry) => entry.id === id)
-                                if (!technique) return null
-                                return (
-                                  <span key={id} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
-                                    {technique.title}
-                                  </span>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </ShellCard>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-            {sessionsView === 'calendar' && (
-              <div className="mt-4 space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={handlePrevMonth}
-                    aria-label="Previous month"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/75 transition hover:bg-white/10"
-                  >
-                    <ChevronLeft className="h-4 w-4" aria-hidden />
-                  </button>
-                  <div className="flex min-w-0 flex-col items-center">
-                    <p className="text-[15px] font-black leading-tight text-white">{formatMonthTitle(calendarAnchor)}</p>
-                    <p className="mt-0.5 text-[11px] font-semibold text-white/45">
-                      {calendarMonthStats.count} {calendarMonthStats.count === 1 ? 'session' : 'sessions'} · {calendarMonthStats.minutes} min
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleNextMonth}
-                    aria-label="Next month"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/75 transition hover:bg-white/10"
-                  >
-                    <ChevronRight className="h-4 w-4" aria-hidden />
-                  </button>
-                </div>
-                {!isViewingCurrentMonth && (
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={handleGoToTodayMonth}
-                      className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-bold text-white/85 hover:bg-white/12"
-                    >
-                      Jump to today
-                    </button>
-                  </div>
-                )}
-                <div className="grid grid-cols-7 gap-1 px-0.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-                  {CALENDAR_WEEKDAY_LABELS.map((label, index) => (
-                    <span key={`${label}-${index}`}>{label}</span>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {calendarMatrix.map((cellDate) => {
-                    const cellKey = formatDayKey(cellDate)
-                    const inMonth = cellDate.getMonth() === calendarAnchor.getMonth()
-                    const isToday = cellKey === todayDayKey
-                    const isSelected = cellKey === selectedCalendarDay
-                    const daySessions = sessionsByDay.get(cellKey) ?? []
-                    const hasSessions = daySessions.length > 0
-                    const onStreak = streakDayKeys.has(cellKey)
-                    const dotColors = hasSessions
-                      ? Array.from(new Set(daySessions.map((s) => BRANCH_DOT_COLORS[s.branch] ?? '#4d7cff'))).slice(0, 3)
-                      : []
-                    return (
-                      <button
-                        key={cellKey}
-                        type="button"
-                        onClick={() => handleSelectCalendarDay(cellKey)}
-                        aria-label={`${cellDate.toDateString()}${hasSessions ? `, ${daySessions.length} ${daySessions.length === 1 ? 'session' : 'sessions'}` : ''}`}
-                        aria-pressed={isSelected}
-                        className={cn(
-                          'relative flex aspect-square flex-col items-center justify-center rounded-xl border text-[13px] font-semibold transition',
-                          inMonth ? 'text-white/85' : 'text-white/25',
-                          isSelected
-                            ? 'border-white bg-white text-black shadow-[0_0_0_2px_rgba(255,255,255,0.12)]'
-                            : isToday
-                              ? 'border-[#4d7cff]/50 bg-[#4d7cff]/10'
-                              : onStreak
-                                ? 'border-[#ffba33]/30 bg-[#ffba33]/6'
-                                : 'border-white/6 bg-white/4 hover:bg-white/8',
-                        )}
-                      >
-                        <span className={cn('leading-none', isSelected && 'font-black')}>{cellDate.getDate()}</span>
-                        {dotColors.length > 0 && (
-                          <span className="absolute bottom-1.5 flex items-center gap-0.5">
-                            {dotColors.map((color, index) => (
-                              <span
-                                key={`${cellKey}-dot-${index}`}
-                                className="h-1 w-1 rounded-full"
-                                style={{ backgroundColor: isSelected ? '#000' : color }}
-                              />
-                            ))}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="flex flex-wrap items-center gap-3 px-1 text-[10px] font-semibold text-white/45">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#4d7cff]" /> Trained
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-sm border border-[#ffba33]/50 bg-[#ffba33]/10" /> Current streak
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-sm border border-[#4d7cff]/50 bg-[#4d7cff]/10" /> Today
-                  </span>
-                </div>
-                {selectedCalendarDay ? (() => {
-                  const dayDate = parseDayKey(selectedCalendarDay)
-                  if (!dayDate) return null
-                  return (
-                    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-[15px] font-black text-white">{formatSelectedDayTitle(dayDate)}</p>
-                          <p className="mt-0.5 text-[11px] font-semibold text-white/45">
-                            {selectedDaySessions.length === 0
-                              ? 'No sessions logged'
-                              : `${selectedDaySessions.length} ${selectedDaySessions.length === 1 ? 'session' : 'sessions'}`}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openCreateSession(selectedCalendarDay)}
-                          className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-black hover:bg-white/90"
-                        >
-                          Log session
-                        </button>
-                      </div>
-                      {selectedDaySessions.length > 0 && (
-                        <div className="space-y-2">
-                          {selectedDaySessions.map((session) => (
-                            <button
-                              key={session.id}
-                              type="button"
-                              onClick={() => {
-                                void haptics.light()
-                                openSessionDetail(session.id)
-                              }}
-                              className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/6 px-3 py-2.5 text-left transition hover:bg-white/10"
-                            >
-                              <span className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: BRANCH_DOT_COLORS[session.branch] ?? '#4d7cff' }}
-                                  aria-hidden
-                                />
-                                <span className="min-w-0">
-                                  <span className="block truncate text-sm font-bold text-white">{session.type} @ {session.location || 'Training'}</span>
-                                  <span className="block text-[11px] font-semibold text-white/45">{session.time} · {session.durationMinutes} min</span>
-                                </span>
-                              </span>
-                              <ChevronRight className="h-4 w-4 shrink-0 text-white/35" aria-hidden />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })() : (
-                  <p className="px-1 text-[12px] font-semibold text-white/45">Tap any day to see sessions or log a new one.</p>
-                )}
-              </div>
-            )}
-          </div>
+          <TodayShell
+            appState={appState}
+            activeGameplan={activeGameplan}
+            matflowAccess={matflowAccess}
+            sessionStats={sessionStats}
+            systemsState={systemsState}
+            sessionSearchInputRef={sessionSearchInputRef}
+            sessionSearchInput={sessionSearchInput}
+            setSessionSearchInput={setSessionSearchInput}
+            sessionsView={sessionsView}
+            setSessionsView={setSessionsView}
+            filteredSessions={filteredSessions}
+            groupedSessions={groupedSessions}
+            libraryTechniques={libraryTechniques}
+            shellSubsectionSpacingClass={shellSubsectionSpacingClass}
+            shellCompactCardPaddingClass={shellCompactCardPaddingClass}
+            shellCardTitleClass={shellCardTitleClass}
+            calendarAnchor={calendarAnchor}
+            calendarMatrix={calendarMatrix}
+            calendarMonthStats={calendarMonthStats}
+            isViewingCurrentMonth={isViewingCurrentMonth}
+            todayDayKey={todayDayKey}
+            selectedCalendarDay={selectedCalendarDay}
+            sessionsByDay={sessionsByDay}
+            streakDayKeys={streakDayKeys}
+            selectedDaySessions={selectedDaySessions}
+            openCreateSession={openCreateSession}
+            openSystemReader={openSystemReader}
+            openSessionDetail={openSessionDetail}
+            openEditSession={openEditSession}
+            handleRequestDeleteSession={handleRequestDeleteSession}
+            handlePrevMonth={handlePrevMonth}
+            handleNextMonth={handleNextMonth}
+            handleGoToTodayMonth={handleGoToTodayMonth}
+            handleSelectCalendarDay={handleSelectCalendarDay}
+            updateAppState={updateAppState}
+            setActiveSurface={setActiveSurface}
+            onPullToRefresh={handlePullToRefresh}
+          />
         )}
 
         {selectedBottomTab === 'community' && (
-          <CommunitySurface
+          <CommunityShell
             hasUnreadNotifications={unreadNotificationCount > 0 || pendingFollowRequests.length > 0}
             loading={socialFeedLoading}
             searchInputRef={socialSearchInputRef}
@@ -5751,1030 +3569,135 @@ function BjjAppInner() {
         )}
 
         {isLibraryOrGameplansTab && (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {selectedBottomTab === 'library' && (
-            <div className={cn('flex items-center gap-1.5 overflow-x-auto px-1', shellTopTabsClass)}>
-              {([
-                { value: 'my-library' as const, label: 'My Library', Icon: BookOpen, count: libraryTechniques.length },
-                { value: 'discover' as const, label: 'Discover', Icon: Compass, count: null as number | null },
-              ]).map(({ value, label, Icon, count }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => {
-                    // #region agent log (dd-techniques-tour)
-                    debugTourLog('techniques top tab pressed', {
-                      to: value,
-                      selectedTechniquesTab: appState.selectedTechniquesTab,
-                      selectedBottomTab: appState.selectedBottomTab,
-                      coachMarksSeen: hasSeenCoachMarks,
-                      shellHydratedOnce,
-                      shellSyncing,
-                    })
-                    // #endregion agent log (dd-techniques-tour)
-                    if (value === 'my-library' && shellHydratedOnce && !shellSyncing && !hasSeenCoachMarks) {
-                      setCoachStep((previous) => previous ?? 0)
-                    }
-                    if (activeSurface === 'system-editor' || activeSurface === 'system-reader') {
-                      setSystemEditorSession(null)
-                      setSystemReaderSession(null)
-                      setActiveSurface(null)
-                    }
-                    updateAppState((previous) => ({
-                      ...previous,
-                      selectedTechniquesTab: value,
-                      selectedBottomTab: 'library',
-                    }))
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-bold transition',
-                    shellTopTabButtonClass,
-                    selectedTechniquesTab === value ? 'bg-white/10 text-white' : 'text-white/45',
-                  )}
-                  aria-pressed={selectedTechniquesTab === value}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>{label}</span>
-                  {count != null && count > 0 ? (
-                    <span
-                      className={cn(
-                        'inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none',
-                        selectedTechniquesTab === value ? 'bg-[#4d7cff]/25 text-[#a9c0ff]' : 'bg-white/10 text-white/60',
-                      )}
-                    >
-                      {count > 99 ? '99+' : count}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-            )}
-
-            {selectedTechniquesTab === 'my-library' && (
-              <div className="flex-1 overflow-y-auto pb-6">
-                <BranchSelect
-                  label="Technique branch"
-                  value={selectedTechniqueBranch}
-                  onChange={(branch) => updateAppState((previous) => ({
-                    ...previous,
-                    selectedTechniqueBranch: branch,
-                  }))}
-                />
-                <SearchField inputRef={librarySearchInputRef} value={librarySearchInput} onChange={(event) => setLibrarySearchInput(event.target.value)} placeholder="Search techniques" />
-                <div className="mt-2.5 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setLibraryView((previous) => (previous === 'list' ? 'graph' : 'list'))}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    <Globe className="h-4 w-4" />
-                    {libraryView === 'graph' ? 'List' : 'Graph'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSurface('techniques-filter-category')}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: appState.activeCategoryFilter === 'all' ? 'rgba(255,255,255,0.28)' : toTechniqueColor(appState.activeCategoryFilter) }} />
-                    <span>
-                      {appState.activeCategoryFilter === 'all' ? 'Filter' : BJJ_CATEGORY_META[appState.activeCategoryFilter].label}
-                    </span>
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateAppState((previous) => ({
-                      ...previous,
-                      librarySort: previous.librarySort === 'new' ? 'a-z' : 'new',
-                    }))}
-                    className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    {appState.librarySort === 'new' ? 'Newest' : 'A-Z'}
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-2.5 flex items-center justify-between px-1 text-sm font-semibold text-white/68">
-                  <span>{filteredLibraryTechniques.length} technique{filteredLibraryTechniques.length === 1 ? '' : 's'} found</span>
-                </div>
-
-                {filteredLibraryTechniques.length === 0 ? (
-                  <EmptyState
-                    title="No techniques yet"
-                    body="Browse Discover to fork curated techniques, or see what teammates are publishing in Community."
-                    actionLabel="Browse Discover"
-                    onAction={() => updateAppState((previous) => ({
-                      ...previous,
-                      selectedTechniquesTab: 'discover',
-                      selectedBottomTab: 'library',
-                    }))}
-                    secondaryLabel="Find teammates"
-                    onSecondaryAction={() => updateAppState((previous) => ({
-                      ...previous,
-                      selectedBottomTab: 'community',
-                    }))}
-                  />
-                ) : libraryView === 'graph' ? (
-                  <div className={cn(shellSubsectionSpacingClass, 'rounded-[24px] border border-white/10 bg-black/35 p-4')}>
-                    {(() => {
-                      const nodes = filteredLibraryTechniques.slice(0, 40)
-                      const radius = 140
-                      const center = 180
-                      const toPos = (index: number) => {
-                        const angle = (index / Math.max(1, nodes.length)) * Math.PI * 2
-                        return {
-                          x: center + Math.cos(angle) * radius,
-                          y: center + Math.sin(angle) * radius,
-                        }
-                      }
-                      const positions = new Map<string, { x: number; y: number }>()
-                      nodes.forEach((technique, index) => {
-                        positions.set(technique.id, toPos(index))
-                      })
-
-                      const edges: Array<{ from: string; to: string }> = []
-                      for (const technique of nodes) {
-                        for (const linkedId of technique.linkedTechniqueIds) {
-                          if (positions.has(linkedId)) {
-                            edges.push({ from: technique.id, to: linkedId })
-                          }
-                        }
-                      }
-
-                      return (
-                        <div className="relative mx-auto h-[360px] w-[360px]">
-                          <svg className="absolute inset-0 h-full w-full">
-                            {edges.map((edge) => {
-                              const from = positions.get(edge.from)
-                              const to = positions.get(edge.to)
-                              if (!from || !to) return null
-                              return (
-                                <line
-                                  key={`${edge.from}-${edge.to}`}
-                                  x1={from.x}
-                                  y1={from.y}
-                                  x2={to.x}
-                                  y2={to.y}
-                                  stroke="rgba(126,164,255,0.24)"
-                                  strokeWidth="1.25"
-                                  strokeLinecap="round"
-                                />
-                              )
-                            })}
-                          </svg>
-                          {nodes.map((technique) => {
-                            const pos = positions.get(technique.id)
-                            if (!pos) return null
-                            return (
-                              <button
-                                key={technique.id}
-                                type="button"
-                                onClick={() => openTechniqueDetail(technique.id, 'technique-detail')}
-                                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs font-bold text-white/85 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                                style={{ left: pos.x, top: pos.y }}
-                              >
-                                {technique.title.length > 18 ? `${technique.title.slice(0, 16)}…` : technique.title}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )
-                    })()}
-                  <p className="mt-4 text-xs font-semibold text-white/45">
-                      Map shows up to 40 {getMartialArtsBranchLabel(selectedTechniqueBranch)} techniques and their linked connections.
-                    </p>
-                  </div>
-                ) : (
-                  <div className={cn(shellSubsectionSpacingClass, 'space-y-3')}>
-                    {filteredLibraryTechniques.map((technique) => {
-                      const isJustForked = justForkedId?.kind === 'technique' && justForkedId.id === technique.id
-                      return (
-                      <div
-                        key={technique.id}
-                        ref={isJustForked ? handleJustForkedRef : undefined}
-                        className={cn('rounded-[22px] transition-shadow', isJustForked && 'ring-2 ring-[#4d7cff]/60 shadow-[0_0_24px_rgba(77,124,255,0.35)]')}
-                      >
-                      <button
-                        type="button"
-                        onClick={() => openTechniqueDetail(technique.id, 'technique-detail')}
-                        className="block w-full text-left"
-                      >
-                        <ShellCard className={cn('relative overflow-hidden', shellCompactCardPaddingClass)}>
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_right,rgba(255,255,255,0.03),transparent_45%)]" />
-                          <div className="relative flex items-start gap-3">
-                            <div className="mt-1 h-14 w-1 rounded-full" style={{ backgroundColor: toTechniqueColor(technique.category) }} />
-                            <div className="flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className={cn(techniqueRowTitleClass, 'font-bold leading-none')}>{technique.title}</p>
-                                {isJustForked ? (
-                                  <span className="rounded-full border border-[#4d7cff]/45 bg-[#4d7cff]/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#a9c0ff]">
-                                    New
-                                  </span>
-                                ) : null}
-                              </div>
-                              <p className="mt-2 text-sm text-white/35">{formatPrettyDate(technique.updatedAt)}</p>
-                              <div className="mt-4 flex flex-wrap gap-2">
-                                {technique.tags.slice(0, 3).map((tag) => (
-                                  <span key={tag} className="rounded-full border border-white/8 bg-white/7 px-3 py-1 text-xs font-semibold text-white/58">
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <CircleIconButton className="h-8 w-8 self-center">
-                              <ChevronDown className="h-4 w-4" />
-                            </CircleIconButton>
-                          </div>
-                        </ShellCard>
-                      </button>
-                      </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {coachStep !== null && (
-                  <div className="fixed inset-0 z-40 bg-black/55 px-6">
-                    <div className="mx-auto flex h-full w-full max-w-[430px] items-center justify-center">
-                      <ShellCard className="w-full max-w-[340px] p-6">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-white/45">Step {coachStep + 1} of 5</p>
-                            <h3 className="mt-2 text-[32px] font-black leading-none">
-                              {[
-                                'Add Techniques',
-                                'Search Your Techniques',
-                                'Filter by Category',
-                                'Tag Filtering',
-                                'Interact with Techniques',
-                              ][coachStep]}
-                            </h3>
-                          </div>
-                          <button type="button" onClick={() => void completeCoachMarksTour()} className="text-white/55">
-                            <X className="h-5 w-5" />
-                          </button>
-                        </div>
-                        <p className="mt-4 text-[18px] leading-7 text-white/62">
-                          {[
-                            'Tap the + button to add a new technique to your collection.',
-                            'Use the search bar to quickly find techniques by name or tag.',
-                            'Filter techniques by category like submission, sweep, or escape.',
-                            'Tags help you find techniques by position or custom context.',
-                            'Tap a technique to view details and keep your notes current from the add/edit flows.',
-                          ][coachStep]}
-                        </p>
-                        <div className="mt-6 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => setCoachStep((previous) => previous !== null ? Math.max(0, previous - 1) : previous)}
-                            className={cn('text-sm font-semibold text-white/55', coachStep === 0 && 'invisible')}
-                          >
-                            Back
-                          </button>
-                          <ProgressDots count={5} active={coachStep} />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (coachStep === 4) {
-                                void completeCoachMarksTour()
-                                return
-                              }
-                              setCoachStep((previous) => (previous ?? 0) + 1)
-                            }}
-                            className="rounded-full bg-[#2f58ff] px-4 py-2 text-sm font-bold"
-                          >
-                            {coachStep === 4 ? 'Got it' : 'Next'}
-                          </button>
-                        </div>
-                      </ShellCard>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {selectedTechniquesTab === 'systems' && (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="sticky top-0 z-20 shrink-0 px-1 pb-3 pt-1">
-                  <div className="rounded-[26px] border border-white/10 bg-[#050914]/94 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.36)] backdrop-blur-xl">
-                    {(() => {
-                      const activeSystems = systemsState.filter((s) => s.status !== 'draft')
-                      const branchScoped = activeSystems.filter((s) => s.branch === selectedSystemBranch)
-                      const mineCount = user?.id ? activeSystems.filter((s) => s.userId === user.id).length : 0
-                      const publicCount = branchScoped.filter((s) => s.visibility === 'public' || !s.userId).length
-                      return (
-                        <>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Training OS</p>
-                              <h2 className="mt-1 truncate text-[26px] font-black leading-none text-white">Gameplans</h2>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={openUserSystemEditorCreate}
-                              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/50 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-4 text-sm font-black text-white shadow-[0_14px_32px_rgba(47,88,255,0.35)]"
-                            >
-                              <Plus className="h-4 w-4" />
-                              New
-                            </button>
-                          </div>
-                          <div className="mt-3 grid grid-cols-3 gap-2">
-                            {[
-                              ['Maps', branchScoped.length],
-                              ['Mine', mineCount],
-                              ['Drafts', systemDraftsForBranch.length],
-                            ].map(([label, value]) => (
-                              <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.045] px-3 py-2">
-                                <p className="text-[18px] font-black leading-none text-white">{value}</p>
-                                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/38">{label}</p>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-2">
-                            <BranchSelect
-                              label="Gameplan branch"
-                              value={selectedSystemBranch}
-                              onChange={(branch) => updateAppState((previous) => ({
-                                ...previous,
-                                selectedSystemBranch: branch,
-                              }))}
-                            />
-                            <SearchField
-                              inputRef={systemsHubSearchInputRef}
-                              value={appState?.systemsHubSearch ?? ''}
-                              onChange={(event) =>
-                                updateAppState((previous) => ({ ...previous, systemsHubSearch: event.target.value }))
-                              }
-                              placeholder="Search"
-                            />
-                          </div>
-                          <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
-                            {(() => {
-                              const counts: Record<'all' | 'mine' | 'curated' | 'community', number> = {
-                                all: branchScoped.length,
-                                mine: mineCount,
-                                curated: branchScoped.filter((s) => !s.userId).length,
-                                community: user?.id ? branchScoped.filter((s) => Boolean(s.userId && s.userId !== user.id)).length : 0,
-                              }
-                              return ([
-                                ['all', 'All'],
-                                ['mine', 'Yours'],
-                                ['curated', 'Curated'],
-                                ['community', 'Community'],
-                              ] as const).map(([value, label]) => {
-                                const selected = (appState?.systemsHubFilter ?? 'all') === value
-                                const count = counts[value]
-                                return (
-                                  <button
-                                    key={value}
-                                    type="button"
-                                    onClick={() => {
-                                      setSystemActionsOpenId(null)
-                                      updateAppState((previous) => ({
-                                        ...previous,
-                                        systemsHubFilter: value,
-                                      }))
-                                    }}
-                                    className={cn(
-                                      'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition',
-                                      selected ? 'bg-white/12 text-white' : 'text-white/45',
-                                    )}
-                                    aria-pressed={selected}
-                                  >
-                                    <span>{label}</span>
-                                    {count > 0 ? (
-                                      <span className={cn(
-                                        'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none',
-                                        selected ? 'bg-[#4d7cff]/25 text-[#a9c0ff]' : 'bg-white/10 text-white/60',
-                                      )}>
-                                        {count > 99 ? '99+' : count}
-                                      </span>
-                                    ) : null}
-                                  </button>
-                                )
-                              })
-                            })()}
-                            {publicCount > 0 ? (
-                              <span className="inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-bold text-white/30">
-                                {publicCount} visible
-                              </span>
-                            ) : null}
-                          </div>
-                        </>
-                      )
-                    })()}
-                  </div>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-                {systemDraftsForBranch.length > 0 ? (
-                  <div className="mb-4 px-1">
-                    <div className="rounded-[22px] border border-[#4d7cff]/18 bg-[#07101f]/72 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.32)]">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Drafts</p>
-                          <p className="mt-1 text-sm font-semibold text-white/58">Resume unfinished training maps.</p>
-                        </div>
-                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/42">
-                          {systemDraftsForBranch.length}
-                        </span>
-                      </div>
-                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                        {systemDraftsForBranch.map((draft) => (
-                          <div key={draft.id} className="w-[245px] shrink-0 rounded-[18px] border border-white/10 bg-black/24 p-3">
-                            <div className="h-24 overflow-hidden rounded-[14px] border border-white/8 bg-[#050914]">
-                              <SystemGraphCanvas
-                                variant="preview"
-                                nodes={draft.nodes}
-                                edges={draft.edges}
-                                positions={computeGraphLayout(draft.nodes, draft.edges)}
-                                density="compact"
-                                showGrid
-                                showControls={false}
-                                showMiniMap={false}
-                                className="h-full w-full"
-                              />
-                            </div>
-                            <p className="mt-3 truncate text-sm font-black text-white">{draft.title || 'Untitled gameplan'}</p>
-                            <p className="mt-1 text-xs font-semibold text-white/42">{draft.nodes.length} steps · {draft.edges.length} outcomes</p>
-                            <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openUserSystemEditorEdit(draft)}
-                                className="min-h-[42px] rounded-[14px] border border-[#4d7cff]/35 bg-[#4d7cff]/16 px-3 text-xs font-black text-[#d9e4ff]"
-                              >
-                                Resume
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!window.confirm(`Delete draft “${draft.title}”?`)) return
-                                  void handleDeleteUserSystem(draft.id)
-                                }}
-                                className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.04] text-white/45"
-                                aria-label={`Delete draft ${draft.title}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {systemsState.filter((system) => system.status !== 'draft').length === 0 && systemDraftsForBranch.length === 0 ? (
-                  <div className="flex flex-col items-center px-2 pt-2">
-                    <EmptyState
-                      title="No gameplans yet"
-                      body="Build step-by-step training paths. Add one step, branch into outcomes, and MatFlow draws the map."
-                      actionLabel="Create gameplan"
-                      onAction={openUserSystemEditorCreate}
-                      secondaryLabel="Discover public gameplans"
-                      onSecondaryAction={() => updateAppState((previous) => ({
-                        ...previous,
-                        selectedBottomTab: 'community',
-                      }))}
-                    />
-                  </div>
-                ) : systemsFilteredSorted.length === 0 ? (
-                  <div className="flex flex-col items-center px-2 pt-2">
-                    <EmptyState
-                      title={systemDraftsForBranch.length > 0 ? 'No finished gameplans yet' : 'No matches'}
-                      body={systemDraftsForBranch.length > 0 ? 'Resume a draft above or finish a new gameplan when it is ready.' : 'Try another search term or filter. Your gameplans are still saved.'}
-                      actionLabel="Clear filters"
-                      onAction={() => updateAppState((previous) => ({
-                        ...previous,
-                        systemsHubFilter: 'all',
-                        systemsHubSearch: '',
-                      }))}
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-4 px-1">
-                    {systemsFilteredSorted.map((system) => {
-                      const isMine = Boolean(user && system.userId && system.userId === user.id)
-                      const isCatalog = !system.userId
-                      const isCommunity = Boolean(system.userId && !isMine)
-                      const pinned = (appState?.pinnedSystemIds ?? []).includes(system.id)
-                      const canOpenReader = !system.locked || appState.profile.proUnlocked
-                      const isJustForked = justForkedId?.kind === 'system' && justForkedId.id === system.id
-                      const linkedTechniqueCount = new Set(system.nodes.flatMap((node) => node.linkedTechniqueIds ?? node.linkedTechniqueTitles ?? [])).size
-                      return (
-                        <div
-                          key={system.id}
-                          ref={isJustForked ? handleJustForkedRef : undefined}
-                          className={cn('rounded-[22px] transition-shadow', isJustForked && 'ring-2 ring-[#4d7cff]/60 shadow-[0_0_24px_rgba(77,124,255,0.35)]')}
-                        >
-                        <ShellCard className="overflow-visible p-0">
-                          <div className="relative">
-                            <SystemPreviewGraph system={system} />
-                            <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
-                              {isJustForked ? (
-                                <span className="rounded-full border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#c8d6ff] backdrop-blur-md">
-                                  New
-                                </span>
-                              ) : null}
-                              {isMine ? (
-                                <span className="rounded-full border border-emerald-500/35 bg-emerald-500/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-100 backdrop-blur-md">
-                                  Yours
-                                </span>
-                              ) : isCatalog ? (
-                                <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/62 backdrop-blur-md">
-                                  Curated
-                                </span>
-                              ) : isCommunity ? (
-                                <span className="rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b8c9ff] backdrop-blur-md">
-                                  Community
-                                </span>
-                              ) : null}
-                              {system.locked && !appState.profile.proUnlocked ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b8c9ff] backdrop-blur-md">
-                                  <Lock className="h-3.5 w-3.5" />
-                                  Pro
-                                </span>
-                              ) : null}
-                            </div>
-                            {pinned ? (
-                              <div className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/30 bg-amber-300/14 text-amber-100 backdrop-blur-md">
-                                <Star className="h-4 w-4 fill-amber-200" />
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className={cn(isCompactHeight ? 'p-4' : 'p-5')}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <h3 className={cn(categoryRowTitleClass, 'truncate font-black leading-none')}>{system.title}</h3>
-                                <p className="mt-2 line-clamp-2 text-[15px] leading-6 text-white/60">{system.summary}</p>
-                              </div>
-                              <div className="relative shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setSystemActionsOpenId((current) => (current === system.id ? null : system.id))}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/70"
-                                  aria-label={`${system.title} actions`}
-                                  aria-expanded={systemActionsOpenId === system.id}
-                                >
-                                  <MoreHorizontal className="h-5 w-5" />
-                                </button>
-                                {systemActionsOpenId === system.id ? (
-                                  <div className="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-[16px] border border-white/12 bg-[#080d18] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        togglePinSystem(system.id)
-                                        setSystemActionsOpenId(null)
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
-                                    >
-                                      <Star className={cn('h-4 w-4', pinned ? 'fill-amber-300 text-amber-200' : 'text-white/50')} />
-                                      {pinned ? 'Unpin' : 'Pin'}
-                                    </button>
-                                    {isMine ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setSystemActionsOpenId(null)
-                                            openUserSystemEditorEdit(system)
-                                          }}
-                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
-                                        >
-                                          <Pencil className="h-4 w-4 text-white/50" />
-                                          Edit
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setSystemActionsOpenId(null)
-                                            openUserSystemDuplicate(system)
-                                          }}
-                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
-                                        >
-                                          <Copy className="h-4 w-4 text-white/50" />
-                                          Duplicate
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setSystemActionsOpenId(null)
-                                            if (!window.confirm(`Delete “${system.title}”?`)) return
-                                            void handleDeleteUserSystem(system.id)
-                                          }}
-                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-red-200 hover:bg-red-500/10"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                          Delete
-                                        </button>
-                                      </>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-                            <div className="mt-4 grid grid-cols-3 gap-2">
-                              {[
-                                ['Steps', system.nodes.length],
-                                ['Links', system.edges.length],
-                                ['Refs', linkedTechniqueCount],
-                              ].map(([label, value]) => (
-                                <div key={label} className="rounded-[14px] border border-white/8 bg-black/25 px-3 py-2">
-                                  <p className="text-base font-black leading-none text-white">{value}</p>
-                                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">{label}</p>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="mt-4 flex items-center gap-2">
-                              {canOpenReader ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSystemActionsOpenId(null)
-                                    openSystemReader(system)
-                                  }}
-                                  className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-4 text-sm font-black text-[#d9e4ff] shadow-[0_10px_28px_rgba(77,124,255,0.18)]"
-                                >
-                                  <BookOpen className="h-4 w-4" />
-                                  Open
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setActiveSurface('paywall')}
-                                  className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/45 bg-[#4d7cff]/18 px-4 text-sm font-black text-[#d9e4ff]"
-                                >
-                                  <Lock className="h-4 w-4" />
-                                  Unlock Pro
-                                </button>
-                              )}
-                              {isMine ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSystemActionsOpenId(null)
-                                    openUserSystemEditorEdit(system)
-                                  }}
-                                  className="inline-flex min-h-[48px] items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white/75"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </button>
-                              ) : null}
-                            </div>
-                            {isMine ? (
-                              <p className="mt-3 text-xs font-semibold text-white/36">
-                                {system.visibility === 'public' ? 'Public' : 'Private'}
-                              </p>
-                            ) : null}
-                          </div>
-                        </ShellCard>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                </div>
-              </div>
-            )}
-
-            {selectedTechniquesTab === 'discover' && (
-              <div className="flex-1 overflow-y-auto pb-6">
-                <BranchSelect
-                  label="Discover branch"
-                  value={selectedTechniqueBranch}
-                  onChange={(branch) => updateAppState((previous) => ({
-                    ...previous,
-                    selectedTechniqueBranch: branch,
-                  }))}
-                />
-                <SearchField inputRef={librarySearchInputRef} value={librarySearchInput} onChange={(event) => setLibrarySearchInput(event.target.value)} placeholder="Search techniques" />
-                {discoverTechniques.length === 0 ? (
-                  <EmptyState title="Discover is empty" body="Technique categories will appear here once the catalog is available." />
-                ) : (
-                  <div className={cn(shellSubsectionSpacingClass, 'space-y-3')}>
-                    {(Object.keys(BJJ_CATEGORY_META) as BjjTechniqueCategory[]).map((category) => {
-                      const expanded = expandedDiscoverCategory === category
-                      const items = discoverByCategory[category]
-                      return (
-                        <div key={category}>
-                          <button
-                            type="button"
-                            onClick={() => setExpandedDiscoverCategory((previous) => previous === category ? null : category)}
-                            className="block w-full text-left"
-                          >
-                            <ShellCard className="px-4 py-3.5">
-                              <div className="flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <span className="h-6 w-1 rounded-full" style={{ backgroundColor: BJJ_CATEGORY_META[category].color }} />
-                                  <div>
-                                    <p className={cn(categoryRowTitleClass, 'font-black leading-none')}>{BJJ_CATEGORY_META[category].label}</p>
-                                    <p className="mt-1 text-sm text-white/40">{items.length} techniques</p>
-                                  </div>
-                                </div>
-                                <ChevronDown className={cn('h-5 w-5 text-white/45 transition', expanded && 'rotate-180')} />
-                              </div>
-                            </ShellCard>
-                          </button>
-                          {expanded && (
-                            <div className="mt-3 space-y-2">
-                              {items.map((technique) => {
-                                const added = appState.discoverAddedTechniqueIds.includes(technique.id)
-                                return (
-                                  <button
-                                    key={technique.id}
-                                    type="button"
-                                    onClick={() => openTechniqueDetail(technique.id, 'discover-detail')}
-                                    className="flex w-full items-center justify-between rounded-[20px] border border-white/8 bg-white/5 px-4 py-3.5 text-left transition hover:bg-white/7"
-                                  >
-                                    <div>
-                                      <p className={cn(techniqueRowTitleClass, 'font-bold leading-none')}>{technique.title}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                      {added && (
-                                        <span className="rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/18 px-3 py-1 text-xs font-bold text-[#8cabff]">
-                                          Added
-                                        </span>
-                                      )}
-                                      <ChevronRight className="h-5 w-5 text-white/38" />
-                                    </div>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <LibraryGameplansShell
+            appState={appState}
+            user={user}
+            selectedBottomTab={selectedBottomTab}
+            libraryTechniques={libraryTechniques}
+            filteredLibraryTechniques={filteredLibraryTechniques}
+            librarySearchInput={librarySearchInput}
+            setLibrarySearchInput={setLibrarySearchInput}
+            librarySearchInputRef={librarySearchInputRef}
+            libraryView={libraryView}
+            setLibraryView={setLibraryView}
+            selectedTechniqueBranch={selectedTechniqueBranch}
+            selectedTechniquesTab={selectedTechniquesTab}
+            discoverByCategory={discoverByCategory}
+            discoverTechniques={discoverTechniques}
+            expandedDiscoverCategory={expandedDiscoverCategory}
+            setExpandedDiscoverCategory={setExpandedDiscoverCategory}
+            systemsState={systemsState}
+            systemsFilteredSorted={systemsFilteredSorted}
+            systemDraftsForBranch={systemDraftsForBranch}
+            systemsHubSearchInputRef={systemsHubSearchInputRef}
+            selectedSystemBranch={selectedSystemBranch}
+            systemActionsOpenId={systemActionsOpenId}
+            setSystemActionsOpenId={setSystemActionsOpenId}
+            togglePinSystem={togglePinSystem}
+            justForkedId={justForkedId}
+            handleJustForkedRef={handleJustForkedRef}
+            coachStep={coachStep}
+            setCoachStep={setCoachStep}
+            hasSeenCoachMarks={hasSeenCoachMarks}
+            completeCoachMarksTour={completeCoachMarksTour}
+            debugTourLog={debugTourLog}
+            shellHydratedOnce={shellHydratedOnce}
+            shellSyncing={shellSyncing}
+            activeSurface={activeSurface}
+            setActiveSurface={setActiveSurface}
+            updateAppState={updateAppState}
+            isCompactHeight={isCompactHeight}
+            shellSubsectionSpacingClass={shellSubsectionSpacingClass}
+            shellCompactCardPaddingClass={shellCompactCardPaddingClass}
+            shellTopTabButtonClass={shellTopTabButtonClass}
+            shellTopTabsClass={shellTopTabsClass}
+            categoryRowTitleClass={categoryRowTitleClass}
+            techniqueRowTitleClass={techniqueRowTitleClass}
+            clearSystemEditorSession={() => setSystemEditorSession(null)}
+            clearSystemReaderSession={() => setSystemReaderSession(null)}
+            openSystemReader={openSystemReader}
+            openTechniqueDetail={openTechniqueDetail}
+            openUserSystemDuplicate={openUserSystemDuplicate}
+            openUserSystemEditorCreate={openUserSystemEditorCreate}
+            openUserSystemEditorEdit={openUserSystemEditorEdit}
+            handleDeleteUserSystem={handleDeleteUserSystem}
+            onPullToRefresh={handlePullToRefresh}
+          />
         )}
 
         {selectedBottomTab === 'you' && socialProfileEnabled && (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {socialInsightsOpen ? (
-              <SocialInsightsSheet
-                achievements={achievements}
-                analyticsLabel={analyticsLabel}
-                challenges={challenges}
-                checklistItems={checklistItems}
-                onClose={() => setActiveSurface(null)}
-                onOpenChecklist={() => showInfo('Checklist progress updates as you log sessions and techniques.')}
-                topSubmissions={favoriteSubmissions}
-                totalSessions={analyticsSessions.length}
-                totalSubmissions={totalSubmissions}
-                totalTaps={totalTaps}
-                totalTechniques={analyticsTechniqueCount}
-              />
-            ) : (
-              <SocialYouProfile
-                activeTab={youProfileTab}
-                loading={socialProfileLoading}
-                overview={socialProfileOverview}
-                systems={systemsState.filter((system) => system.userId === user?.id)}
-                techniques={libraryTechniques}
-                onEditProfile={beginEditProfile}
-                onOpenFollowers={() => { void openSocialConnectionsSheet('followers') }}
-                onOpenFollowing={() => { void openSocialConnectionsSheet('following') }}
-                onOpenInsights={() => {
-                  closeSocialChromeForInsights()
-                  setActiveSurface('social-insights')
-                }}
-                onOpenSystem={(system) => openSystemReader(system)}
-                onOpenTechnique={(techniqueId) => openTechniqueDetail(techniqueId, 'technique-detail')}
-                onShareProfile={() => { void handleShareProfile() }}
-                onTabChange={setYouProfileTab}
-              />
-            )}
-          </div>
+          <YouSocialShell
+            socialInsightsOpen={socialInsightsOpen}
+            achievements={achievements}
+            analyticsLabel={analyticsLabel}
+            challenges={challenges}
+            checklistItems={checklistItems}
+            favoriteSubmissions={favoriteSubmissions}
+            totalSessions={analyticsSessions.length}
+            totalSubmissions={totalSubmissions}
+            totalTaps={totalTaps}
+            analyticsTechniqueCount={analyticsTechniqueCount}
+            youProfileTab={youProfileTab}
+            socialProfileLoading={socialProfileLoading}
+            socialProfileOverview={socialProfileOverview}
+            ownedSystems={systemsState.filter((system) => system.userId === user?.id)}
+            libraryTechniques={libraryTechniques}
+            setActiveSurface={setActiveSurface}
+            showInfo={showInfo}
+            beginEditProfile={beginEditProfile}
+            openSocialConnectionsSheet={openSocialConnectionsSheet}
+            closeSocialChromeForInsights={closeSocialChromeForInsights}
+            openSystemReader={openSystemReader}
+            openTechniqueDetail={openTechniqueDetail}
+            handleShareProfile={handleShareProfile}
+            setYouProfileTab={setYouProfileTab}
+            onBrowseDiscoverTechniques={() => updateAppState((previous) => ({
+              ...previous,
+              selectedBottomTab: 'library',
+              selectedTechniquesTab: 'discover',
+            }))}
+            onCreateGameplan={openUserSystemEditorCreate}
+          />
         )}
 
         {selectedBottomTab === 'you' && !socialProfileEnabled && (
-          <div className="flex-1 overflow-y-auto pb-6">
-            <button
-              type="button"
-              onClick={beginEditProfile}
-              className={cn(isCompactHeight ? 'text-[28px]' : 'text-[34px]', 'mb-3 block text-left font-black text-[#4d7cff]')}
-            >
-              {appState.profile.displayName}
-            </button>
-            <div className="grid grid-cols-2 gap-3">
-              <ShellCard className={shellCompactCardPaddingClass}>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/42">FlowStreak</p>
-                <div className="mt-3.5 flex items-end justify-between">
-                  <p className={cn(shellMetricTileClass, 'font-black')}>{appState.profile.flowStreak}</p>
-                  <Flame className={cn(isCompactHeight ? 'h-7 w-7' : 'h-8 w-8', 'text-[#4d7cff]')} />
-                </div>
-              </ShellCard>
-              <ShellCard className={shellCompactCardPaddingClass}>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/42">Training Streak</p>
-                <div className="mt-3.5 flex items-end justify-between">
-                  <p className={cn(shellMetricTileClass, 'font-black')}>{appState.profile.trainingStreak}</p>
-                  <Zap className={cn(isCompactHeight ? 'h-7 w-7' : 'h-8 w-8', 'text-[#4d7cff]')} />
-                </div>
-              </ShellCard>
-            </div>
-
-            <ShellCard className={cn(shellSubsectionSpacingClass, isCompactHeight ? 'p-4' : 'p-5')}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className={cn(isCompactHeight ? 'text-[28px]' : 'text-[34px]', 'font-black leading-none')}>Level {appState.profile.level}</p>
-                  <p className="mt-1.5 text-base text-white/50">{appState.profile.xp} Total XP</p>
-                </div>
-                <div className="rounded-full border border-[#4d7cff]/28 bg-[#4d7cff]/12 px-3 py-1 text-sm font-bold text-[#8cabff]">
-                  {appState.profile.belt.toUpperCase()}
-                </div>
-              </div>
-              <div className="mt-5 h-3 rounded-full bg-white/10">
-                <div
-                  className="h-3 rounded-full bg-[linear-gradient(135deg,#4c6fff,#2c52ff)]"
-                  style={{ width: `${Math.min(100, (appState.profile.xp % 300) / 3)}%` }}
-                />
-              </div>
-              <p className="mt-3 text-right text-sm font-semibold text-white/48">{Math.round((appState.profile.xp % 300) / 3)}%</p>
-              <div className="mt-4">
-                <BeltBar belt={appState.profile.belt} />
-              </div>
-            </ShellCard>
-
-            <div className={cn(shellSectionSpacingClass, 'flex items-center justify-between px-1')}>
-              <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Analytics</h2>
-              <button
-                type="button"
-                onClick={() => setAnalyticsWindow((previous) => previous === 'this-month' ? 'all-time' : 'this-month')}
-                className="inline-flex items-center gap-1 text-sm font-semibold text-white/58"
-              >
-                {analyticsLabel}
-                <ChevronDown className="h-4 w-4" />
-              </button>
-            </div>
-            <div className={cn(shellSubsectionSpacingClass, 'grid grid-cols-2 gap-3')}>
-              {ANALYTICS_CARDS.map(({ label, background, Icon }) => {
-                const value = label === 'Submissions'
-                  ? totalSubmissions
-                  : label === 'Taps'
-                    ? totalTaps
-                    : label === 'Sessions'
-                      ? analyticsSessions.length
-                      : analyticsTechniqueCount
-
-                return (
-                <ShellCard key={label} className={shellCompactCardPaddingClass} style={{ backgroundColor: background }}>
-                  <div className="flex items-center justify-between">
-                    <Icon className="h-5 w-5 text-[#7ea4ff]" />
-                    <ChevronRight className="h-4 w-4 text-white/30" />
-                  </div>
-                  <p className={cn(isCompactHeight ? 'mt-5 text-[30px]' : 'mt-6 text-[38px]', 'font-black leading-none')}>{value}</p>
-                  <p className="mt-2.5 text-sm font-semibold text-white/62">{label}</p>
-                </ShellCard>
-                )
-              })}
-            </div>
-
-            <ShellCard className={cn(shellSubsectionSpacingClass, shellCompactCardPaddingClass)}>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-white/80">Top submissions</p>
-                <p className="text-xs font-semibold text-white/45">{analyticsLabel}</p>
-              </div>
-              {favoriteSubmissions.length === 0 ? (
-                <p className="mt-4 text-sm text-white/45">Log sessions with submissions to see your top finishes.</p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {(() => {
-                    const max = favoriteSubmissions[0]?.[1] ?? 1
-                    return favoriteSubmissions.map(([submission, count]) => (
-                      <div key={submission} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm font-semibold text-white/70">
-                          <span className="max-w-[250px] truncate">{submission}</span>
-                          <span>{count}</span>
-                        </div>
-                        <div className="h-2.5 rounded-full bg-white/10">
-                          <div
-                            className="h-2.5 rounded-full bg-[linear-gradient(135deg,#4c6fff,#2c52ff)]"
-                            style={{ width: `${Math.max(8, Math.round((count / Math.max(1, max)) * 100))}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  })()}
-                </div>
-              )}
-            </ShellCard>
-
-            <div className={cn(shellSectionSpacingClass, 'flex items-center justify-between px-1')}>
-              <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Weekly Challenges</h2>
-            </div>
-            <ShellCard className={cn(shellSubsectionSpacingClass, 'flex items-center justify-between bg-[#493d06] px-4 py-3')}>
-              <div className="inline-flex items-center gap-2 text-lg font-bold">
-                <Target className="h-5 w-5 text-[#ffd84d]" />
-                {completedChallengeCount} / {challenges.length} Completed
-              </div>
-              <div className="text-2xl font-black">
-                {challengeCompletionPercent}%
-              </div>
-            </ShellCard>
-            <div className={cn(shellSubsectionSpacingClass, 'flex gap-3 overflow-x-auto pb-1')}>
-              {challenges.map((challenge) => (
-                <ShellCard key={challenge.id} className={cn(shellCompactCardPaddingClass, 'min-w-[280px]')}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className={cn(shellFeatureTitleClass, 'font-bold leading-none')}>{challenge.title}</p>
-                      <p className="mt-2 text-[15px] leading-6 text-white/58">{challenge.summary}</p>
-                    </div>
-                    <span className="rounded-full bg-[#163b16] px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-[#62d686]">
-                      {challenge.difficulty}
-                    </span>
-                  </div>
-                  <div className="mt-4 h-2.5 rounded-full bg-white/10">
-                    <div className="h-2.5 rounded-full bg-[linear-gradient(135deg,#4c6fff,#2c52ff)]" style={{ width: `${Math.min(100, (challenge.progress / challenge.goal) * 100)}%` }} />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-sm font-semibold text-white/48">
-                    <span>{challenge.progress}/{challenge.goal}</span>
-                    <span>+{challenge.xpReward} XP</span>
-                  </div>
-                </ShellCard>
-              ))}
-            </div>
-
-            <div className={cn(shellSectionSpacingClass, 'flex items-center justify-between px-1')}>
-              <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Recent Achievements</h2>
-            </div>
-            <ShellCard className={cn(shellSubsectionSpacingClass, 'flex items-center justify-between bg-[#493d06] px-4 py-3')}>
-              <div className="inline-flex items-center gap-2 text-lg font-bold">
-                <Trophy className="h-5 w-5 text-[#ffd84d]" />
-                {completedAchievementCount} / {achievements.length} Unlocked
-              </div>
-              <div className="text-2xl font-black">
-                {achievementCompletionPercent}%
-              </div>
-            </ShellCard>
-            <div className={cn(shellSubsectionSpacingClass, 'flex gap-3 overflow-x-auto pb-1')}>
-              {achievements.map((achievement) => (
-                <ShellCard key={achievement.id} className={cn(shellCompactCardPaddingClass, 'min-w-[280px]')}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className={cn(shellFeatureTitleClass, 'font-bold leading-none')}>{achievement.title}</p>
-                      <p className="mt-2 text-[15px] leading-6 text-white/58">{achievement.summary}</p>
-                    </div>
-                    <Medal className={cn('h-6 w-6', achievement.progress >= achievement.goal ? 'text-[#ffd84d]' : 'text-white/25')} />
-                  </div>
-                  <div className="mt-4 h-2.5 rounded-full bg-white/10">
-                    <div className="h-2.5 rounded-full bg-white/70" style={{ width: `${Math.min(100, (achievement.progress / achievement.goal) * 100)}%` }} />
-                  </div>
-                </ShellCard>
-              ))}
-            </div>
-
-            <div className={cn(shellSectionSpacingClass, 'flex items-center justify-between px-1')}>
-              <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Blue Belt Checklist</h2>
-              <button type="button" className="text-sm font-semibold text-[#7ea4ff]" onClick={() => updateAppState((previous) => ({
-                ...previous,
-                selectedBottomTab: 'library',
-                selectedTechniquesTab: 'discover',
-              }))}>
-                Open checklist
-              </button>
-            </div>
-            <div className={cn(shellSubsectionSpacingClass, 'grid gap-3')}>
-              {checklistItems.map((item) => (
-                <ShellCard key={item.id} className={cn('flex items-start gap-4', shellCompactCardPaddingClass)}>
-                  <div className={cn('mt-1 flex h-8 w-8 items-center justify-center rounded-full border', item.completed ? 'border-[#4d7cff] bg-[#4d7cff]' : 'border-white/14 bg-white/6')}>
-                    {item.completed ? <Check className="h-4 w-4" /> : <div className="h-4 w-4" aria-hidden="true" />}
-                  </div>
-                  <div>
-                    <p className={cn(shellCardTitleClass, 'font-bold leading-none')}>{item.title}</p>
-                    <p className="mt-2 text-[15px] leading-6 text-white/58">{item.summary}</p>
-                  </div>
-                </ShellCard>
-              ))}
-            </div>
-
-            {favoriteSubmissions.length > 0 && (
-              <>
-                <div className="mt-8 px-1">
-                  <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Favourite Submissions</h2>
-                </div>
-                <div className={cn(shellSubsectionSpacingClass, 'space-y-3')}>
-                  {favoriteSubmissions.map(([submission, count]) => (
-                    <ShellCard key={submission} className={cn('flex items-center justify-between', shellCompactCardPaddingClass)}>
-                      <div className="flex items-center gap-3">
-                        <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
-                        <span className={cn(shellCardTitleClass, 'font-bold')}>{submission}</span>
-                      </div>
-                      <span className={cn(shellFeatureTitleClass, 'font-black')}>{count}</span>
-                    </ShellCard>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <YouLegacyShell
+            appState={appState}
+            isCompactHeight={isCompactHeight}
+            analyticsLabel={analyticsLabel}
+            analyticsSessionsLength={analyticsSessions.length}
+            totalSubmissions={totalSubmissions}
+            totalTaps={totalTaps}
+            analyticsTechniqueCount={analyticsTechniqueCount}
+            favoriteSubmissions={favoriteSubmissions}
+            challenges={challenges}
+            completedChallengeCount={completedChallengeCount}
+            challengeCompletionPercent={challengeCompletionPercent}
+            achievements={achievements}
+            completedAchievementCount={completedAchievementCount}
+            achievementCompletionPercent={achievementCompletionPercent}
+            checklistItems={checklistItems}
+            shellSectionSpacingClass={shellSectionSpacingClass}
+            shellSubsectionSpacingClass={shellSubsectionSpacingClass}
+            shellSectionTitleClass={shellSectionTitleClass}
+            shellCompactCardPaddingClass={shellCompactCardPaddingClass}
+            shellMetricTileClass={shellMetricTileClass}
+            shellFeatureTitleClass={shellFeatureTitleClass}
+            shellCardTitleClass={shellCardTitleClass}
+            beginEditProfile={beginEditProfile}
+            setAnalyticsWindow={setAnalyticsWindow}
+            updateAppState={updateAppState}
+          />
         )}
 
-        <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+8px)] left-1/2 z-30 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 rounded-[28px] border border-white/10 bg-[#080b13]/88 px-4 py-3 backdrop-blur-xl">
+        <nav aria-label="Primary" className="fixed bottom-[calc(env(safe-area-inset-bottom)+8px)] left-1/2 z-30 w-[calc(100%-24px)] max-w-[406px] -translate-x-1/2 rounded-[28px] border border-white/10 bg-[#080b13]/88 px-4 py-3 backdrop-blur-xl">
           <div className="grid grid-cols-5 gap-1">
             {BOTTOM_NAV_ITEMS.map(({ value, label, Icon }) => (
               <button
                 key={value}
                 type="button"
+                aria-current={selectedBottomTab === value ? 'page' : undefined}
+                aria-label={label}
                 onClick={() => {
                   // #region agent log (dd-techniques-tour)
                   debugTourLog('bottom nav pressed', {
@@ -6785,6 +3708,7 @@ function BjjAppInner() {
                     shellSyncing,
                   })
                   // #endregion agent log (dd-techniques-tour)
+                  if (selectedBottomTab !== value) void haptics.light()
                   if (value === 'library' && shellHydratedOnce && !shellSyncing && appState.selectedTechniquesTab === 'my-library' && !hasSeenCoachMarks) {
                     setCoachStep((previous) => previous ?? 0)
                   }
@@ -6812,7 +3736,7 @@ function BjjAppInner() {
                   }))
                 }}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 py-2 text-[10px] font-bold transition',
+                  'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 py-2 text-[10px] font-bold transition active:scale-[0.94]',
                   selectedBottomTab === value ? 'text-[#4d7cff]' : 'text-white/28',
                 )}
               >
@@ -6868,7 +3792,18 @@ function BjjAppInner() {
 
               <button
                 type="button"
+                aria-label={
+                  selectedBottomTab === 'gameplans'
+                    ? 'New gameplan'
+                    : selectedBottomTab === 'library' && selectedTechniquesTab === 'discover'
+                      ? 'New discover technique'
+                      : selectedBottomTab === 'library'
+                        ? 'New technique'
+                        : isSpeedDialOpen ? 'Close quick actions' : 'Open quick actions'
+                }
+                aria-expanded={selectedBottomTab === 'today' ? isSpeedDialOpen : undefined}
                 onClick={() => {
+                  void haptics.light()
                   if (selectedBottomTab === 'gameplans') {
                     openUserSystemEditorCreate()
                     return
@@ -6894,7 +3829,7 @@ function BjjAppInner() {
                   }
                   setIsSpeedDialOpen((previous) => !previous)
                 }}
-                className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] text-white shadow-[0_18px_40px_rgba(37,99,235,0.42)]"
+                className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] text-white shadow-[0_18px_40px_rgba(37,99,235,0.42)] transition active:scale-95"
               >
                 <Plus className={cn('h-7 w-7 transition', selectedBottomTab === 'today' && isSpeedDialOpen && 'rotate-45')} />
               </button>
@@ -6981,7 +3916,7 @@ function BjjAppInner() {
           {publicProfileLoading && !publicProfileBundle ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, index) => (
-                <div key={index} className="h-20 rounded-[18px] bg-white/[0.06] animate-pulse" />
+                <div key={index} className="skeleton-shimmer h-20 rounded-[18px] bg-white/[0.06]" />
               ))}
             </div>
           ) : publicProfileBundle ? (
@@ -7135,7 +4070,7 @@ function BjjAppInner() {
                   {publicProfileReviewsLoading ? (
                     <div className="space-y-2">
                       {[0, 1].map((i) => (
-                        <div key={i} className="h-20 rounded-[18px] bg-white/[0.04] animate-pulse" />
+                        <div key={i} className="skeleton-shimmer h-20 rounded-[18px] bg-white/[0.04]" />
                       ))}
                     </div>
                   ) : publicProfileReviews.length === 0 ? (
@@ -7532,6 +4467,7 @@ function BjjAppInner() {
                 type="button"
                 onClick={() => setSocialEditPost(null)}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/78"
+                aria-label="Close edit post"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -8076,9 +5012,19 @@ function BjjAppInner() {
       )}
 
       {activeSurface === 'new-session' && (
-        <ModalShell
-          title={editingSessionId ? 'Edit Session' : 'New Session'}
-          onBack={() => {
+        <SessionFormModal
+          editingSessionId={editingSessionId}
+          savingSession={savingSession}
+          sessionDraft={sessionDraft}
+          setSessionDraft={setSessionDraft}
+          sessionDurationMode={sessionDurationMode}
+          setSessionDurationMode={setSessionDurationMode}
+          sessionPhotoInputRef={sessionPhotoInputRef}
+          sessionPhotoPreview={sessionPhotoPreview}
+          setSessionPhotoFile={setSessionPhotoFile}
+          setSessionPhotoPreview={setSessionPhotoPreview}
+          libraryTechniques={libraryTechniques}
+          onClose={() => {
             setSessionPhotoFile(null)
             setSessionPhotoPreview(null)
             setSessionPhotoExistingUrl(null)
@@ -8086,543 +5032,23 @@ function BjjAppInner() {
             sessionClientIdRef.current = ''
             setActiveSurface(null)
           }}
-          variant="sessions"
-          action={
-            <button
-              type="button"
-              onClick={handleSaveSession}
-              disabled={savingSession}
-              aria-busy={savingSession}
-              className="rounded-2xl bg-[#2f58ff] px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {savingSession ? 'Saving…' : editingSessionId ? 'Update' : 'Save'}
-            </button>
-          }
-        >
-          <div className="space-y-6 pb-6">
-            <div className="grid grid-cols-2 gap-4">
-              <label className="min-w-0 space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Date</span>
-                <div className="flex h-12 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/6 px-3">
-                  <Calendar className="pointer-events-none h-4 w-4 shrink-0 text-white/40" aria-hidden />
-                  <input
-                    type="date"
-                    value={sessionDraft.date}
-                    onChange={(event) => setSessionDraft((previous) => ({ ...previous, date: event.target.value }))}
-                    className="min-h-12 min-w-0 flex-1 bg-transparent text-base font-medium text-white outline-none [color-scheme:dark]"
-                  />
-                </div>
-              </label>
-              <label className="min-w-0 space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Time</span>
-                <div className="flex h-12 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/6 px-3">
-                  <Clock3 className="pointer-events-none h-4 w-4 shrink-0 text-white/40" aria-hidden />
-                  <input
-                    type="time"
-                    value={sessionDraft.time}
-                    onChange={(event) => setSessionDraft((previous) => ({ ...previous, time: event.target.value }))}
-                    className="min-h-12 min-w-0 flex-1 bg-transparent text-base font-medium text-white outline-none [color-scheme:dark]"
-                  />
-                </div>
-              </label>
-            </div>
-
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Location</span>
-              <div className="flex h-12 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/6 px-3">
-                <MapPin className="pointer-events-none h-4 w-4 shrink-0 text-white/40" aria-hidden />
-                <input
-                  value={sessionDraft.location}
-                  onChange={(event) => setSessionDraft((previous) => ({ ...previous, location: event.target.value }))}
-                  placeholder="Gym name..."
-                  className="min-h-12 min-w-0 flex-1 bg-transparent text-base font-medium text-white placeholder:text-white/35 outline-none"
-                />
-              </div>
-            </label>
-
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Discipline</span>
-              <div
-                role="radiogroup"
-                aria-label="Martial arts discipline"
-                className="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
-              >
-                {MARTIAL_ARTS_BRANCHES.map((branch) => {
-                  const selected = sessionDraft.branch === branch.id
-                  return (
-                    <button
-                      key={branch.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => {
-                        void haptics.light()
-                        setSessionDraft((previous) => {
-                          if (previous.branch === branch.id) return previous
-                          const nextTypes = SESSION_TYPES_BY_BRANCH[branch.id] ?? SESSION_TYPES_BY_BRANCH.bjj
-                          const nextType = nextTypes.includes(previous.type) ? previous.type : (nextTypes[0] ?? previous.type)
-                          return { ...previous, branch: branch.id, type: nextType }
-                        })
-                      }}
-                      className={cn(
-                        'shrink-0 rounded-full px-4 py-2 text-sm font-bold',
-                        selected ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
-                      )}
-                    >
-                      {branch.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Type</span>
-              <div role="radiogroup" aria-label="Session type" className="mt-3 flex flex-wrap gap-2">
-                {(SESSION_TYPES_BY_BRANCH[sessionDraft.branch] ?? SESSION_TYPES_BY_BRANCH.bjj).map((type) => {
-                  const selected = sessionDraft.type === type
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => {
-                        void haptics.light()
-                        setSessionDraft((previous) => ({ ...previous, type }))
-                      }}
-                      className={cn(
-                        'rounded-full px-4 py-2 text-sm font-bold',
-                        selected ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
-                      )}
-                    >
-                      {type}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Submissions</span>
-              <input
-                value={sessionDraft.submissions}
-                onChange={(event) => setSessionDraft((previous) => ({ ...previous, submissions: event.target.value }))}
-                placeholder="Triangle choke, rear naked choke..."
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Taps</span>
-              <input
-                value={sessionDraft.taps}
-                onChange={(event) => setSessionDraft((previous) => ({ ...previous, taps: event.target.value }))}
-                placeholder="Leg lock, armbar..."
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-            </label>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Duration</span>
-                  <span className="text-xs font-semibold text-white/55">{sessionDraft.durationMinutes} min</span>
-                </div>
-                <div role="radiogroup" aria-label="Duration preset" className="flex flex-wrap gap-2">
-                  {DURATION_PRESETS.map((preset) => {
-                    const selected = sessionDurationMode === 'preset' && sessionDraft.durationMinutes === preset
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => {
-                          void haptics.light()
-                          setSessionDurationMode('preset')
-                          setSessionDraft((previous) => ({ ...previous, durationMinutes: preset }))
-                        }}
-                        className={cn(
-                          'rounded-full px-4 py-2 text-sm font-bold',
-                          selected ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
-                        )}
-                      >
-                        {preset}m
-                      </button>
-                    )
-                  })}
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={sessionDurationMode === 'custom'}
-                    onClick={() => {
-                      void haptics.light()
-                      setSessionDurationMode('custom')
-                    }}
-                    className={cn(
-                      'rounded-full px-4 py-2 text-sm font-bold',
-                      sessionDurationMode === 'custom' ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
-                    )}
-                  >
-                    Custom
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    aria-label="Decrease duration by 5 minutes"
-                    onClick={() => {
-                      void haptics.light()
-                      setSessionDurationMode('custom')
-                      setSessionDraft((previous) => ({
-                        ...previous,
-                        durationMinutes: Math.max(DURATION_MIN, previous.durationMinutes - 5),
-                      }))
-                    }}
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/6 text-lg font-bold text-white"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={DURATION_MIN}
-                    max={DURATION_MAX}
-                    aria-label="Duration in minutes"
-                    value={sessionDraft.durationMinutes}
-                    onFocus={() => setSessionDurationMode('custom')}
-                    onChange={(event) => {
-                      const raw = event.target.value
-                      const parsed = Number.parseInt(raw, 10)
-                      setSessionDurationMode('custom')
-                      setSessionDraft((previous) => ({
-                        ...previous,
-                        durationMinutes: Number.isFinite(parsed) ? parsed : previous.durationMinutes,
-                      }))
-                    }}
-                    onBlur={(event) => {
-                      const parsed = Number.parseInt(event.target.value, 10)
-                      const clamped = Number.isFinite(parsed)
-                        ? Math.min(DURATION_MAX, Math.max(DURATION_MIN, parsed))
-                        : 90
-                      setSessionDraft((previous) => ({ ...previous, durationMinutes: clamped }))
-                    }}
-                    className="h-12 flex-1 rounded-2xl border border-white/10 bg-white/6 px-4 text-center text-base font-medium text-white outline-none"
-                  />
-                  <button
-                    type="button"
-                    aria-label="Increase duration by 5 minutes"
-                    onClick={() => {
-                      void haptics.light()
-                      setSessionDurationMode('custom')
-                      setSessionDraft((previous) => ({
-                        ...previous,
-                        durationMinutes: Math.min(DURATION_MAX, previous.durationMinutes + 5),
-                      }))
-                    }}
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/6 text-lg font-bold text-white"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-              <div>
-                <input
-                  ref={sessionPhotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null
-                    setSessionPhotoFile(file)
-                    setSessionPhotoPreview(file ? URL.createObjectURL(file) : null)
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => sessionPhotoInputRef.current?.click()}
-                  className="block w-full rounded-[24px] border border-dashed border-white/12 bg-white/4 p-4 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    {sessionPhotoPreview ? (
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10">
-                        <Image src={sessionPhotoPreview} alt="Session upload preview" fill className="object-cover" />
-                      </div>
-                    ) : (
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-dashed border-white/18 bg-black/25">
-                        <Camera className="h-5 w-5 text-white/45" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-base font-bold leading-snug sm:text-lg">Share training media on MatFlow</p>
-                      <p className="mt-1 text-sm text-white/42">{sessionPhotoPreview ? 'Tap to replace your session photo.' : 'Upload a session image for your public post.'}</p>
-                      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.2em] text-amber-200/75">Uploaded images are publicly accessible by URL.</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Notes</span>
-              <textarea
-                value={sessionDraft.notes}
-                onChange={(event) => setSessionDraft((previous) => ({ ...previous, notes: event.target.value }))}
-                placeholder="How did the session go? What did you work on?"
-                className="min-h-[7.5rem] w-full resize-y rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-            </label>
-
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Satisfaction</span>
-              <div className="mt-3 flex items-center gap-3">
-                {Array.from({ length: 5 }, (_, index) => {
-                  const value = index + 1
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setSessionDraft((previous) => ({ ...previous, satisfaction: value }))}
-                    >
-                      <Star className={cn('h-7 w-7', value <= sessionDraft.satisfaction ? 'fill-[#ffba33] text-[#ffba33]' : 'text-white/35')} />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Tag Friends</span>
-              <input
-                value={sessionDraft.taggedFriends}
-                onChange={(event) => setSessionDraft((previous) => ({ ...previous, taggedFriends: event.target.value }))}
-                placeholder="Tag training partners..."
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-            </label>
-
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Visibility</span>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                {VISIBILITY_OPTIONS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSessionDraft((previous) => ({ ...previous, visibility: option }))}
-                    className={cn(
-                      'rounded-2xl px-3 py-3 text-sm font-bold capitalize',
-                      sessionDraft.visibility === option ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/55',
-                    )}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Caption</span>
-              <textarea
-                value={sessionDraft.caption}
-                onChange={(event) => setSessionDraft((previous) => ({ ...previous, caption: event.target.value }))}
-                placeholder="Add a caption for your public post..."
-                className="min-h-24 w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-            </label>
-
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Linked Techniques</span>
-                <button
-                  type="button"
-                  onClick={() => showInfo('Tap the technique chips below to link the moves you drilled during this session.')}
-                  className="text-sm font-semibold text-[#7ea4ff]"
-                >
-                  Add Technique
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {libraryTechniques.map((technique) => {
-                  const selected = sessionDraft.linkedTechniqueIds.includes(technique.id)
-                  return (
-                    <button
-                      key={technique.id}
-                      type="button"
-                      onClick={() => setSessionDraft((previous) => ({
-                        ...previous,
-                        linkedTechniqueIds: selected
-                          ? previous.linkedTechniqueIds.filter((id) => id !== technique.id)
-                          : [...previous.linkedTechniqueIds, technique.id],
-                      }))}
-                      className={cn(
-                        'rounded-full border px-3 py-2 text-sm font-semibold',
-                        selected ? 'border-[#4d7cff]/40 bg-[#4d7cff]/18 text-[#8cabff]' : 'border-white/10 bg-white/6 text-white/58',
-                      )}
-                    >
-                      {technique.title}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </ModalShell>
+          handleSaveSession={handleSaveSession}
+          showInfo={showInfo}
+        />
       )}
 
       {activeSurface === 'session-detail' && selectedSession && (
-        <ModalShell
-          title="Session"
-          onBack={() => {
+        <SessionDetailModal
+          selectedSession={selectedSession}
+          libraryTechniques={libraryTechniques}
+          onClose={() => {
             setActiveSurface(null)
             setSelectedSessionId(null)
           }}
-          variant="sessions"
-        >
-          <div className="space-y-5 pb-24">
-            {selectedSession.photo && (
-              <div className="relative h-56 w-full overflow-hidden rounded-[24px] border border-white/10">
-                <Image src={selectedSession.photo} alt="Session photo" fill className="object-cover" />
-              </div>
-            )}
-            <div>
-              <p className="text-[26px] font-black leading-tight text-white">{selectedSession.type} @ {selectedSession.location || 'Training Room'}</p>
-              <p className="mt-1 text-sm text-white/50">{formatPrettyDateTime(selectedSession.date, selectedSession.time)}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
-                {getMartialArtsBranchLabel(selectedSession.branch)}
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/70">
-                {selectedSession.durationMinutes} min
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold capitalize text-white/70">
-                {selectedSession.visibility}
-              </span>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Satisfaction</p>
-              <div className="mt-2 flex items-center gap-2" aria-label={`Rated ${selectedSession.satisfaction} of 5`}>
-                {Array.from({ length: 5 }, (_, index) => {
-                  const value = index + 1
-                  return (
-                    <Star
-                      key={value}
-                      className={cn('h-5 w-5', value <= selectedSession.satisfaction ? 'fill-[#ffba33] text-[#ffba33]' : 'text-white/25')}
-                      aria-hidden
-                    />
-                  )
-                })}
-              </div>
-            </div>
-            {selectedSession.notes && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Notes</p>
-                <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7 text-white/80">{selectedSession.notes}</p>
-              </div>
-            )}
-            {selectedSession.caption && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Caption</p>
-                <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7 text-white/80">{selectedSession.caption}</p>
-              </div>
-            )}
-            {selectedSession.submissions.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Submissions ({selectedSession.submissions.length})</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedSession.submissions.map((name, index) => (
-                    <span key={`${name}-${index}`} className="rounded-full border border-emerald-300/20 bg-emerald-400/12 px-3 py-1 text-xs font-semibold text-emerald-100">
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {selectedSession.taps.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Taps ({selectedSession.taps.length})</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedSession.taps.map((name, index) => (
-                    <span key={`${name}-${index}`} className="rounded-full border border-rose-300/20 bg-rose-400/12 px-3 py-1 text-xs font-semibold text-rose-100">
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {selectedSession.linkedTechniqueIds.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Linked techniques</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedSession.linkedTechniqueIds.map((id) => {
-                    const technique = libraryTechniques.find((entry) => entry.id === id)
-                    if (!technique) return null
-                    return (
-                      <span key={id} className="rounded-full border border-[#4d7cff]/30 bg-[#4d7cff]/15 px-3 py-1 text-xs font-semibold text-[#8cabff]">
-                        {technique.title}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {selectedSession.taggedFriends.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Training partners</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedSession.taggedFriends.map((name, index) => (
-                    <span key={`${name}-${index}`} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/75">
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(env(safe-area-inset-bottom)+14px)]">
-            <div className="pointer-events-auto flex w-full max-w-[398px] items-center gap-2 rounded-2xl border border-white/10 bg-[#0b0e14]/95 px-2.5 py-2 shadow-xl backdrop-blur">
-              <button
-                type="button"
-                onClick={() => {
-                  void haptics.light()
-                  const target = selectedSession
-                  setActiveSurface(null)
-                  setSelectedSessionId(null)
-                  openEditSession(target)
-                }}
-                className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void haptics.light()
-                  const target = selectedSession
-                  setActiveSurface(null)
-                  setSelectedSessionId(null)
-                  handleDuplicateSession(target)
-                }}
-                className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white"
-              >
-                Duplicate
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = selectedSession
-                  setActiveSurface(null)
-                  setSelectedSessionId(null)
-                  handleRequestDeleteSession(target)
-                }}
-                className="flex-1 rounded-xl bg-red-500/15 px-3 py-2 text-sm font-bold text-red-200"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </ModalShell>
+          openEditSession={openEditSession}
+          handleDuplicateSession={handleDuplicateSession}
+          handleRequestDeleteSession={handleRequestDeleteSession}
+        />
       )}
 
       {activeSurface === 'new-technique' && (
@@ -9414,195 +5840,33 @@ function BjjAppInner() {
       )}
 
       {activeSurface === 'edit-profile' && profileDraft && (
-        <ModalShell
-          title="Edit Profile"
-          onBack={() => {
-            setProfilePhotoFile(null)
-            setProfilePhotoPreview(null)
-            setActiveSurface(null)
-          }}
-          variant="profile"
-          action={
-            <button type="button" onClick={handleSaveProfile} className="rounded-2xl bg-[#2f58ff] px-4 py-2 text-sm font-bold">
-              Save
-            </button>
-          }
-        >
-          <div className="space-y-6">
-            <div className="mx-auto flex w-full max-w-[280px] flex-col items-center">
-              <input
-                ref={profilePhotoInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null
-                  setProfilePhotoFile(file)
-                  setProfilePhotoPreview(file ? URL.createObjectURL(file) : profilePhotoPreview)
-                }}
-              />
-              {profilePhotoPreview ? (
-                <div className="relative h-24 w-24 overflow-hidden rounded-full border border-white/10">
-                  <Image src={profilePhotoPreview} alt={profileDraft.displayName} fill className="object-cover" />
-                </div>
-              ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-white/6 text-[40px] font-black">
-                  {profileDraft.displayName.charAt(0) || 'D'}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => profilePhotoInputRef.current?.click()}
-                className="mt-4 rounded-2xl border border-white/10 bg-white/6 px-4 py-2 text-sm font-bold text-white/75"
-              >
-                Change Photo
-              </button>
-            </div>
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Username</span>
-              <input
-                value={profileDraft.username}
-                onChange={(event) => setProfileDraft((previous) => previous ? { ...previous, username: slugifyUsername(event.target.value) } : previous)}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                autoComplete="username"
-                placeholder="your_unique_name"
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-base font-medium text-white placeholder:text-white/30 outline-none"
-              />
-              <p className="text-xs font-medium text-white/38">
-                {USERNAME_MIN_LEN}–{USERNAME_MAX_LEN} characters. Changing your handle may affect how others find you.
-              </p>
-            </label>
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Display Name</span>
-              <input
-                {...createDisplayNameInputBehavior('profile', profileNameInputUnlocked, () => setProfileNameInputUnlocked(true))}
-                value={profileDraft.displayName}
-                onChange={(event) => {
-                  const nextValue = event.target.value
-                  const nativeEvent = event.nativeEvent as NativeInputLike
-                  if (shouldIgnoreDisplayNameRefill({
-                    sentinelValue: profileNameSentinel,
-                    currentValue: profileDraft.displayName,
-                    nextValue,
-                    hasManualEdit: profileNameDirty,
-                    inputType: nativeEvent.inputType,
-                    isComposing: nativeEvent.isComposing,
-                  })) {
-                    return
-                  }
-
-                  setProfileNameDirty(true)
-                  setProfileDraft((previous) => previous ? { ...previous, displayName: nextValue } : previous)
-                }}
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white outline-none"
-              />
-            </label>
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Belt Rank</span>
-              <div className="mt-3 grid grid-cols-5 gap-2">
-                {BELTS.map((belt) => (
-                  <button
-                    key={belt}
-                    type="button"
-                    onClick={() => setProfileDraft((previous) => previous ? { ...previous, belt } : previous)}
-                    className={cn(
-                      'rounded-2xl px-2 py-3 text-sm font-bold capitalize',
-                      profileDraft.belt === belt ? 'bg-white text-black' : 'bg-white/6 text-white/45',
-                    )}
-                  >
-                    {belt}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Stripes</span>
-              <div className="mt-3 grid grid-cols-5 gap-2">
-                {Array.from({ length: 5 }, (_, value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setProfileDraft((previous) => previous ? { ...previous, stripes: value } : previous)}
-                    className={cn(
-                      'rounded-2xl px-2 py-3 text-sm font-bold',
-                      profileDraft.stripes === value ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/45',
-                    )}
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Gym / Academy</span>
-              <input
-                value={profileDraft.gymName}
-                onChange={(event) => setProfileDraft((previous) => previous ? { ...previous, gymName: event.target.value } : previous)}
-                placeholder="Enter gym name"
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Bio</span>
-              <textarea
-                value={profileDraft.bio}
-                onChange={(event) => setProfileDraft((previous) => previous ? { ...previous, bio: event.target.value.slice(0, 200) } : previous)}
-                placeholder="Tell us about yourself..."
-                className="min-h-28 w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-base font-medium text-white placeholder:text-white/35 outline-none"
-              />
-              <div className="text-right text-xs font-semibold text-white/35">{profileDraft.bio.length}/200</div>
-            </label>
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Account Privacy</span>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {(['public', 'private'] as const).map((privacy) => (
-                  <button
-                    key={privacy}
-                    type="button"
-                    onClick={() => setProfileDraft((previous) => previous ? { ...previous, privacy } : previous)}
-                    className={cn(
-                      'rounded-2xl px-3 py-3 text-sm font-bold capitalize',
-                      profileDraft.privacy === privacy ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/45',
-                    )}
-                  >
-                    {privacy}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3 pt-4">
-              <SecondaryButton onClick={() => setActiveSurface('paywall')}>
-                <Crown className="h-5 w-5" />
-                Upgrade to Pro
-              </SecondaryButton>
-              <SecondaryButton disabled={authLoading} onClick={async () => {
-                try {
-                  await signOut()
-                } catch (error) {
-                  showError(getAuthErrorMessage(error, 'Unable to sign out'))
-                }
-              }}>
-                {authLoading ? 'Signing out…' : 'Sign out'}
-              </SecondaryButton>
-              <button
-                type="button"
-                disabled={isDeletingAccount}
-                onClick={() => void handleDeleteAccount()}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200 disabled:opacity-60"
-              >
-                <Trash2 className="h-4 w-4" />
-                {isDeletingAccount ? 'Deleting account…' : 'Delete account'}
-              </button>
-              <p className="text-center text-xs text-white/35">
-                Deleting your account permanently removes your profile, sessions, gameplans, and uploads.
-              </p>
-            </div>
-          </div>
-        </ModalShell>
+        <EditProfileModal
+          profileDraft={profileDraft}
+          setProfileDraft={setProfileDraft}
+          profilePhotoPreview={profilePhotoPreview}
+          setProfilePhotoFile={setProfilePhotoFile}
+          setProfilePhotoPreview={setProfilePhotoPreview}
+          profilePhotoInputRef={profilePhotoInputRef}
+          profileNameInputUnlocked={profileNameInputUnlocked}
+          setProfileNameInputUnlocked={setProfileNameInputUnlocked}
+          profileNameSentinel={profileNameSentinel}
+          profileNameDirty={profileNameDirty}
+          setProfileNameDirty={setProfileNameDirty}
+          analyticsConsent={analyticsConsent}
+          authLoading={authLoading}
+          isDeletingAccount={isDeletingAccount}
+          isExportingData={isExportingData}
+          setActiveSurface={setActiveSurface}
+          handleSaveProfile={handleSaveProfile}
+          handleManageSubscription={handleManageSubscription}
+          handleRestorePurchase={handleRestorePurchase}
+          handleExportData={handleExportData}
+          handleToggleAnalyticsConsent={handleToggleAnalyticsConsent}
+          handleDeleteAccount={handleDeleteAccount}
+          signOut={signOut}
+          showError={showError}
+        />
       )}
-
       {(activeSurface === 'technique-detail' || activeSurface === 'discover-detail') && selectedTechnique && (
         <ModalShell
           title={selectedTechnique.title}

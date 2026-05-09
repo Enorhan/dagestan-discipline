@@ -3,11 +3,14 @@ import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import { SentryBootstrap } from '@/components/system/sentry-bootstrap'
+import { StatusBarBootstrap } from '@/components/system/status-bar-bootstrap'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { OfflineBanner } from '@/components/ui/offline-banner'
 import { AuthProvider } from '@/contexts/auth-context'
 import { RuntimeFlagsProvider } from '@/contexts/runtime-flags-context'
 import { ToastProvider } from '@/contexts/toast-context'
+import { themeBootstrapScript } from '@/lib/theme'
 
 export const metadata: Metadata = {
   title: 'MatFlow',
@@ -52,8 +55,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+      </head>
       <body className="antialiased bg-background text-foreground">
+        <SentryBootstrap />
+        <StatusBarBootstrap />
         <OfflineBanner />
         <ErrorBoundary>
           <RuntimeFlagsProvider>

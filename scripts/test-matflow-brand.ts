@@ -15,7 +15,6 @@ const files = [
   'src/lib/support-diagnostics.ts',
   'src/lib/subscription-config.ts',
   'public/manifest.json',
-  'public/index.html',
   'public/redirect.html',
   'public/legal/privacy-policy.html',
   'public/legal/terms-of-service.html',
@@ -44,11 +43,12 @@ assert.ok(manifest.includes('"name": "MatFlow"'))
 assert.ok(manifest.includes('"short_name": "MatFlow"'))
 
 const app = readFileSync(join(root, 'src/components/bjj-app.tsx'), 'utf8')
+const paywall = readFileSync(join(root, 'src/components/bjj-app/paywall-screen.tsx'), 'utf8')
 const access = readFileSync(join(root, 'src/lib/matflow-access.ts'), 'utf8')
 assert.ok(app.includes('Today'))
 assert.ok(app.includes('Library'))
 assert.ok(app.includes('Gameplans'))
-assert.ok(app.includes('14 days free'))
+assert.ok(paywall.includes('14 days free'))
 assert.ok(access.includes("MATFLOW_PRICE_LABEL = '25 kr/month'"))
 
 console.log('MatFlow brand tests passed.')

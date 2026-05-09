@@ -19,21 +19,43 @@ const BILLING_AUTH_TIMEOUT_MS = 8000
 const BILLING_FETCH_TIMEOUT_MS = 12000
 
 let lastKnownBillingAccessTokenCache = { ...EMPTY_BILLING_ACCESS_TOKEN_CACHE_SNAPSHOT }
-let hasInitializedBillingAccessTokenCache = false
+let billingAccessTokenAuthSubscription: { unsubscribe: () => void } | null = null
 
 function updateBillingAccessTokenCache(session: AuthSession | null | undefined): void {
   lastKnownBillingAccessTokenCache = createBillingAccessTokenCacheSnapshot(session)
 }
 
 function ensureBillingAccessTokenCacheInitialized(): void {
-  if (hasInitializedBillingAccessTokenCache || typeof window === 'undefined') {
+  if (billingAccessTokenAuthSubscription || typeof window === 'undefined') {
     return
   }
 
-  hasInitializedBillingAccessTokenCache = true
-
-  supabase.auth.onAuthStateChange((_event, session) => {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
     updateBillingAccessTokenCache(session)
+  })
+  billingAccessTokenAuthSubscription = data.subscription
+}
+
+/**
+ * Tear down the module-level auth subscription. Exported for HMR module
+ * replacement and tests; production callers do not need to invoke this since
+ * the subscription is intentionally process-singleton.
+ */
+export function disposeBillingAccessTokenCacheSubscription(): void {
+  if (!billingAccessTokenAuthSubscription) return
+  try {
+    billingAccessTokenAuthSubscription.unsubscribe()
+  } finally {
+    billingAccessTokenAuthSubscription = null
+  }
+}
+
+if (typeof window !== 'undefined' && typeof module !== 'undefined') {
+  // Webpack/Next HMR: dispose the previous module's subscription before the
+  // replacement re-registers, preventing accumulating duplicates in dev.
+  const hot = (module as unknown as { hot?: { dispose: (cb: () => void) => void } }).hot
+  hot?.dispose(() => {
+    disposeBillingAccessTokenCacheSubscription()
   })
 }
 
@@ -189,6 +211,20 @@ function shouldUseSystemBrowserForBilling(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
 }
 
+function isAppleInAppPurchasePlatform(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+}
+
+function assertStripeAllowedOnPlatform(flow: 'checkout' | 'portal'): void {
+  if (isAppleInAppPurchasePlatform()) {
+    throw new Error(
+      flow === 'portal'
+        ? 'Manage your subscription in the App Store under your Apple ID.'
+        : 'In-app purchases on iOS are handled through the App Store.'
+    )
+  }
+}
+
 async function openExternalBillingUrl(url: string): Promise<void> {
   if (typeof window === 'undefined') return
 
@@ -218,6 +254,7 @@ export const stripeService = {
    * Create a checkout session via Supabase Edge Function
    */
   async createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSessionResponse> {
+    assertStripeAllowedOnPlatform('checkout')
     const accessToken = await getBillingAccessToken('checkout')
 
     const checkoutFunctionUrl = getSupabaseEdgeFunctionUrl('stripe-checkout')
@@ -234,21 +271,26 @@ export const stripeService = {
     })
 
     if (!response.ok) {
-      let errorMessage = 'Failed to create checkout session'
       const errorText = (await response.text()).trim()
+      let serverMessage: string | null = null
 
       if (errorText) {
         try {
           const errorData = JSON.parse(errorText) as { error?: string }
-          errorMessage = typeof errorData.error === 'string' && errorData.error.trim().length > 0
-            ? errorData.error
-            : errorText
+          if (typeof errorData.error === 'string' && errorData.error.trim().length > 0) {
+            serverMessage = errorData.error.trim()
+          }
         } catch {
-          errorMessage = errorText
+          // Non-JSON responses are not safe to surface to users.
         }
       }
 
-      throw new Error(errorMessage)
+      captureException('stripe-checkout', new Error(serverMessage ?? errorText ?? `Server error: ${response.status}`), {
+        step: 'response',
+        status: response.status,
+      }, 'warning')
+
+      throw new Error(serverMessage ?? 'Unable to start checkout right now. Please try again in a moment.')
     }
 
     const result = await response.json() as CheckoutSessionResponse
@@ -268,6 +310,7 @@ export const stripeService = {
    * Subscribe to premium plan (25 kr/month)
    */
   async subscribeToPremium(priceId?: string, email?: string): Promise<void> {
+    assertStripeAllowedOnPlatform('checkout')
     const checkoutAvailability = getBillingCheckoutAvailability()
     if (!checkoutAvailability.enabled) {
       throw new Error(checkoutAvailability.message ?? 'Premium upgrades are temporarily unavailable right now.')
@@ -294,6 +337,7 @@ export const stripeService = {
    * Allows users to cancel subscription, update payment method, view invoices
    */
   async openCustomerPortal(): Promise<void> {
+    assertStripeAllowedOnPlatform('portal')
     const portalAvailability = getBillingPortalAvailability()
     if (!portalAvailability.enabled) {
       throw new Error(portalAvailability.message ?? 'Subscription management is temporarily unavailable right now.')
@@ -317,12 +361,26 @@ export const stripeService = {
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      captureException('stripe-portal', new Error(errorText || `Server error: ${response.status}`), {
+      const errorText = (await response.text()).trim()
+      let serverMessage: string | null = null
+
+      if (errorText) {
+        try {
+          const errorData = JSON.parse(errorText) as { error?: string }
+          if (typeof errorData.error === 'string' && errorData.error.trim().length > 0) {
+            serverMessage = errorData.error.trim()
+          }
+        } catch {
+          // Non-JSON responses are not safe to surface to users.
+        }
+      }
+
+      captureException('stripe-portal', new Error(serverMessage ?? errorText ?? `Server error: ${response.status}`), {
         step: 'response',
         status: response.status,
       }, 'warning')
-      throw new Error(errorText || `Server error: ${response.status}`)
+
+      throw new Error(serverMessage ?? 'Unable to open subscription management right now. Please try again in a moment.')
     }
 
     const data = await response.json()
@@ -356,9 +414,8 @@ export const stripeService = {
           .eq('id', user.id)
           .single()
 
-        // Cast to access Stripe fields (added to DB but not in generated types)
-        const isPremium = (profile as any)?.is_premium
-        const subscriptionStatus = (profile as any)?.subscription_status
+        const isPremium = profile?.is_premium
+        const subscriptionStatus = profile?.subscription_status
 
         if (isPremium) {
           return true

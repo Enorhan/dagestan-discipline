@@ -63,10 +63,10 @@ export function SystemForkersSheet({
             <div className="space-y-2">
               {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-                  <div className="h-10 w-10 animate-pulse rounded-full bg-white/8" />
+                  <div className="skeleton-shimmer h-10 w-10 rounded-full bg-white/8" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-3 w-24 animate-pulse rounded bg-white/8" />
-                    <div className="h-3 w-16 animate-pulse rounded bg-white/6" />
+                    <div className="skeleton-shimmer h-3 w-24 rounded bg-white/8" />
+                    <div className="skeleton-shimmer h-3 w-16 rounded bg-white/6" />
                   </div>
                 </div>
               ))}

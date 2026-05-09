@@ -1,4 +1,6 @@
 import { track as trackVercelEvent } from '@vercel/analytics'
+import { getAnalyticsConsent } from './analytics-consent'
+import { addSentryBreadcrumb, captureSentryException } from './sentry'
 
 type MonitoringMetadataValue = string | number | boolean | null | undefined
 
@@ -126,7 +128,7 @@ export function captureException(
 
   bufferErrorReport(entry)
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && getAnalyticsConsent()) {
     trackVercelEvent('app_error_captured', {
       source,
       severity,
@@ -136,6 +138,21 @@ export function captureException(
   }
 
   void sendWebhookReport(entry)
+
+  void addSentryBreadcrumb({
+    category: source,
+    message: entry.message,
+    level: severity,
+    data: entry.metadata,
+  })
+
+  if (severity === 'error') {
+    void captureSentryException(error, {
+      source,
+      release: entry.release,
+      ...entry.metadata,
+    })
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     console.error(`[monitoring] ${source}`, error, metadata)

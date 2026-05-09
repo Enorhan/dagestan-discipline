@@ -7,7 +7,9 @@ import type { Config } from "tailwindcss";
  * for consistent, production-ready mobile UI.
  */
 const config: Config = {
-  darkMode: "class" as any,
+  // Tailwind v4 honours the @custom-variant declaration in globals.css.
+  // The legacy `darkMode` config key is kept for tooling that still inspects it.
+  darkMode: ["selector", '[data-theme="dark"]'] as unknown as "class",
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -20,7 +22,29 @@ const config: Config = {
       // ============================================
       colors: {
         // Semantic colors are defined via CSS variables in globals.css
-        // This allows for theme switching if needed in the future
+        // and mirrored from src/lib/design-tokens.ts. Prefer these aliases
+        // (e.g. `bg-brand-500`, `text-surface-900`) over inline hex values
+        // in new code.
+        brand: {
+          50: 'var(--matflow-brand-50)',
+          100: 'var(--matflow-brand-100)',
+          200: 'var(--matflow-brand-200)',
+          300: 'var(--matflow-brand-300)',
+          400: 'var(--matflow-brand-400)',
+          500: 'var(--matflow-brand-500)',
+          600: 'var(--matflow-brand-600)',
+          700: 'var(--matflow-brand-700)',
+          800: 'var(--matflow-brand-800)',
+          900: 'var(--matflow-brand-900)',
+          highlight: 'var(--matflow-brand-highlight)',
+        },
+        surface: {
+          950: 'var(--matflow-surface-950)',
+          925: 'var(--matflow-surface-925)',
+          900: 'var(--matflow-surface-900)',
+          850: 'var(--matflow-surface-850)',
+          800: 'var(--matflow-surface-800)',
+        },
       },
 
       // ============================================

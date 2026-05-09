@@ -1,4 +1,6 @@
 import { track as trackVercelEvent } from '@vercel/analytics'
+import { getAnalyticsConsent } from './analytics-consent'
+import { logger } from './logger'
 
 type AnalyticsPropertyValue = string | number | boolean | null
 
@@ -78,7 +80,7 @@ function readBufferedAnalyticsEntries(): AnalyticsEntry[] {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
     return Array.isArray(stored) ? stored as AnalyticsEntry[] : []
   } catch (error) {
-    console.debug('Analytics storage unavailable:', error)
+    logger.debug('Analytics storage unavailable:', error)
     return []
   }
 }
@@ -107,14 +109,14 @@ export const analytics = {
         const existing = readBufferedAnalyticsEntries()
         existing.push(entry)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(existing.slice(-MAX_BUFFERED_ENTRIES)))
-        trackVercelEvent(event, sanitizedPayload)
+        if (getAnalyticsConsent()) {
+          trackVercelEvent(event, sanitizedPayload)
+        }
       }
     } catch (error) {
-      console.debug('Analytics tracking unavailable:', error)
+      logger.debug('Analytics tracking unavailable:', error)
     }
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('[analytics]', entry)
-    }
+    logger.debug('[analytics]', entry)
   }
 }

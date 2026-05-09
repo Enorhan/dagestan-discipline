@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { useNetworkStatus } from '@/lib/hooks/use-network-status'
+import { useOfflineQueue } from '@/lib/hooks/use-offline-queue'
 
 interface OfflineBannerProps {
   className?: string
@@ -11,6 +12,7 @@ const EMPTY_SUBSCRIBE = () => () => undefined
 
 export function OfflineBanner({ className = '' }: OfflineBannerProps) {
   const { isOnline, wasOffline } = useNetworkStatus()
+  const { pending, flushing } = useOfflineQueue()
   // Suppress render until hydration completes. Server snapshot returns false so the
   // banner never renders on the server, avoiding mismatch with navigator.onLine.
   const isHydrated = useSyncExternalStore(EMPTY_SUBSCRIBE, () => true, () => false)
@@ -19,8 +21,8 @@ export function OfflineBanner({ className = '' }: OfflineBannerProps) {
     return null
   }
 
-  // Show nothing if online and wasn't recently offline
-  if (isOnline && !wasOffline) {
+  // Show nothing if online, no pending writes, and wasn't recently offline.
+  if (isOnline && !wasOffline && pending === 0) {
     return null
   }
 
@@ -43,14 +45,18 @@ export function OfflineBanner({ className = '' }: OfflineBannerProps) {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          Back online
+          {pending > 0 || flushing
+            ? `Back online — syncing ${pending} change${pending === 1 ? '' : 's'}…`
+            : 'Back online'}
         </span>
       ) : (
         <span className="flex items-center justify-center gap-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01" />
           </svg>
-          You&apos;re offline — some features may be limited
+          {pending > 0
+            ? `You're offline — ${pending} change${pending === 1 ? '' : 's'} will sync when back online`
+            : "You're offline — some features may be limited"}
         </span>
       )}
     </div>
