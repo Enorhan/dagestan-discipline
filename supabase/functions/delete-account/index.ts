@@ -5,11 +5,12 @@
 // Contract:
 //   - POST with `Authorization: Bearer <user JWT>` and JSON body `{ confirm: "DELETE" }`.
 //   - Verifies the JWT, requires the literal confirmation token, then:
-//       1. Deletes storage objects under `<uid>/` in session-media, technique-media,
+//       1. Snapshots the user's display name onto owned systems and techniques so
+//          attribution survives the FK ON DELETE SET NULL transition.
+//       2. Deletes storage objects under `<uid>/` in session-media, technique-media,
 //          and profile-images.
-//       2. Deletes the auth user via auth.admin.deleteUser (cascades to profiles,
-//          user_stats, training_sessions, user_systems, ... via FKs already set up
-//          with on delete cascade).
+//       3. Deletes the auth user via auth.admin.deleteUser. Personal data cascades;
+//          created systems are preserved by the systems.user_id ON DELETE SET NULL FK.
 //   - Idempotent: storage + auth deletes tolerate "not found".
 // ============================================================================
 
@@ -98,6 +99,33 @@ Deno.serve(async (req) => {
       throw new Error('Confirmation token missing')
     }
 
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('display_name')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    const displayName = (profile?.display_name as string | undefined)?.trim() || null
+    if (displayName) {
+      const { error: snapSystemsError } = await supabaseAdmin
+        .from('systems')
+        .update({ creator_display_name_snapshot: displayName })
+        .eq('user_id', user.id)
+        .is('creator_display_name_snapshot', null)
+      if (snapSystemsError) {
+        console.warn('[delete-account] systems snapshot failed:', snapSystemsError.message)
+      }
+
+      const { error: snapTechniquesError } = await supabaseAdmin
+        .from('techniques')
+        .update({ creator_display_name_snapshot: displayName })
+        .eq('created_by', user.id)
+        .is('creator_display_name_snapshot', null)
+      if (snapTechniquesError) {
+        console.warn('[delete-account] techniques snapshot failed:', snapTechniquesError.message)
+      }
+    }
+
     for (const bucket of BUCKETS) {
       await purgeBucketForUser(supabaseAdmin, bucket, user.id)
     }
@@ -122,4 +150,3 @@ Deno.serve(async (req) => {
     })
   }
 })
-

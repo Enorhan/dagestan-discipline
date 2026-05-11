@@ -26,7 +26,11 @@ Run this baseline before every public release:
 ## Payment operations checklist
 
 - Confirm the Supabase `stripe-webhook` edge function is deployed in the target environment
+- Confirm the Supabase `appstore-transaction` and `appstore-notifications` edge functions are deployed in the target environment
 - Confirm Stripe points to the correct webhook URL and signing secret
+- Confirm `APPSTORE_BUNDLE_ID` and `APPSTORE_ALLOWED_PRODUCT_IDS` match App Store Connect
+- For App Store Server Notifications, run `npm run appstore:test-notification`
+  against sandbox after configuring the App Store Connect notification URL
 - Verify `processed_stripe_events` is receiving idempotency markers (canonical dedupe table for webhook retries)
 - Verify premium state updates on checkout return and after webhook processing
 - If `NEXT_PUBLIC_RUNTIME_FLAGS_URL` is configured, verify the runtime flag payload matches the intended release posture before launch
@@ -60,6 +64,7 @@ Run this baseline before every public release:
 - Keep simulator QA captures in `screenshots/runtime/` only; temp files under `/var/folders/.../T/...` are not acceptable release evidence
 - Validate cold launch, resume-from-background, Google auth return, purchase return flow, offline/online transitions, and settings/legal links on real devices
 - After `npx cap sync ios`, archive/sign with `npm run ios:ipa`
+- Confirm `ios/App/App/capacitor.config.json` includes `MatFlowIAPPlugin` and `MatFlowSIWAPlugin` after sync
 - Upload TestFlight builds with `npm run ios:upload`; this uses the configured Xcode account and `xcodebuild -exportArchive` with `destination=upload`
 
 ## Incident response quick notes

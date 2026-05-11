@@ -4,7 +4,6 @@ import { SESSION_TYPES_BY_BRANCH } from './constants'
 import type {
   DiscoverTechniqueDraft,
   SessionDraft,
-  SocialComposerDraft,
   TechniqueDraft,
 } from './types'
 
@@ -74,27 +73,6 @@ export function createDiscoverTechniqueDraft(): DiscoverTechniqueDraft {
     description: '',
     tutorialTitle: '',
     videoUrl: '',
-  }
-}
-
-export function createSocialComposerDraft(): SocialComposerDraft {
-  return {
-    caption: '',
-    mediaUrl: '',
-    thumbnailUrl: '',
-    postKind: 'moment',
-    visibility: 'public',
-    scheduledFor: '',
-    coverTimestampMs: 0,
-    trimStartMs: 0,
-    trimEndMs: 0,
-    durationMs: undefined,
-    aspectRatio: undefined,
-    uploadStatus: 'idle',
-    uploadProgress: 0,
-    failedReason: undefined,
-    videoAssetId: undefined,
-    videoProvider: undefined,
   }
 }
 

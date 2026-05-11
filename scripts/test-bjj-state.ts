@@ -46,16 +46,12 @@ async function main() {
       selectedBottomTab: 'social',
       selectedSessionsTab: 'social-feed',
       selectedTechniquesTab: 'discover',
-      socialSurface: 'boxing',
-      socialHomeRail: 'following',
       selectedTechniqueBranch: 'grappling',
       selectedSystemBranch: 'boxing',
-    }),
-    {
-      selectedBottomTab: 'community',
+  }),
+  {
+      selectedBottomTab: 'library',
       selectedTechniquesTab: 'discover',
-      socialSurface: 'boxing',
-      socialHomeRail: 'following',
       selectedTechniqueBranch: 'grappling',
       selectedSystemBranch: 'boxing',
     },
@@ -71,14 +67,10 @@ async function main() {
   const normalizedState = normalizeBjjState({
     selectedBottomTab: 'social',
     selectedSessionsTab: 'social-feed',
-    socialSurface: 'explore',
-    socialHomeRail: 'following',
   }, 'Enes', 'enes')
 
-  assert.equal(normalizedState.selectedBottomTab, 'community')
+  assert.equal(normalizedState.selectedBottomTab, 'library')
   assert.equal(normalizedState.selectedSessionsTab, 'my-sessions')
-  assert.equal(normalizedState.socialSurface, 'bjj')
-  assert.equal(normalizedState.socialHomeRail, 'following')
 
   console.log('BJJ state persistence tests passed.')
 }

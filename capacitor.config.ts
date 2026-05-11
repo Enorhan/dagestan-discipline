@@ -9,20 +9,20 @@ const config: CapacitorConfig = {
   appId: 'com.dagestani.disciple',
   appName: 'MatFlow',
   webDir: 'out',
+  server: {
+    // If the WebView ever fails a top-level navigation, recover into the bundled app shell.
+    errorPath: 'index.html',
+    ...(liveReloadUrl ? {
+      url: liveReloadUrl,
+      cleartext: liveReloadUrl.startsWith('http://'),
+    } : {}),
+  },
   ios: {
     contentInset: 'never',
     scrollEnabled: false,
     backgroundColor: '#0a0a0a',
     preferredContentMode: 'mobile',
   },
-  ...(liveReloadUrl ? {
-    server: {
-      url: liveReloadUrl,
-      cleartext: liveReloadUrl.startsWith('http://'),
-      // If live-reload server is down, fall back to the bundled web app instead of a blank WebView.
-      errorPath: 'index.html',
-    }
-  } : {})
 };
 
 export default config;

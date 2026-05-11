@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, ArrowRight, BookOpen, GitFork, Link2, MessageCircle, Route, ScanSearch, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BookOpen, Link2, Route, ScanSearch, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { normalizeGraphEdgeKey, SystemGraphCanvas } from '@/components/system-graph-canvas'
 import { SystemNodeStudyView } from '@/components/system-node-study-view'
@@ -76,22 +76,16 @@ export function UserSystemReaderModal({
   system,
   libraryTechniques,
   isOwner,
-  forkCount,
   onClose,
   onOpenTechnique,
   onDelete,
-  onOpenForkers,
-  onOpenComments,
 }: {
   system: BjjSystem
   libraryTechniques: BjjTechnique[]
   isOwner: boolean
-  forkCount?: number
   onClose: () => void
   onOpenTechnique: (techniqueId: string) => void
   onDelete?: () => void
-  onOpenForkers?: () => void
-  onOpenComments?: () => void
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(system.nodes[0]?.id ?? null)
   const [readerMode, setReaderMode] = useState<'map' | 'study'>('map')
@@ -336,31 +330,6 @@ export function UserSystemReaderModal({
                   <Route className="h-3.5 w-3.5" />
                   Route
                 </button>
-                {system.visibility === 'public' && (onOpenForkers || onOpenComments) ? (
-                  <div className="flex items-center gap-1.5">
-                    {onOpenForkers ? (
-                      <button
-                        type="button"
-                        onClick={onOpenForkers}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-white/78 hover:bg-white/[0.08]"
-                        aria-label={typeof forkCount === 'number' ? `View ${forkCount} forks` : 'View forks'}
-                      >
-                        <GitFork className="h-3.5 w-3.5" />
-                        <span>{typeof forkCount === 'number' ? forkCount : 'Forks'}</span>
-                      </button>
-                    ) : null}
-                    {onOpenComments ? (
-                      <button
-                        type="button"
-                        onClick={onOpenComments}
-                        className="inline-flex h-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-3 text-white/78 hover:bg-white/[0.08]"
-                        aria-label="Open comments"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             </div>
 

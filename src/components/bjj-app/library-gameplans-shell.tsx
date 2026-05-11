@@ -5,15 +5,11 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
-  Compass,
-  Copy,
   Globe,
   Lock,
   MoreHorizontal,
   Pencil,
-  Pin,
   Plus,
-  Star,
   Trash2,
   X,
 } from 'lucide-react'
@@ -30,8 +26,6 @@ import { BJJ_CATEGORY_META } from '@/lib/bjj-seed'
 import { formatPrettyDate } from '@/components/bjj-app/date-utils'
 import { toTechniqueColor } from '@/components/bjj-app/format-utils'
 import { SystemPreviewGraph } from '@/components/bjj-app/system-preview-graph'
-import { SystemGraphCanvas } from '@/components/system-graph-canvas'
-import { computeGraphLayout } from '@/lib/system-graph-layout'
 import { haptics } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { getMartialArtsBranchLabel, type MartialArtsBranchId } from '@/lib/martial-arts-branches'
@@ -54,7 +48,6 @@ export interface JustForkedMarker {
 export interface LibraryGameplansShellProps {
   appState: BjjPersistedState
   user: UserProfile | null
-  selectedBottomTab: 'today' | 'library' | 'gameplans' | 'community' | 'you'
   // Library state
   libraryTechniques: BjjTechnique[]
   filteredLibraryTechniques: BjjTechnique[]
@@ -73,12 +66,10 @@ export interface LibraryGameplansShellProps {
   // Systems / gameplans state
   systemsState: BjjSystem[]
   systemsFilteredSorted: BjjSystem[]
-  systemDraftsForBranch: BjjSystem[]
   systemsHubSearchInputRef: RefObject<HTMLInputElement | null>
   selectedSystemBranch: MartialArtsBranchId
   systemActionsOpenId: string | null
   setSystemActionsOpenId: Dispatch<SetStateAction<string | null>>
-  togglePinSystem: (systemId: string) => void
   // Fork-flash UX
   justForkedId: JustForkedMarker | null
   handleJustForkedRef: (el: HTMLDivElement | null) => void
@@ -110,7 +101,6 @@ export interface LibraryGameplansShellProps {
   // Reader/editor handlers
   openSystemReader: (system: BjjSystem) => void
   openTechniqueDetail: (techniqueId: string, surface: TechniqueDetailSurface) => void
-  openUserSystemDuplicate: (system: BjjSystem) => void
   openUserSystemEditorCreate: () => void
   openUserSystemEditorEdit: (system: BjjSystem) => void
   handleDeleteUserSystem: (systemId: string) => void | Promise<void>
@@ -120,15 +110,14 @@ export interface LibraryGameplansShellProps {
 export type TechniqueDetailSurface = Extract<BjjSurface, 'technique-detail' | 'discover-detail'>
 
 /**
- * P1-01 Phase D — Library / Gameplans route shell.
+ * P1-01 Phase D — Techniques route shell.
  * Largest of the route shells. State and effects remain in `BjjAppInner`;
- * this component renders the My Library / Discover / Systems hub surfaces.
+ * this component renders the My Library / Systems / Discover surfaces.
  */
 export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
   const {
     appState,
     user,
-    selectedBottomTab,
     libraryTechniques,
     filteredLibraryTechniques,
     librarySearchInput,
@@ -144,12 +133,10 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
     setExpandedDiscoverCategory,
     systemsState,
     systemsFilteredSorted,
-    systemDraftsForBranch,
     systemsHubSearchInputRef,
     selectedSystemBranch,
     systemActionsOpenId,
     setSystemActionsOpenId,
-    togglePinSystem,
     justForkedId,
     handleJustForkedRef,
     coachStep,
@@ -171,7 +158,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
     techniqueRowTitleClass,
     openSystemReader,
     openTechniqueDetail,
-    openUserSystemDuplicate,
     openUserSystemEditorCreate,
     openUserSystemEditorEdit,
     handleDeleteUserSystem,
@@ -182,65 +168,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {selectedBottomTab === 'library' && (
-            <div role="tablist" aria-label="Techniques view" className={cn('flex items-center gap-1.5 overflow-x-auto px-1', shellTopTabsClass)}>
-              {([
-                { value: 'my-library' as const, label: 'My Library', Icon: BookOpen, count: libraryTechniques.length },
-                { value: 'discover' as const, label: 'Discover', Icon: Compass, count: null as number | null },
-              ]).map(({ value, label, Icon, count }) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={selectedTechniquesTab === value}
-                  onClick={() => {
-                    // #region agent log (dd-techniques-tour)
-                    debugTourLog('techniques top tab pressed', {
-                      to: value,
-                      selectedTechniquesTab: appState.selectedTechniquesTab,
-                      selectedBottomTab: appState.selectedBottomTab,
-                      coachMarksSeen: hasSeenCoachMarks,
-                      shellHydratedOnce,
-                      shellSyncing,
-                    })
-                    // #endregion agent log (dd-techniques-tour)
-                    if (selectedTechniquesTab !== value) void haptics.light()
-                    if (value === 'my-library' && shellHydratedOnce && !shellSyncing && !hasSeenCoachMarks) {
-                      setCoachStep((previous) => previous ?? 0)
-                    }
-                    if (activeSurface === 'system-editor' || activeSurface === 'system-reader') {
-                      clearSystemEditorSession()
-                      clearSystemReaderSession()
-                      setActiveSurface(null)
-                    }
-                    updateAppState((previous) => ({
-                      ...previous,
-                      selectedTechniquesTab: value,
-                      selectedBottomTab: 'library',
-                    }))
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-bold transition active:scale-[0.97]',
-                    shellTopTabButtonClass,
-                    selectedTechniquesTab === value ? 'bg-white/10 text-white' : 'text-white/45',
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>{label}</span>
-                  {count != null && count > 0 ? (
-                    <span
-                      className={cn(
-                        'inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none',
-                        selectedTechniquesTab === value ? 'bg-[#4d7cff]/25 text-[#a9c0ff]' : 'bg-white/10 text-white/60',
-                      )}
-                    >
-                      {count > 99 ? '99+' : count}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-            )}
 
             {selectedTechniquesTab === 'my-library' && (
               <PullToRefresh onRefresh={onPullToRefresh} className="pb-6">
@@ -306,17 +233,12 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                 {filteredLibraryTechniques.length === 0 ? (
                   <EmptyState
                     title="No techniques yet"
-                    body="Browse Discover to fork curated techniques, or see what teammates are publishing in Community."
+                    body="Browse Discover to save techniques, or add a technique from the Discover tab."
                     actionLabel="Browse Discover"
                     onAction={() => updateAppState((previous) => ({
                       ...previous,
                       selectedTechniquesTab: 'discover',
-                      selectedBottomTab: 'library',
-                    }))}
-                    secondaryLabel="Find teammates"
-                    onSecondaryAction={() => updateAppState((previous) => ({
-                      ...previous,
-                      selectedBottomTab: 'community',
+                      selectedBottomTab: 'discover',
                     }))}
                   />
                 ) : libraryView === 'graph' ? (
@@ -508,200 +430,61 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="sticky top-0 z-20 shrink-0 px-1 pb-3 pt-1">
                   <div className="rounded-[26px] border border-white/10 bg-[#050914]/94 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.36)] backdrop-blur-xl">
-                    {(() => {
-                      const activeSystems = systemsState.filter((s) => s.status !== 'draft')
-                      const branchScoped = activeSystems.filter((s) => s.branch === selectedSystemBranch)
-                      const mineCount = user?.id ? activeSystems.filter((s) => s.userId === user.id).length : 0
-                      const publicCount = branchScoped.filter((s) => s.visibility === 'public' || !s.userId).length
-                      return (
-                        <>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Training OS</p>
-                              <h2 className="mt-1 truncate text-[26px] font-black leading-none text-white">Gameplans</h2>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void haptics.light()
-                                openUserSystemEditorCreate()
-                              }}
-                              aria-label="New gameplan"
-                              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/50 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-4 text-sm font-black text-white shadow-[0_14px_32px_rgba(47,88,255,0.35)] transition active:scale-[0.97]"
-                            >
-                              <Plus className="h-4 w-4" />
-                              New
-                            </button>
-                          </div>
-                          <div className="mt-3 grid grid-cols-3 gap-2">
-                            {[
-                              ['Maps', branchScoped.length],
-                              ['Mine', mineCount],
-                              ['Drafts', systemDraftsForBranch.length],
-                            ].map(([label, value]) => (
-                              <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.045] px-3 py-2">
-                                <p className="text-[18px] font-black leading-none text-white">{value}</p>
-                                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/38">{label}</p>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-2">
-                            <BranchSelect
-                              label="Gameplan branch"
-                              value={selectedSystemBranch}
-                              onChange={(branch) => updateAppState((previous) => ({
-                                ...previous,
-                                selectedSystemBranch: branch,
-                              }))}
-                            />
-                            <SearchField
-                              inputRef={systemsHubSearchInputRef}
-                              value={appState?.systemsHubSearch ?? ''}
-                              onChange={(event) =>
-                                updateAppState((previous) => ({ ...previous, systemsHubSearch: event.target.value }))
-                              }
-                              placeholder="Search"
-                            />
-                          </div>
-                          <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
-                            {(() => {
-                              const counts: Record<'all' | 'mine' | 'curated' | 'community', number> = {
-                                all: branchScoped.length,
-                                mine: mineCount,
-                                curated: branchScoped.filter((s) => !s.userId).length,
-                                community: user?.id ? branchScoped.filter((s) => Boolean(s.userId && s.userId !== user.id)).length : 0,
-                              }
-                              return ([
-                                ['all', 'All'],
-                                ['mine', 'Yours'],
-                                ['curated', 'Curated'],
-                                ['community', 'Community'],
-                              ] as const).map(([value, label]) => {
-                                const selected = (appState?.systemsHubFilter ?? 'all') === value
-                                const count = counts[value]
-                                return (
-                                  <button
-                                    key={value}
-                                    type="button"
-                                    onClick={() => {
-                                      if (!selected) void haptics.light()
-                                      setSystemActionsOpenId(null)
-                                      updateAppState((previous) => ({
-                                        ...previous,
-                                        systemsHubFilter: value,
-                                      }))
-                                    }}
-                                    className={cn(
-                                      'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition active:scale-[0.97]',
-                                      selected ? 'bg-white/12 text-white' : 'text-white/45',
-                                    )}
-                                    aria-pressed={selected}
-                                  >
-                                    <span>{label}</span>
-                                    {count > 0 ? (
-                                      <span className={cn(
-                                        'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none',
-                                        selected ? 'bg-[#4d7cff]/25 text-[#a9c0ff]' : 'bg-white/10 text-white/60',
-                                      )}>
-                                        {count > 99 ? '99+' : count}
-                                      </span>
-                                    ) : null}
-                                  </button>
-                                )
-                              })
-                            })()}
-                            {publicCount > 0 ? (
-                              <span className="inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-bold text-white/30">
-                                {publicCount} visible
-                              </span>
-                            ) : null}
-                          </div>
-                        </>
-                      )
-                    })()}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Systems</p>
+                        <h2 className="mt-1 truncate text-[26px] font-black leading-none text-white">Build from text</h2>
+                        <p className="mt-2 text-sm leading-5 text-white/45">Describe the path. MatFlow turns it into a connected system.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void haptics.light()
+                          openUserSystemEditorCreate()
+                        }}
+                        aria-label="New system"
+                        className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[16px] border border-[#4d7cff]/50 bg-[linear-gradient(135deg,#4c6fff,#2c52ff)] px-4 text-sm font-black text-white shadow-[0_14px_32px_rgba(47,88,255,0.35)] transition active:scale-[0.97]"
+                      >
+                        <Plus className="h-4 w-4" />
+                        New
+                      </button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-2">
+                      <BranchSelect
+                        label="System branch"
+                        value={selectedSystemBranch}
+                        onChange={(branch) => updateAppState((previous) => ({
+                          ...previous,
+                          selectedSystemBranch: branch,
+                        }))}
+                      />
+                      <SearchField
+                        inputRef={systemsHubSearchInputRef}
+                        value={appState?.systemsHubSearch ?? ''}
+                        onChange={(event) =>
+                          updateAppState((previous) => ({ ...previous, systemsHubSearch: event.target.value }))
+                        }
+                        placeholder="Search systems"
+                      />
+                    </div>
                   </div>
                 </div>
                 <PullToRefresh onRefresh={onPullToRefresh} className="pb-6">
-                {systemDraftsForBranch.length > 0 ? (
-                  <div className="mb-4 px-1">
-                    <div className="rounded-[22px] border border-[#4d7cff]/18 bg-[#07101f]/72 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.32)]">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8cabff]">Drafts</p>
-                          <p className="mt-1 text-sm font-semibold text-white/58">Resume unfinished training maps.</p>
-                        </div>
-                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/42">
-                          {systemDraftsForBranch.length}
-                        </span>
-                      </div>
-                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                        {systemDraftsForBranch.map((draft) => (
-                          <div key={draft.id} className="w-[245px] shrink-0 rounded-[18px] border border-white/10 bg-black/24 p-3">
-                            <div className="h-24 overflow-hidden rounded-[14px] border border-white/8 bg-[#050914]">
-                              <SystemGraphCanvas
-                                variant="preview"
-                                nodes={draft.nodes}
-                                edges={draft.edges}
-                                positions={computeGraphLayout(draft.nodes, draft.edges)}
-                                density="compact"
-                                showGrid
-                                showControls={false}
-                                showMiniMap={false}
-                                className="h-full w-full"
-                              />
-                            </div>
-                            <p className="mt-3 truncate text-sm font-black text-white">{draft.title || 'Untitled gameplan'}</p>
-                            <p className="mt-1 text-xs font-semibold text-white/42">{draft.nodes.length} steps · {draft.edges.length} outcomes</p>
-                            <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void haptics.light()
-                                  openUserSystemEditorEdit(draft)
-                                }}
-                                className="min-h-[42px] rounded-[14px] border border-[#4d7cff]/35 bg-[#4d7cff]/16 px-3 text-xs font-black text-[#d9e4ff] transition active:scale-[0.97]"
-                              >
-                                Resume
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void haptics.warning()
-                                  if (!window.confirm(`Delete draft “${draft.title}”?`)) return
-                                  void handleDeleteUserSystem(draft.id)
-                                }}
-                                className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.04] text-white/45 transition active:scale-95"
-                                aria-label={`Delete draft ${draft.title}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {systemsState.filter((system) => system.status !== 'draft').length === 0 && systemDraftsForBranch.length === 0 ? (
+                {systemsState.filter((system) => system.status !== 'draft').length === 0 ? (
                   <div className="flex flex-col items-center px-2 pt-2">
                     <EmptyState
-                      title="No gameplans yet"
-                      body="Build step-by-step training paths. Add one step, branch into outcomes, and MatFlow draws the map."
-                      actionLabel="Create gameplan"
+                      title="No systems yet"
+                      body="Describe a sequence in plain language and MatFlow will turn it into a connected system."
+                      actionLabel="Create system"
                       onAction={openUserSystemEditorCreate}
-                      secondaryLabel="Discover public gameplans"
-                      onSecondaryAction={() => updateAppState((previous) => ({
-                        ...previous,
-                        selectedBottomTab: 'community',
-                      }))}
                     />
                   </div>
                 ) : systemsFilteredSorted.length === 0 ? (
                   <div className="flex flex-col items-center px-2 pt-2">
                     <EmptyState
-                      title={systemDraftsForBranch.length > 0 ? 'No finished gameplans yet' : 'No matches'}
-                      body={systemDraftsForBranch.length > 0 ? 'Resume a draft above or finish a new gameplan when it is ready.' : 'Try another search term or filter. Your gameplans are still saved.'}
-                      actionLabel="Clear filters"
+                      title="No matches"
+                      body="Try another search term. Your systems are still saved."
+                      actionLabel="Clear search"
                       onAction={() => updateAppState((previous) => ({
                         ...previous,
                         systemsHubFilter: 'all',
@@ -713,9 +496,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                   <div className="space-y-4 px-1">
                     {systemsFilteredSorted.map((system) => {
                       const isMine = Boolean(user && system.userId && system.userId === user.id)
-                      const isCatalog = !system.userId
-                      const isCommunity = Boolean(system.userId && !isMine)
-                      const pinned = (appState?.pinnedSystemIds ?? []).includes(system.id)
                       const canOpenReader = !system.locked || appState.profile.proUnlocked
                       const isJustForked = justForkedId?.kind === 'system' && justForkedId.id === system.id
                       const linkedTechniqueCount = new Set(system.nodes.flatMap((node) => node.linkedTechniqueIds ?? node.linkedTechniqueTitles ?? [])).size
@@ -738,14 +518,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                 <span className="rounded-full border border-emerald-500/35 bg-emerald-500/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-100 backdrop-blur-md">
                                   Yours
                                 </span>
-                              ) : isCatalog ? (
-                                <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/62 backdrop-blur-md">
-                                  Curated
-                                </span>
-                              ) : isCommunity ? (
-                                <span className="rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b8c9ff] backdrop-blur-md">
-                                  Community
-                                </span>
                               ) : null}
                               {system.locked && !appState.profile.proUnlocked ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-[#4d7cff]/35 bg-[#4d7cff]/14 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b8c9ff] backdrop-blur-md">
@@ -754,11 +526,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                 </span>
                               ) : null}
                             </div>
-                            {pinned ? (
-                              <div className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/30 bg-amber-300/14 text-amber-100 backdrop-blur-md">
-                                <Star className="h-4 w-4 fill-amber-200" />
-                              </div>
-                            ) : null}
                           </div>
                           <div className={cn(isCompactHeight ? 'p-4' : 'p-5')}>
                             <div className="flex items-start justify-between gap-3">
@@ -766,6 +533,7 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                 <h3 className={cn(categoryRowTitleClass, 'truncate font-black leading-none')}>{system.title}</h3>
                                 <p className="mt-2 line-clamp-2 text-[15px] leading-6 text-white/60">{system.summary}</p>
                               </div>
+                              {isMine ? (
                               <div className="relative shrink-0">
                                 <button
                                   type="button"
@@ -782,21 +550,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                 </button>
                                 {systemActionsOpenId === system.id ? (
                                   <div role="menu" className="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-[16px] border border-white/12 bg-[#080d18] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      onClick={() => {
-                                        void haptics.success()
-                                        togglePinSystem(system.id)
-                                        setSystemActionsOpenId(null)
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
-                                    >
-                                      <Star className={cn('h-4 w-4', pinned ? 'fill-amber-300 text-amber-200' : 'text-white/50')} />
-                                      {pinned ? 'Unpin' : 'Pin'}
-                                    </button>
-                                    {isMine ? (
-                                      <>
                                         <button
                                           type="button"
                                           role="menuitem"
@@ -814,19 +567,6 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                           type="button"
                                           role="menuitem"
                                           onClick={() => {
-                                            void haptics.light()
-                                            setSystemActionsOpenId(null)
-                                            openUserSystemDuplicate(system)
-                                          }}
-                                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm font-bold text-white/78 hover:bg-white/[0.06]"
-                                        >
-                                          <Copy className="h-4 w-4 text-white/50" />
-                                          Duplicate
-                                        </button>
-                                        <button
-                                          type="button"
-                                          role="menuitem"
-                                          onClick={() => {
                                             void haptics.warning()
                                             setSystemActionsOpenId(null)
                                             if (!window.confirm(`Delete “${system.title}”?`)) return
@@ -837,11 +577,10 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                           <Trash2 className="h-4 w-4" />
                                           Delete
                                         </button>
-                                      </>
-                                    ) : null}
                                   </div>
                                 ) : null}
                               </div>
+                              ) : null}
                             </div>
                             <div className="mt-4 grid grid-cols-3 gap-2">
                               {[
@@ -886,17 +625,12 @@ export function LibraryGameplansShell(props: LibraryGameplansShellProps) {
                                     openUserSystemEditorEdit(system)
                                   }}
                                   className="inline-flex min-h-[48px] items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white/75"
-                                  aria-label="Edit gameplan"
+                                  aria-label="Edit system"
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </button>
                               ) : null}
                             </div>
-                            {isMine ? (
-                              <p className="mt-3 text-xs font-semibold text-white/36">
-                                {system.visibility === 'public' ? 'Public' : 'Private'}
-                              </p>
-                            ) : null}
                           </div>
                         </ShellCard>
                         </div>

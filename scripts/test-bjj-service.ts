@@ -499,24 +499,6 @@ async function main() {
     assert.equal(tables.user_techniques.some((row) => row.catalog_technique_id === 'disc-triangle-choke'), true)
     assert.ok(Number(tables.profiles[0].xp) >= 65)
 
-    await bjjService.followUser('coach-2', 'user-1')
-    assert.equal(tables.follows.length, 1)
-    assert.equal(tables.notifications.some((row) => row.user_id === 'user-1' && row.kind === 'follow'), true)
-
-    await bjjService.likeFeedPost('user-1', 'session-post-session-local')
-    assert.equal(tables.training_session_likes.length, 1)
-
-    const commentRows = await bjjService.addCommentToPost('user-1', 'session-post-session-local', 'Sharp round.')
-    assert.equal(commentRows.length, 1)
-    assert.equal(tables.training_session_comments.length, 1)
-
-    const inviteUrl = await bjjService.getInviteLink('user-1', 'https://app.example.com')
-    assert.match(inviteUrl, /\?invite=/)
-    assert.equal(tables.invite_links.length, 1)
-
-    await bjjService.markNotificationsRead('user-1')
-    assert.equal(tables.notifications.filter((row) => row.user_id === 'user-1').every((row) => row.read === true), true)
-
     const file = new File(['avatar'], 'avatar.png', { type: 'image/png' })
     const avatarUrl = await bjjService.uploadProfilePhoto('user-1', file)
     assert.match(avatarUrl, /profile-images/)
@@ -525,11 +507,11 @@ async function main() {
     const sessionPhotoUrl = await bjjService.uploadSessionPhoto('user-1', file)
     assert.match(sessionPhotoUrl, /session-media/)
 
-    const draftGraph = await bjjService.saveUserSystem('user-1', {
+    const savedSystem = await bjjService.saveUserSystem('user-1', {
       branch: 'bjj',
-      title: 'Triangle branch draft',
+      title: 'Triangle branch system',
       summary: '',
-      visibility: 'public',
+      visibility: 'private',
       status: 'draft',
       nodes: [
         { id: 'draft-step-1', label: 'Triangle choke', color: '#4c6fff', linkedTechniqueIds: [] },
@@ -541,11 +523,11 @@ async function main() {
         { from: 'draft-step-1', to: 'draft-step-3', label: 'posture up' },
       ],
     })
-    assert.equal(draftGraph.status, 'draft')
-    const draftRow = tables.systems.find((row) => row.id === draftGraph.id)
-    assert.equal(draftRow?.status, 'draft')
-    assert.equal(draftRow?.visibility, 'private')
-    assert.equal(tables.system_edges.filter((row) => row.system_id === draftGraph.id).length, 2)
+    assert.equal(savedSystem.status, 'active')
+    const systemRow = tables.systems.find((row) => row.id === savedSystem.id)
+    assert.equal(systemRow?.status, 'active')
+    assert.equal(systemRow?.visibility, 'public')
+    assert.equal(tables.system_edges.filter((row) => row.system_id === savedSystem.id).length, 2)
 
     console.log('BJJ service tests passed.')
   } finally {

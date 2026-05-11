@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Capture photos for stories, posts, and social creation.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate technique notes and training system descriptions instead of typing.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Select photos from your library for stories, posts, and social creation.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

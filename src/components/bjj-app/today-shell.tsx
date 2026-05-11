@@ -119,7 +119,7 @@ export function TodayShell(props: TodayShellProps) {
                     <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-white/58">
                       {activeGameplan
                         ? `Review ${activeGameplan.title} or log the next session.`
-                        : 'Log a session, build a gameplan, or save your next technical note.'}
+                        : 'Log a session, build a system, or save your next technical note.'}
                     </p>
                   </div>
                   <span className={cn(
@@ -141,7 +141,7 @@ export function TodayShell(props: TodayShellProps) {
                   {[
                     ['Sessions', sessionStats.weekCount],
                     ['Mat min', sessionStats.weekMinutes],
-                    ['Gameplans', systemsState.filter((system) => system.status !== 'draft').length],
+                    ['Systems', systemsState.filter((system) => system.status !== 'draft').length],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.045] px-3 py-2.5">
                       <p className="text-lg font-black leading-none text-white">{value}</p>
@@ -169,7 +169,7 @@ export function TodayShell(props: TodayShellProps) {
                         openSystemReader(activeGameplan)
                         return
                       }
-                      updateAppState((previous) => ({ ...previous, selectedBottomTab: 'gameplans', selectedTechniquesTab: 'systems' }))
+                      updateAppState((previous) => ({ ...previous, selectedBottomTab: 'systems', selectedTechniquesTab: 'systems' }))
                     }}
                     className="inline-flex min-h-[46px] items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white/78 transition active:scale-[0.97]"
                   >
@@ -182,7 +182,7 @@ export function TodayShell(props: TodayShellProps) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-red-100">Your MatFlow trial has ended</p>
-                      <p className="mt-1 text-sm leading-6 text-red-100/70">Training creation and community actions unlock with Pro.</p>
+                      <p className="mt-1 text-sm leading-6 text-red-100/70">Training creation and library actions unlock with Pro.</p>
                     </div>
                     <button
                       type="button"

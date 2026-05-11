@@ -150,6 +150,7 @@ export interface DecodedTransactionPayload {
   purchaseDate?: number
   originalPurchaseDate?: number
   expiresDate?: number
+  revocationDate?: number
   type?: string
   appAccountToken?: string
   inAppOwnershipType?: string
@@ -169,4 +170,3 @@ export async function verifyNotification(signedPayload: string): Promise<Decoded
 export async function verifyTransaction(signedTransactionInfo: string): Promise<DecodedTransactionPayload> {
   return verifyJws<DecodedTransactionPayload>(signedTransactionInfo)
 }
-

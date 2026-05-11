@@ -1,10 +1,9 @@
 import {
   BookOpen,
-  Network,
+  Compass,
+  Globe,
   Shield,
   Target,
-  Trophy,
-  UserRound,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -43,8 +42,6 @@ export const ANALYTICS_CARDS: Array<{ label: string; background: string; Icon: L
   { label: 'Techniques', background: '#101d3a', Icon: BookOpen },
 ]
 
-export const MAX_REEL_DURATION_MS = 180_000
-
 export const ONBOARDING_PREVIEW_TECHNIQUES = [
   { id: 'preview-triangle', title: 'Triangle Choke', category: 'submission', tags: ['Submission', 'Closed Guard'] },
   { id: 'preview-scissor', title: 'Scissor Sweep', category: 'sweep', tags: ['Sweep', 'Fundamental'] },
@@ -53,10 +50,7 @@ export const ONBOARDING_PREVIEW_TECHNIQUES = [
 ] as const
 
 export const BOTTOM_NAV_ITEMS: Array<{ value: BjjBottomTab; label: string; Icon: LucideIcon }> = [
-  { value: 'today', label: 'Today', Icon: Zap },
-  { value: 'library', label: 'Library', Icon: BookOpen },
-  { value: 'gameplans', label: 'Gameplans', Icon: Network },
-  { value: 'community', label: 'Community', Icon: Trophy },
-  { value: 'you', label: 'You', Icon: UserRound },
+  { value: 'my-library', label: 'My Library', Icon: BookOpen },
+  { value: 'systems', label: 'Systems', Icon: Globe },
+  { value: 'discover', label: 'Discover', Icon: Compass },
 ]
-

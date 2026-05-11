@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, Check, ChevronLeft, ChevronRight, Sparkles, Star } from 'lucide-react'
+import { Bell, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { BJJ_PAYWALL_STEPS } from '@/lib/bjj-seed'
 import type { BjjPaywallStep } from '@/lib/bjj-types'
 import { MATFLOW_PRICE_LABEL, type MatFlowAccessState } from '@/lib/matflow-access'
@@ -129,7 +129,7 @@ export function PaywallScreen({
                       </div>
                     </div>
                     <div className="rounded-[24px] border border-white/10 bg-[#0b1020] p-3">
-                      <p className="text-sm text-white/50">Gameplans</p>
+                      <p className="text-sm text-white/50">Systems</p>
                       <div className="mt-4 rounded-[18px] border border-white/10 bg-black/40 p-3 text-sm text-white/70">
                         Branching maps
                       </div>
@@ -161,20 +161,13 @@ export function PaywallScreen({
           {forcedPaywallStep === 'trial' && (
             <>
               <div className="flex-1 pt-2 text-center">
-                <div className="flex items-center justify-center gap-2 text-[#ffd84d]">
-                  <Star className="h-5 w-5 fill-current" />
-                  <Star className="h-5 w-5 fill-current" />
-                  <Star className="h-5 w-5 fill-current" />
-                  <Star className="h-5 w-5 fill-current" />
-                  <Star className="h-5 w-5 fill-current" />
-                </div>
-                <p className="mt-2 text-sm font-semibold uppercase tracking-[0.22em] text-white/65">4.9 top-rated app</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-white/65">Built for post-class review</p>
                 <h2 className={cn(paywallTitleClass, 'mt-5 font-black leading-[1]')}>
                   How <span className="text-[#4d7cff]">Pro access</span> works
                 </h2>
                 <div className="mt-6 space-y-6 text-left">
                   {[
-                    ['Today', 'Start with 14 days free, including gameplans, analytics, and unlimited technique tracking.'],
+                    ['Today', 'Start with 14 days free, including systems, analytics, and unlimited technique tracking.'],
                     ['Billing', `After the trial, MatFlow is ${MATFLOW_PRICE_LABEL} until you cancel it from subscription settings.`],
                     ['Control', 'You can cancel before the next renewal and keep access through the paid period.'],
                   ].map(([title, body], index) => (
@@ -207,7 +200,7 @@ export function PaywallScreen({
                     )} />
                     <h2 className={cn(isShortHeight ? 'text-[30px]' : isCompactHeight ? 'text-[34px]' : 'text-[40px]', 'text-center font-black leading-[1]')}>14 days free, then {MATFLOW_PRICE_LABEL}</h2>
                     <p className="mx-auto mt-3 max-w-[280px] text-center text-[16px] leading-6 text-white/60">
-                      Premium access unlocks gameplans, advanced analytics, unlimited techniques, and challenge tracking.
+                      Premium access unlocks systems, advanced analytics, unlimited techniques, and challenge tracking.
                     </p>
                   </div>
                   <div className="mt-4 space-y-2.5">
@@ -225,9 +218,9 @@ export function PaywallScreen({
                   </div>
                   <ShellCard className="mt-5 bg-white text-black">
                     <div className={cn(isCompactHeight ? 'p-3.5' : 'p-4')}>
-                      <p className="text-[20px] font-bold">Great app!</p>
+                      <p className="text-[20px] font-bold">Designed for real training logs</p>
                       <p className="mt-2 text-[15px] leading-6 text-black/74">
-                        “I use it after every class. This is the first training app that actually helps me remember and connect techniques.”
+                        Capture what happened after class, connect related techniques, and review the patterns that keep showing up.
                       </p>
                     </div>
                   </ShellCard>

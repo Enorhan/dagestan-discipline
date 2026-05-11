@@ -1016,30 +1016,16 @@ export const supabaseService = {
   },
 
   async recordAppStoreTransaction(userId: string, transaction: AppleIapResult): Promise<UserProfile | null> {
-    const payload = {
-      status: transaction.status,
-      productId: transaction.productId,
-      transactionId: transaction.transactionId,
-      originalTransactionId: transaction.originalTransactionId,
-      environment: transaction.environment,
-      appAccountToken: transaction.appAccountToken,
-      purchaseDate: transaction.purchaseDate,
-      expirationDate: transaction.expirationDate,
-      revocationDate: transaction.revocationDate,
+    const signedTransactionInfo = transaction.signedTransactionInfo?.trim()
+    if (!signedTransactionInfo) {
+      throw new Error('App Store transaction verification is unavailable. Restore purchases and try again.')
     }
 
-    const { error } = await db.rpc('record_matflow_app_store_transaction', {
-      p_transaction: payload,
+    const { error } = await db.functions.invoke('appstore-transaction', {
+      body: { signedTransactionInfo },
     })
 
     if (error) {
-      if (isMissingSchemaError(error)) {
-        captureException('matflow-app-store-transaction', error, {
-          step: 'rpc.record_matflow_app_store_transaction.missing',
-          userId,
-        }, 'warning')
-        return supabaseService.getProfile(userId)
-      }
       throw new Error(error.message)
     }
 

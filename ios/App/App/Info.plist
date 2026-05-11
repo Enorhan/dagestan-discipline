@@ -30,6 +30,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Take a photo of your training session, profile, or technique reference.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate technique notes and training system descriptions instead of typing.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a training photo, profile picture, or technique reference from your library.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

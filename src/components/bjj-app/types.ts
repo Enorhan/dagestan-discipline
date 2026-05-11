@@ -5,12 +5,6 @@ import type {
   BjjSessionVisibility,
   BjjTechniqueCategory,
 } from '@/lib/bjj-types'
-import type {
-  SocialPostKind,
-  SocialPostVisibility,
-  SocialUploadStatus,
-  SocialVideoProvider,
-} from '@/lib/social-models'
 
 export type SessionDraft = {
   branch: MartialArtsBranchId
@@ -57,26 +51,6 @@ export type ProfileDraft = {
   gymName: string
   bio: string
   privacy: BjjPersistedState['profile']['privacy']
-}
-
-export type SocialComposerDraft = {
-  id?: string
-  caption: string
-  mediaUrl: string
-  thumbnailUrl: string
-  postKind: SocialPostKind
-  visibility: SocialPostVisibility
-  scheduledFor: string
-  coverTimestampMs: number
-  trimStartMs: number
-  trimEndMs: number
-  durationMs?: number
-  aspectRatio?: number
-  uploadStatus: SocialUploadStatus
-  uploadProgress: number
-  failedReason?: string
-  videoAssetId?: string
-  videoProvider?: SocialVideoProvider
 }
 
 export type NativeInputLike = Event & {

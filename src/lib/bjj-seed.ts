@@ -2,13 +2,9 @@ import type {
   BjjAchievement,
   BjjChallenge,
   BjjChecklistItem,
-  BjjFeedPost,
-  BjjLeaderboardEntry,
-  BjjNotification,
   BjjOnboardingStep,
   BjjPaywallStep,
   BjjPersistedState,
-  BjjSuggestedGrappler,
   BjjSystem,
   BjjTechnique,
   BjjTechniqueCategory,
@@ -283,52 +279,6 @@ export const SEED_LIBRARY_TECHNIQUES: BjjTechnique[] = [
   },
 ]
 
-export const SEED_SUGGESTED_GRAPPLERS: BjjSuggestedGrappler[] = [
-  { id: 'alex', name: 'Alex', handle: '@alexguard', accent: '#2563eb', branch: 'bjj', branchLabel: 'BJJ' },
-  { id: 'diego', name: 'Diego', handle: '@diegohooks', accent: '#7c3aed', branch: 'grappling', branchLabel: 'Grappling' },
-]
-
-export const SEED_FEED_POSTS: BjjFeedPost[] = [
-  {
-    id: 'post-1',
-    authorName: 'Dawson',
-    authorHandle: '@dawsonwrestles',
-    title: 'Competition @ Jitzking',
-    summary: 'Signed up for the adult absolute cash prize division and finally got to test the gameplan under pressure.',
-    submissions: 0,
-    durationLabel: '1h 45m',
-    imageLabel: 'Competition match photo',
-    createdAtLabel: '1 day ago',
-    likes: 12,
-    comments: 3,
-    saves: 0,
-    likedByViewer: false,
-    savedByViewer: false,
-    accent: '#3b82f6',
-    source: 'session',
-  },
-  {
-    id: 'post-2',
-    authorName: 'Kait Cox',
-    authorHandle: '@kaittriangle',
-    title: 'Open Mat Notes',
-    summary: 'Spent the whole round cycle forcing scissor sweep to triangle. Notes are finally getting cleaner.',
-    submissions: 2,
-    durationLabel: '58m',
-    imageLabel: 'Open mat screenshot card',
-    createdAtLabel: '3 days ago',
-    likes: 24,
-    comments: 5,
-    saves: 0,
-    likedByViewer: false,
-    savedByViewer: false,
-    accent: '#2563eb',
-    source: 'session',
-  },
-]
-
-export const SEED_NOTIFICATIONS: BjjNotification[] = []
-
 export const SEED_CHALLENGES: BjjChallenge[] = [
   {
     id: 'challenge-warrior',
@@ -392,17 +342,6 @@ export const createChecklistItems = (
   },
 ]
 
-export const SEED_LEADERBOARD: BjjLeaderboardEntry[] = [
-  { id: 'rank-1', name: 'Jax', handle: '@ronin_nomad', score: 696 },
-  { id: 'rank-2', name: 'Darmin', handle: '@grappler_747a9ee5', score: 582 },
-  { id: 'rank-3', name: 'Edoardo', handle: '@aleiactaest', score: 318 },
-  { id: 'rank-4', name: 'abdulrahman', handle: '@abdulrahman', score: 302 },
-  { id: 'rank-5', name: 'Justin', handle: '@coldinero', score: 297 },
-  { id: 'rank-6', name: 'Elijah', handle: '@elijahlovesbjj', score: 274 },
-  { id: 'rank-7', name: 'Nacho', handle: '@nacho', score: 248 },
-  { id: 'rank-8', name: 'Marcc', handle: '@grappler_78ceec71', score: 239 },
-]
-
 export const SEED_SYSTEMS: BjjSystem[] = [
   {
     id: 'system-closed-guard',
@@ -464,11 +403,9 @@ export function createDefaultBjjState(displayName = 'Grappler', username = 'grap
       coachMarksSeen: false,
       proUnlocked: false,
     },
-    selectedBottomTab: 'today',
+    selectedBottomTab: 'my-library',
     selectedSessionsTab: 'my-sessions',
     selectedTechniquesTab: 'my-library',
-    socialSurface: 'bjj',
-    socialHomeRail: 'for_you',
     selectedTechniqueBranch: 'bjj',
     selectedSystemBranch: 'bjj',
     librarySort: 'new',
@@ -478,9 +415,6 @@ export function createDefaultBjjState(displayName = 'Grappler', username = 'grap
     libraryTechniques: [],
     discoverAddedTechniqueIds: [],
     sessions: [],
-    followedGrapplerIds: [],
-    likedPostIds: [],
-    notifications: SEED_NOTIFICATIONS,
     systemsHubFilter: 'all',
     systemsHubSearch: '',
     pinnedSystemIds: [],

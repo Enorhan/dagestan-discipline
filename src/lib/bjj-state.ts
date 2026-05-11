@@ -5,25 +5,24 @@ import { branchFromPrimaryDiscipline, normalizeMartialArtsBranchId } from '@/lib
 export type PersistedShellProfileFlags = Pick<BjjPersistedState['profile'], 'coachMarksSeen' | 'onboardingCompleted' | 'paywallCompleted'>
 export type PersistedShellUiPrefs = Pick<
   BjjPersistedState,
-  'selectedBottomTab' | 'selectedSessionsTab' | 'selectedTechniquesTab' | 'socialSurface' | 'socialHomeRail' | 'selectedTechniqueBranch' | 'selectedSystemBranch'
+  'selectedBottomTab' | 'selectedSessionsTab' | 'selectedTechniquesTab' | 'selectedTechniqueBranch' | 'selectedSystemBranch'
 >
 
 export const BJJ_PROFILE_FLAGS_STORAGE_KEY = `${BJJ_STORAGE_KEY}:profile-flags`
 export const BJJ_UI_PREFS_STORAGE_KEY = `${BJJ_STORAGE_KEY}:ui-prefs`
 
-const BOTTOM_TABS = new Set<BjjPersistedState['selectedBottomTab']>(['today', 'library', 'gameplans', 'community', 'you'])
+const BOTTOM_TABS = new Set<BjjPersistedState['selectedBottomTab']>(['my-library', 'systems', 'discover'])
 const SESSIONS_TABS = new Set<BjjPersistedState['selectedSessionsTab']>(['my-sessions'])
 const TECHNIQUES_TABS = new Set<BjjPersistedState['selectedTechniquesTab']>(['my-library', 'systems', 'discover'])
-const SOCIAL_HOME_RAILS = new Set<BjjPersistedState['socialHomeRail']>(['for_you', 'following'])
-const SYSTEMS_HUB_FILTERS = new Set<BjjPersistedState['systemsHubFilter']>(['all', 'mine', 'curated', 'community'])
+const SYSTEMS_HUB_FILTERS = new Set<BjjPersistedState['systemsHubFilter']>(['all', 'mine', 'curated'])
 
 function normalizeBottomTab(value: unknown, fallback: BjjPersistedState['selectedBottomTab']): BjjPersistedState['selectedBottomTab'] {
   if (BOTTOM_TABS.has(value as BjjPersistedState['selectedBottomTab'])) {
     return value as BjjPersistedState['selectedBottomTab']
   }
-  if (value === 'sessions') return 'today'
-  if (value === 'techniques') return 'library'
-  if (value === 'social') return 'community'
+  if (value === 'today' || value === 'sessions' || value === 'you' || value === 'profile') return 'my-library'
+  if (value === 'library' || value === 'techniques' || value === 'gameplans') return 'my-library'
+  if (value === 'community' || value === 'social') return 'my-library'
   return fallback
 }
 
@@ -64,17 +63,10 @@ export function normalizeBjjState(raw: unknown, displayName: string, username: s
     selectedTechniquesTab: TECHNIQUES_TABS.has(candidate.selectedTechniquesTab as BjjPersistedState['selectedTechniquesTab'])
       ? candidate.selectedTechniquesTab as BjjPersistedState['selectedTechniquesTab']
       : fallback.selectedTechniquesTab,
-    socialSurface: normalizeMartialArtsBranchId(candidate.socialSurface) ?? profileBranch,
-    socialHomeRail: SOCIAL_HOME_RAILS.has(candidate.socialHomeRail as BjjPersistedState['socialHomeRail'])
-      ? candidate.socialHomeRail as BjjPersistedState['socialHomeRail']
-      : fallback.socialHomeRail,
     customTags: Array.isArray(candidate.customTags) ? candidate.customTags : fallback.customTags,
     libraryTechniques: Array.isArray(candidate.libraryTechniques) ? candidate.libraryTechniques : fallback.libraryTechniques,
     discoverAddedTechniqueIds: Array.isArray(candidate.discoverAddedTechniqueIds) ? candidate.discoverAddedTechniqueIds : fallback.discoverAddedTechniqueIds,
     sessions: Array.isArray(candidate.sessions) ? candidate.sessions : fallback.sessions,
-    followedGrapplerIds: Array.isArray(candidate.followedGrapplerIds) ? candidate.followedGrapplerIds : fallback.followedGrapplerIds,
-    likedPostIds: Array.isArray(candidate.likedPostIds) ? candidate.likedPostIds : fallback.likedPostIds,
-    notifications: Array.isArray(candidate.notifications) ? candidate.notifications : fallback.notifications,
     selectedTechniqueBranch,
     selectedSystemBranch,
     systemsHubFilter: SYSTEMS_HUB_FILTERS.has(candidate.systemsHubFilter as BjjPersistedState['systemsHubFilter'])
@@ -122,19 +114,13 @@ export function normalizePersistedShellUiPrefs(raw: unknown): Partial<PersistedS
 
   return {
     ...(candidate.selectedBottomTab !== undefined
-      ? { selectedBottomTab: normalizeBottomTab(candidate.selectedBottomTab, 'today') }
+      ? { selectedBottomTab: normalizeBottomTab(candidate.selectedBottomTab, 'my-library') }
       : {}),
     ...(SESSIONS_TABS.has(candidate.selectedSessionsTab as BjjPersistedState['selectedSessionsTab'])
       ? { selectedSessionsTab: candidate.selectedSessionsTab as BjjPersistedState['selectedSessionsTab'] }
       : {}),
     ...(TECHNIQUES_TABS.has(candidate.selectedTechniquesTab as BjjPersistedState['selectedTechniquesTab'])
       ? { selectedTechniquesTab: candidate.selectedTechniquesTab as BjjPersistedState['selectedTechniquesTab'] }
-      : {}),
-    ...(normalizeMartialArtsBranchId(candidate.socialSurface)
-      ? { socialSurface: normalizeMartialArtsBranchId(candidate.socialSurface)! }
-      : {}),
-    ...(SOCIAL_HOME_RAILS.has(candidate.socialHomeRail as BjjPersistedState['socialHomeRail'])
-      ? { socialHomeRail: candidate.socialHomeRail as BjjPersistedState['socialHomeRail'] }
       : {}),
     ...(normalizeMartialArtsBranchId(candidate.selectedTechniqueBranch)
       ? { selectedTechniqueBranch: normalizeMartialArtsBranchId(candidate.selectedTechniqueBranch)! }

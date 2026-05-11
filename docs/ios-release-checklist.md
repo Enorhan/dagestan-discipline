@@ -72,10 +72,37 @@ fails the build fast if any one is broken.
 - [ ] **Restore purchases** restores an existing sandbox subscription
 - [ ] Cancelling the StoreKit sheet returns the user to the paywall, not a
   loading state
+- [ ] Server-side `app_store_transactions` records the verified signed
+  transaction after purchase/restore
 - [ ] Server-side `processed_app_store_notifications` records the transaction
 - [ ] Stripe checkout is **unreachable** on iOS — confirm via inspecting the
   Subscribe handler in DevTools / monitoring (defense-in-depth guard fires
   with the iOS App Store message if invoked)
+
+## TestFlight sandbox subscription lifecycle
+
+Run these on a physical iPhone with the TestFlight build installed and a
+Sandbox Apple Account signed in under iOS Developer settings. Use the monthly
+product `matflow.monthly`.
+
+- [ ] App Store Connect has App Store Server Notifications V2 configured for
+  both sandbox and production:
+  `https://ftwtxslonvjgvbaexkwn.functions.supabase.co/appstore-notifications`
+- [ ] `npm run appstore:test-notification` returns a `testNotificationToken`
+  for sandbox; `npm run appstore:test-notification -- --status <token>` shows
+  Apple reached the Supabase endpoint successfully
+- [ ] Initial sandbox purchase creates or updates `app_store_transactions` with
+  `environment = Sandbox`, `status = active`, and a future `expires_at`
+- [ ] Subscription renewal sends a notification such as `DID_RENEW`; premium
+  access remains active and `subscription_period_end` advances
+- [ ] Subscription expiration sends `EXPIRED`; premium access is removed after
+  the accelerated sandbox period ends
+- [ ] Turning off auto-renew sends `DID_CHANGE_RENEWAL_STATUS`; access remains
+  active until the current `expires_at`, then flips off on `EXPIRED`
+- [ ] Refund/revocation sends `REFUND` or `REVOKE`; premium access is removed
+  and the transaction is marked revoked/expired server-side
+- [ ] Restore after an active purchase replays StoreKit entitlements and does
+  not create duplicate premium grants
 
 ## Sessions & training
 
@@ -136,4 +163,3 @@ Record any failures from the rows above as GitHub issues before submitting,
 linked from the build's TestFlight release notes. A build may only be
 submitted to App Review if every row above is **Pass** or has a linked issue
 with a documented mitigation.
-

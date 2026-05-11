@@ -41,6 +41,11 @@ export const BILLING_SUPPORT_MAILTO = buildSupportMailtoLink(
   'MatFlow billing help'
 )
 
+export const SUPPORT_MAILTO = buildSupportMailtoLink(
+  SUPPORT_EMAIL,
+  'MatFlow support'
+)
+
 export const ACCOUNT_DELETION_MAILTO = buildSupportMailtoLink(
   SUPPORT_EMAIL,
   'MatFlow account deletion request'

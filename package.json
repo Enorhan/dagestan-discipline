@@ -12,7 +12,7 @@
     "test:no-legacy-imports": "npx tsx scripts/test-no-legacy-imports.ts",
     "test:no-bjj-seed-fallbacks": "npx tsx scripts/test-no-bjj-seed-fallbacks.ts",
     "test:no-temp-screenshot-paths": "npx tsx scripts/test-no-temp-screenshot-paths.ts",
-    "test:critical-flows": "npm run test:no-legacy-imports && npm run test:no-bjj-seed-fallbacks && npm run test:no-temp-screenshot-paths && npm run test:bjj-auth-profile && npm run test:bjj-onboarding-name && npm run test:bjj-service && npm run test:multi-user-hardening && npm run test:billing-auth-cache && npm run test:system-graph && npm run test:system-graph-wizard && npm run test:matflow-access && npm run test:matflow-navigation && npm run test:matflow-brand",
+    "test:critical-flows": "npm run test:no-legacy-imports && npm run test:no-bjj-seed-fallbacks && npm run test:no-temp-screenshot-paths && npm run test:bjj-auth-profile && npm run test:bjj-onboarding-name && npm run test:bjj-service && npm run test:multi-user-hardening && npm run test:billing-auth-cache && npm run test:system-graph && npm run test:system-text-generator && npm run test:matflow-access && npm run test:matflow-navigation && npm run test:matflow-brand",
     "verify:ci": "npm run lint && npm run typecheck && npm run test:critical-flows && npm run build",
     "test:billing-auth-cache": "npx tsx scripts/test-billing-auth-cache.ts",
     "test:matflow-access": "npx tsx scripts/test-matflow-access.ts",
@@ -30,6 +30,7 @@
     "test:round-timer-accessibility": "npx tsx scripts/test-round-timer-accessibility.ts",
     "test:system-graph": "npx tsx scripts/test-system-graph-canvas.ts",
     "test:system-graph-wizard": "npx tsx scripts/test-system-graph-wizard.ts",
+    "test:system-text-generator": "npx tsx scripts/test-system-text-generator.ts",
     "test:countdown-timer": "npx tsx scripts/test-countdown-timer.ts",
     "test:product-metrics": "npx tsx scripts/test-product-metrics.ts",
     "test:support-config": "npx tsx scripts/test-support-config.ts",
@@ -47,7 +48,8 @@
     "pipeline:daemon": "bash scripts/pipeline-daemon.sh",
     "ios:sync": "npm run build && npx cap sync ios && node scripts/ios/register-local-capacitor-plugins.mjs",
     "ios:ipa": "bash scripts/ios/build-testflight-ipa.sh",
-    "ios:upload": "bash scripts/ios/upload-testflight.sh"
+    "ios:upload": "bash scripts/ios/upload-testflight.sh",
+    "appstore:test-notification": "node scripts/ios/request-appstore-test-notification.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",
@@ -59,6 +61,7 @@
     "@capacitor/status-bar": "^8.0.2",
     "@capawesome/capacitor-google-sign-in": "^0.1.2",
     "@hookform/resolvers": "^3.10.0",
+    "@independo/capacitor-voice-recorder": "^8.2.9",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",

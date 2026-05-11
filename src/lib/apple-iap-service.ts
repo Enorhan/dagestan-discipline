@@ -13,6 +13,7 @@ export type AppleIapResult = {
   purchaseDate?: string
   expirationDate?: string | null
   revocationDate?: string | null
+  signedTransactionInfo?: string
   entitlements?: AppleIapResult[]
 }
 

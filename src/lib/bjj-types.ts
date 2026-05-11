@@ -1,15 +1,13 @@
 import type { MartialArtsBranchId } from '@/lib/martial-arts-branches'
 
-export type BjjBottomTab = 'today' | 'library' | 'gameplans' | 'community' | 'you'
+export type BjjBottomTab = 'my-library' | 'systems' | 'discover'
 export type BjjSessionsTab = 'my-sessions'
 export type BjjTechniquesTab = 'my-library' | 'systems' | 'discover'
-export type BjjSocialSurface = MartialArtsBranchId
-export type BjjSocialHomeRail = 'for_you' | 'following'
 export type BjjSurface =
-  | 'notifications'
-  | 'social-insights'
   | 'paywall'
   | 'edit-profile'
+  | 'sessions'
+  | 'profile'
   | 'new-session'
   | 'session-detail'
   | 'new-technique'
@@ -18,12 +16,9 @@ export type BjjSurface =
   | 'new-technique-linked'
   | 'system-editor'
   | 'system-reader'
-  | 'public-profile'
   | 'techniques-filter-category'
   | 'technique-detail'
   | 'discover-detail'
-  | 'comments'
-  | 'social-post-viewer'
 
 export type BjjAuthMode = 'sign-up' | 'sign-in'
 export type BeltRank = 'white' | 'blue' | 'purple' | 'brown' | 'black'
@@ -180,67 +175,6 @@ export interface BjjSession {
   createdAt: string
 }
 
-export interface BjjSuggestedGrappler {
-  id: string
-  name: string
-  handle: string
-  accent: string
-  branch: MartialArtsBranchId
-  branchLabel: string
-  avatarUrl?: string
-  followerCount?: number
-  followingCount?: number
-  viewerFollows?: boolean
-  viewerRequested?: boolean
-}
-
-export interface BjjFeedPost {
-  id: string
-  authorId?: string
-  authorName: string
-  authorHandle: string
-  authorAvatarUrl?: string
-  title: string
-  summary: string
-  submissions: number
-  durationLabel: string
-  imageLabel: string
-  imageUrl?: string
-  mediaType?: 'image' | 'video'
-  playbackUrl?: string
-  createdAt?: string
-  createdAtLabel: string
-  likes: number
-  comments: number
-  saves: number
-  likedByViewer: boolean
-  savedByViewer: boolean
-  accent: string
-  source: 'session' | 'social'
-  sessionId?: string
-}
-
-export interface BjjFeedComment {
-  id: string
-  sessionId: string
-  authorName: string
-  authorHandle: string
-  body: string
-  parentCommentId?: string
-  mentions?: string[]
-  hashtags?: string[]
-  createdAt: string
-  createdAtLabel: string
-}
-
-export interface BjjNotification {
-  id: string
-  title: string
-  body: string
-  createdAt: string
-  read: boolean
-}
-
 export interface BjjChallenge {
   id: string
   title: string
@@ -266,20 +200,11 @@ export interface BjjChecklistItem {
   completed: boolean
 }
 
-export interface BjjLeaderboardEntry {
-  id: string
-  name: string
-  handle: string
-  score: number
-}
-
 export interface BjjPersistedState {
   profile: BjjProfile
   selectedBottomTab: BjjBottomTab
   selectedSessionsTab: BjjSessionsTab
   selectedTechniquesTab: BjjTechniquesTab
-  socialSurface: BjjSocialSurface
-  socialHomeRail: BjjSocialHomeRail
   selectedTechniqueBranch: MartialArtsBranchId
   selectedSystemBranch: MartialArtsBranchId
   librarySort: 'new' | 'a-z'
@@ -289,9 +214,6 @@ export interface BjjPersistedState {
   libraryTechniques: BjjTechnique[]
   discoverAddedTechniqueIds: string[]
   sessions: BjjSession[]
-  followedGrapplerIds: string[]
-  likedPostIds: string[]
-  notifications: BjjNotification[]
   /** Systems tab: filter list */
   systemsHubFilter: 'all' | 'mine' | 'curated' | 'community'
   /** Systems tab: search query (titles) */

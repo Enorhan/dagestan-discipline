@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { supabaseService } from '@/lib/supabase-service'
 import { getAuthErrorMessage } from '@/lib/action-feedback'
 import { captureException } from '@/lib/monitoring'
@@ -177,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null)
   }, [])
 
-  const value: AuthContextType = {
+  const value = useMemo<AuthContextType>(() => ({
     user,
     isInitializing,
     isLoading,
@@ -190,7 +190,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     updateProfile,
     clearError,
-  }
+  }), [
+    user,
+    isInitializing,
+    isLoading,
+    error,
+    signIn,
+    signUp,
+    signInWithOAuth,
+    requestPasswordReset,
+    signOut,
+    updateProfile,
+    clearError,
+  ])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

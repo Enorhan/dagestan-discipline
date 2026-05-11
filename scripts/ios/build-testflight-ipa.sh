@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build static web app, sync Capacitor, archive Release, export App Store IPA (TestFlight-ready).
-# Upload separately: Xcode Organizer, Transporter, or xcrun altool with API key (see repo docs / AGENTS).
+# Upload separately with `npm run ios:upload`, which uses the configured Xcode account.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -11,6 +11,7 @@ export NODE_ENV=production
 
 npm run build
 npx cap sync ios
+node scripts/ios/register-local-capacitor-plugins.mjs
 
 ARCHIVE="${ARCHIVE_PATH:-/tmp/MatFlow-Signed.xcarchive}"
 EXPORT_DIR="${EXPORT_DIR:-/tmp/MatFlow-Export}"

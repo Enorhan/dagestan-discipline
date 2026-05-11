@@ -16,7 +16,10 @@
 - `NEXT_PUBLIC_STRIPE_PREMIUM_PRICE_ID`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `APPSTORE_BUNDLE_ID` (required by `supabase/functions/appstore-notifications` — must equal the iOS app bundle id, e.g. `com.dagestani.disciple`)
+- `APPSTORE_BUNDLE_ID` (required by `supabase/functions/appstore-transaction` and `supabase/functions/appstore-notifications` — must equal the iOS app bundle id, e.g. `com.dagestani.disciple`)
+- `APPSTORE_ALLOWED_PRODUCT_IDS` (comma-separated App Store product identifiers that can unlock MatFlow access; defaults to `matflow.monthly`)
+- `OPENAI_API_KEY` (required by `supabase/functions/system-text-generator` for text-to-system AI generation)
+- `OPENAI_SYSTEM_MODEL` (optional; defaults to `gpt-4o-mini`)
 - `APPLE_ROOT_CA_PEM` (optional override for the embedded Apple Root CA - G3 trust anchor; supply a PEM block if you need to pin to a different root)
 - `NEXT_PUBLIC_APP_URL`
 
@@ -24,6 +27,18 @@
 
 - `NEXT_PUBLIC_RELEASE_VERSION` - release tag shown in buffered monitoring payloads
 - `NEXT_PUBLIC_CHECKOUT_REDIRECT_URL` - explicit redirect page URL for checkout/portal flows when `NEXT_PUBLIC_APP_URL` is not enough
+
+## Optional App Store Server API variables
+
+These are not baked into the app. They are local/server-side operational
+credentials for `npm run appstore:test-notification`, which asks Apple to send
+an App Store Server Notification `TEST` event to the URL configured in App Store
+Connect.
+
+- `APPSTORE_SERVER_API_ISSUER_ID`
+- `APPSTORE_SERVER_API_KEY_ID`
+- `APPSTORE_SERVER_API_PRIVATE_KEY_PATH` or `APPSTORE_SERVER_API_PRIVATE_KEY`
+- `APPSTORE_SERVER_API_ENV` (`sandbox` by default, or `production`)
 
 ## OAuth provider setup
 
@@ -104,6 +119,7 @@ If set, the client monitoring helper posts buffered error reports to this public
 3. **Verify** one forced error post-deploy by calling `captureException('smoke-test', new Error('hello'))` from the browser console and confirming it lands in the sink.
 4. **Audit trail strategy**: Postgres-level audit is disabled on the Supabase project (`audit_log_disable_postgres = true`) to keep costs predictable. Multi-user audit coverage is provided at the application layer instead:
    - Stripe payment events — `public.processed_stripe_events` (idempotency + replay log)
+   - App Store purchase/restore events — `public.app_store_transactions`
    - App Store notifications — `public.processed_app_store_notifications`
    - Moderation actions — `public.social_reports` (+ moderator identity on each row)
    - Account deletions — server-side `supabase/functions/delete-account` logs `[delete-account]` diagnostics via `console.error/warn`, which feed into Supabase function logs.

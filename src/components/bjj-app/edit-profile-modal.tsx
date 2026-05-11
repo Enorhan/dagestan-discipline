@@ -2,14 +2,12 @@
 
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 import Image from 'next/image'
-import { Crown, Download, ExternalLink, RotateCcw, Trash2 } from 'lucide-react'
+import { Crown, Download, ExternalLink, FileText, LifeBuoy, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react'
 import { createDisplayNameInputBehavior, shouldIgnoreDisplayNameRefill } from '@/lib/display-name-input'
 import { getAuthErrorMessage } from '@/lib/action-feedback'
 import { cn } from '@/lib/utils'
-import { BELTS, USERNAME_MAX_LEN, USERNAME_MIN_LEN } from './constants'
 import { ModalShell } from './modal-shell'
 import { SecondaryButton } from './primitives'
-import { slugifyUsername } from './format-utils'
 import type { NativeInputLike, ProfileDraft } from './types'
 
 export interface EditProfileModalProps {
@@ -33,6 +31,9 @@ export interface EditProfileModalProps {
   handleManageSubscription: () => Promise<void>
   handleRestorePurchase: () => Promise<void>
   handleExportData: () => Promise<void>
+  handleOpenPrivacyPolicy: () => Promise<void>
+  handleOpenTerms: () => Promise<void>
+  handleContactSupport: () => Promise<void>
   handleToggleAnalyticsConsent: () => void
   handleDeleteAccount: () => Promise<void>
   signOut: () => Promise<void>
@@ -65,6 +66,9 @@ export function EditProfileModal(props: EditProfileModalProps) {
     handleManageSubscription,
     handleRestorePurchase,
     handleExportData,
+    handleOpenPrivacyPolicy,
+    handleOpenTerms,
+    handleContactSupport,
     handleToggleAnalyticsConsent,
     handleDeleteAccount,
     signOut,
@@ -117,22 +121,6 @@ export function EditProfileModal(props: EditProfileModalProps) {
           </button>
         </div>
         <label className="space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Username</span>
-          <input
-            value={profileDraft.username}
-            onChange={(event) => setProfileDraft((previous) => previous ? { ...previous, username: slugifyUsername(event.target.value) } : previous)}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            autoComplete="username"
-            placeholder="your_unique_name"
-            className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-base font-medium text-white placeholder:text-white/30 outline-none"
-          />
-          <p className="text-xs font-medium text-white/38">
-            {USERNAME_MIN_LEN}–{USERNAME_MAX_LEN} characters. Changing your handle may affect how others find you.
-          </p>
-        </label>
-        <label className="space-y-2">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Display Name</span>
           <input
             {...createDisplayNameInputBehavior('profile', profileNameInputUnlocked, () => setProfileNameInputUnlocked(true))}
@@ -157,30 +145,6 @@ export function EditProfileModal(props: EditProfileModalProps) {
             className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white outline-none"
           />
         </label>
-        <BeltStripesSection
-          profileDraft={profileDraft}
-          setProfileDraft={setProfileDraft}
-        />
-        <label className="space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Gym / Academy</span>
-          <input
-            value={profileDraft.gymName}
-            onChange={(event) => setProfileDraft((previous) => previous ? { ...previous, gymName: event.target.value } : previous)}
-            placeholder="Enter gym name"
-            className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-base font-medium text-white placeholder:text-white/35 outline-none"
-          />
-        </label>
-        <label className="space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Bio</span>
-          <textarea
-            value={profileDraft.bio}
-            onChange={(event) => setProfileDraft((previous) => previous ? { ...previous, bio: event.target.value.slice(0, 200) } : previous)}
-            placeholder="Tell us about yourself..."
-            className="min-h-28 w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-base font-medium text-white placeholder:text-white/35 outline-none"
-          />
-          <div className="text-right text-xs font-semibold text-white/35">{profileDraft.bio.length}/200</div>
-        </label>
-        <PrivacySection profileDraft={profileDraft} setProfileDraft={setProfileDraft} />
         <ProfileActionStack
           analyticsConsent={analyticsConsent}
           authLoading={authLoading}
@@ -190,6 +154,9 @@ export function EditProfileModal(props: EditProfileModalProps) {
           handleManageSubscription={handleManageSubscription}
           handleRestorePurchase={handleRestorePurchase}
           handleExportData={handleExportData}
+          handleOpenPrivacyPolicy={handleOpenPrivacyPolicy}
+          handleOpenTerms={handleOpenTerms}
+          handleContactSupport={handleContactSupport}
           handleToggleAnalyticsConsent={handleToggleAnalyticsConsent}
           handleDeleteAccount={handleDeleteAccount}
           signOut={signOut}
@@ -197,84 +164,6 @@ export function EditProfileModal(props: EditProfileModalProps) {
         />
       </div>
     </ModalShell>
-  )
-}
-
-function BeltStripesSection({
-  profileDraft,
-  setProfileDraft,
-}: {
-  profileDraft: ProfileDraft
-  setProfileDraft: Dispatch<SetStateAction<ProfileDraft | null>>
-}) {
-  return (
-    <>
-      <div>
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Belt Rank</span>
-        <div className="mt-3 grid grid-cols-5 gap-2">
-          {BELTS.map((belt) => (
-            <button
-              key={belt}
-              type="button"
-              onClick={() => setProfileDraft((previous) => previous ? { ...previous, belt } : previous)}
-              className={cn(
-                'rounded-2xl px-2 py-3 text-sm font-bold capitalize',
-                profileDraft.belt === belt ? 'bg-white text-black' : 'bg-white/6 text-white/45',
-              )}
-            >
-              {belt}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div>
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Stripes</span>
-        <div className="mt-3 grid grid-cols-5 gap-2">
-          {Array.from({ length: 5 }, (_, value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setProfileDraft((previous) => previous ? { ...previous, stripes: value } : previous)}
-              className={cn(
-                'rounded-2xl px-2 py-3 text-sm font-bold',
-                profileDraft.stripes === value ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/45',
-              )}
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-      </div>
-    </>
-  )
-}
-
-function PrivacySection({
-  profileDraft,
-  setProfileDraft,
-}: {
-  profileDraft: ProfileDraft
-  setProfileDraft: Dispatch<SetStateAction<ProfileDraft | null>>
-}) {
-  return (
-    <div>
-      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/35">Account Privacy</span>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {(['public', 'private'] as const).map((privacy) => (
-          <button
-            key={privacy}
-            type="button"
-            onClick={() => setProfileDraft((previous) => previous ? { ...previous, privacy } : previous)}
-            className={cn(
-              'rounded-2xl px-3 py-3 text-sm font-bold capitalize',
-              profileDraft.privacy === privacy ? 'bg-[#2f58ff] text-white' : 'bg-white/6 text-white/45',
-            )}
-          >
-            {privacy}
-          </button>
-        ))}
-      </div>
-    </div>
   )
 }
 
@@ -287,6 +176,9 @@ function ProfileActionStack({
   handleManageSubscription,
   handleRestorePurchase,
   handleExportData,
+  handleOpenPrivacyPolicy,
+  handleOpenTerms,
+  handleContactSupport,
   handleToggleAnalyticsConsent,
   handleDeleteAccount,
   signOut,
@@ -309,6 +201,18 @@ function ProfileActionStack({
       <SecondaryButton disabled={isExportingData} onClick={() => { void handleExportData() }}>
         <Download className="h-5 w-5" />
         {isExportingData ? 'Requesting export…' : 'Export my data'}
+      </SecondaryButton>
+      <SecondaryButton onClick={() => { void handleOpenPrivacyPolicy() }}>
+        <ShieldCheck className="h-5 w-5" />
+        Privacy Policy
+      </SecondaryButton>
+      <SecondaryButton onClick={() => { void handleOpenTerms() }}>
+        <FileText className="h-5 w-5" />
+        Terms of Service
+      </SecondaryButton>
+      <SecondaryButton onClick={() => { void handleContactSupport() }}>
+        <LifeBuoy className="h-5 w-5" />
+        Contact support
       </SecondaryButton>
       <button
         type="button"
@@ -356,7 +260,7 @@ function ProfileActionStack({
         {isDeletingAccount ? 'Deleting account…' : 'Delete account'}
       </button>
       <p className="text-center text-xs text-white/35">
-        Deleting your account permanently removes your profile, sessions, gameplans, and uploads.
+        Deleting your account permanently removes your profile, sessions, and uploads. Systems and Discover techniques you created remain available in the app.
       </p>
     </div>
   )

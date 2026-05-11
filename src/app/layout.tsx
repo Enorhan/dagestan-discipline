@@ -14,7 +14,7 @@ import { themeBootstrapScript } from '@/lib/theme'
 
 export const metadata: Metadata = {
   title: 'MatFlow',
-  description: 'Combat-sports Training OS for gameplans, technique libraries, fast logging, and review.',
+  description: 'Combat-sports Training OS for systems, technique libraries, fast logging, and review.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

@@ -1,7 +1,7 @@
 'use client'
 
 import { Check, ChevronDown, ChevronRight, Flame, Medal, Target, Trophy, Zap } from 'lucide-react'
-import { BeltBar, ShellCard } from '@/components/bjj-app/primitives'
+import { ShellCard } from '@/components/bjj-app/primitives'
 import { ANALYTICS_CARDS } from '@/components/bjj-app/constants'
 import { cn } from '@/lib/utils'
 import type {
@@ -99,14 +99,9 @@ export function YouLegacyShell({
       </div>
 
       <ShellCard className={cn(shellSubsectionSpacingClass, isCompactHeight ? 'p-4' : 'p-5')}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className={cn(isCompactHeight ? 'text-[28px]' : 'text-[34px]', 'font-black leading-none')}>Level {appState.profile.level}</p>
-            <p className="mt-1.5 text-base text-white/50">{appState.profile.xp} Total XP</p>
-          </div>
-          <div className="rounded-full border border-[#4d7cff]/28 bg-[#4d7cff]/12 px-3 py-1 text-sm font-bold text-[#8cabff]">
-            {appState.profile.belt.toUpperCase()}
-          </div>
+        <div>
+          <p className={cn(isCompactHeight ? 'text-[28px]' : 'text-[34px]', 'font-black leading-none')}>Level {appState.profile.level}</p>
+          <p className="mt-1.5 text-base text-white/50">{appState.profile.xp} Total XP</p>
         </div>
         <div className="mt-5 h-3 rounded-full bg-white/10">
           <div
@@ -115,9 +110,6 @@ export function YouLegacyShell({
           />
         </div>
         <p className="mt-3 text-right text-sm font-semibold text-white/48">{Math.round((appState.profile.xp % 300) / 3)}%</p>
-        <div className="mt-4">
-          <BeltBar belt={appState.profile.belt} />
-        </div>
       </ShellCard>
 
       <div className={cn(shellSectionSpacingClass, 'flex items-center justify-between px-1')}>
@@ -252,7 +244,7 @@ export function YouLegacyShell({
         <h2 className={cn(shellSectionTitleClass, 'font-black leading-none')}>Blue Belt Checklist</h2>
         <button type="button" className="text-sm font-semibold text-[#7ea4ff]" onClick={() => updateAppState((previous) => ({
           ...previous,
-          selectedBottomTab: 'library',
+          selectedBottomTab: 'discover',
           selectedTechniquesTab: 'discover',
         }))}>
           Open checklist

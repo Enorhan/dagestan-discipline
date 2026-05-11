@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { captureException } from '@/lib/monitoring'
 import {
   DEFAULT_RUNTIME_FLAGS,
@@ -69,8 +69,13 @@ export function RuntimeFlagsProvider({ children }: { children: React.ReactNode }
     }
   }, [refresh])
 
+  const value = useMemo<RuntimeFlagsContextType>(
+    () => ({ flags, isLoading, refresh }),
+    [flags, isLoading, refresh],
+  )
+
   return (
-    <RuntimeFlagsContext.Provider value={{ flags, isLoading, refresh }}>
+    <RuntimeFlagsContext.Provider value={value}>
       {children}
     </RuntimeFlagsContext.Provider>
   )

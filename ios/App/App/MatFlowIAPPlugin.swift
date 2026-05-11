@@ -36,7 +36,7 @@ public class MatFlowIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                 case .success(let verification):
                     let transaction = try checkVerified(verification)
                     await transaction.finish()
-                    resolve(call, transactionPayload(transaction, status: "purchased"))
+                    resolve(call, transactionPayload(transaction, status: "purchased", signedTransactionInfo: verification.jwsRepresentation))
                 case .pending:
                     resolve(call, ["status": "pending", "productId": productId])
                 case .userCancelled:
@@ -57,7 +57,7 @@ public class MatFlowIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                 var entitlements: [[String: Any]] = []
                 for await result in Transaction.currentEntitlements {
                     if let transaction = try? checkVerified(result) {
-                        entitlements.append(transactionPayload(transaction, status: "restored"))
+                        entitlements.append(transactionPayload(transaction, status: "restored", signedTransactionInfo: result.jwsRepresentation))
                     }
                 }
                 resolve(call, ["status": entitlements.isEmpty ? "empty" : "restored", "entitlements": entitlements])
@@ -76,7 +76,7 @@ public class MatFlowIAPPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    private func transactionPayload(_ transaction: Transaction, status: String) -> [String: Any] {
+    private func transactionPayload(_ transaction: Transaction, status: String, signedTransactionInfo: String? = nil) -> [String: Any] {
         let environment: String
         if #available(iOS 16.0, *) {
             environment = transaction.environment.rawValue
@@ -84,7 +84,7 @@ public class MatFlowIAPPlugin: CAPPlugin, CAPBridgedPlugin {
             environment = "unknown"
         }
 
-        return [
+        var payload: [String: Any] = [
             "status": status,
             "productId": transaction.productID,
             "transactionId": String(transaction.id),
@@ -95,6 +95,12 @@ public class MatFlowIAPPlugin: CAPPlugin, CAPBridgedPlugin {
             "expirationDate": transaction.expirationDate.map(isoDate) as Any,
             "revocationDate": transaction.revocationDate.map(isoDate) as Any
         ]
+
+        if let signedTransactionInfo = signedTransactionInfo {
+            payload["signedTransactionInfo"] = signedTransactionInfo
+        }
+
+        return payload
     }
 
     private func isoDate(_ date: Date) -> String {

@@ -37,9 +37,15 @@ const queue: OfflineQueueEntry[] = []
 let flushing = false
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 const listeners = new Set<(state: OfflineQueueState) => void>()
+let currentState: OfflineQueueState = { pending: 0, flushing: false }
 
 function snapshot(): OfflineQueueState {
-  return { pending: queue.length, flushing }
+  if (currentState.pending === queue.length && currentState.flushing === flushing) {
+    return currentState
+  }
+
+  currentState = { pending: queue.length, flushing }
+  return currentState
 }
 
 function emit(): void {
@@ -143,4 +149,3 @@ if (typeof window !== 'undefined') {
     void flushQueue()
   })
 }
-

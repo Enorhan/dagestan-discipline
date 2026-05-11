@@ -1,16 +1,11 @@
 import { logger } from '@/lib/logger'
 import { captureException } from '@/lib/monitoring'
-import { socialInteractionsService } from '@/lib/social-interactions-service'
-import { socialRelationshipsService } from '@/lib/social-relationships-service'
 import { supabase } from '@/lib/supabase'
 import { supabaseService } from '@/lib/supabase-service'
 import type { UserProfile } from '@/lib/user-profile-types'
 import { getMatFlowAccessState } from '@/lib/matflow-access'
 import type { MartialArtsBranchId } from '@/lib/martial-arts-branches'
 import {
-  branchFromPrimaryDiscipline,
-  getMartialArtsBranchLabel,
-  MARTIAL_ARTS_BRANCH_IDS,
   normalizeMartialArtsBranchId,
 } from '@/lib/martial-arts-branches'
 import {
@@ -19,16 +14,11 @@ import {
 import type {
   BjjAchievement,
   BjjChallenge,
-  BjjFeedComment,
-  BjjFeedPost,
-  BjjLeaderboardEntry,
-  BjjNotification,
   BjjPersistedState,
   BjjPrivacy,
   BjjSession,
   BjjSessionType,
   BjjSessionVisibility,
-  BjjSuggestedGrappler,
   BjjSystem,
   BjjSystemStatus,
   BjjTechnique,
@@ -138,23 +128,9 @@ export interface BjjShellSnapshot {
   customTags: string[]
   discoverTechniques: BjjTechnique[]
   sessions: BjjSession[]
-  followedGrapplerIds: string[]
-  feedPosts: BjjFeedPost[]
-  suggestedGrapplers: BjjSuggestedGrappler[]
-  notifications: BjjNotification[]
   systems: BjjSystem[]
-  leaderboard: BjjLeaderboardEntry[]
   challenges: BjjChallenge[]
   achievements: BjjAchievement[]
-}
-
-export interface BjjPublicUserProfileBundle {
-  profile: BjjSuggestedGrappler & {
-    bio: string
-    privacy: BjjPrivacy
-  }
-  techniques: BjjTechnique[]
-  systems: BjjSystem[]
 }
 
 function getErrorMessage(error: unknown): string {
@@ -274,23 +250,6 @@ function formatTimeLabel(value: string): string {
   }
 }
 
-function formatFeedTimestamp(value: string): string {
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return value
-  const deltaMs = Date.now() - timestamp
-  const deltaDays = Math.floor(deltaMs / (1000 * 60 * 60 * 24))
-  if (deltaDays <= 0) return 'Today'
-  if (deltaDays === 1) return '1 day ago'
-  if (deltaDays < 7) return `${deltaDays} days ago`
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value))
-}
-
-function accentFromSeed(seed: string): string {
-  const palette = ['#2563eb', '#7c3aed', '#0ea5e9', '#22c55e', '#f97316', '#ef4444']
-  const total = seed.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
-  return palette[total % palette.length]
-}
-
 function isPremiumProfile(profile: UserProfile | null | undefined): boolean {
   return getMatFlowAccessState(profile).hasAccess
 }
@@ -340,14 +299,6 @@ function buildProfilePatch(profile: UserProfile | null, cachedState: BjjPersiste
     subscriptionStatus: profile?.subscriptionStatus ?? fallback.subscriptionStatus ?? null,
     subscriptionPeriodEnd: profile?.subscriptionPeriodEnd ?? fallback.subscriptionPeriodEnd ?? null,
   }
-}
-
-function toSessionPostId(sessionId: string): string {
-  return `session-post-${sessionId}`
-}
-
-function toSessionIdFromPostId(postId: string): string | null {
-  return postId.startsWith('session-post-') ? postId.replace(/^session-post-/, '') : null
 }
 
 function mapDiscoverTechnique(row: any): BjjTechnique {
@@ -454,27 +405,6 @@ async function incrementStreaks(userId: string): Promise<void> {
     )
 }
 
-async function insertNotification(
-  userId: string,
-  kind: string,
-  title: string,
-  body: string,
-  metadata: Record<string, unknown> = {},
-): Promise<void> {
-  const payload = {
-    user_id: userId,
-    kind,
-    title,
-    body,
-    metadata,
-  }
-
-  const { error } = await db.from('notifications').insert(payload)
-  if (error && !isMissingSchemaError(error)) {
-    throw new Error(error.message)
-  }
-}
-
 async function replaceTechniqueRelations(userId: string, techniqueId: string, tags: string[], linkedTechniqueIds: string[]): Promise<void> {
   const normalizedTags = sanitizeArray(tags)
   const normalizedLinkedIds = sanitizeArray(linkedTechniqueIds).filter((value) => value !== techniqueId)
@@ -492,11 +422,14 @@ async function replaceTechniqueRelations(userId: string, techniqueId: string, ta
   if (normalizedTags.length > 0) {
     const { error: insertTagsError } = await db
       .from('technique_tags')
-      .insert(normalizedTags.map((tag) => ({
-        user_id: userId,
-        technique_id: techniqueId,
-        tag,
-      })))
+      .upsert(
+        normalizedTags.map((tag) => ({
+          user_id: userId,
+          technique_id: techniqueId,
+          tag,
+        })),
+        { onConflict: 'user_id,technique_id,tag', ignoreDuplicates: true },
+      )
 
     if (insertTagsError && !isMissingSchemaError(insertTagsError)) {
       throw new Error(insertTagsError.message)
@@ -516,11 +449,14 @@ async function replaceTechniqueRelations(userId: string, techniqueId: string, ta
   if (normalizedLinkedIds.length > 0) {
     const { error: insertLinksError } = await db
       .from('technique_links')
-      .insert(normalizedLinkedIds.map((linkedId) => ({
-        user_id: userId,
-        from_technique_id: techniqueId,
-        to_technique_id: linkedId,
-      })))
+      .upsert(
+        normalizedLinkedIds.map((linkedId) => ({
+          user_id: userId,
+          from_technique_id: techniqueId,
+          to_technique_id: linkedId,
+        })),
+        { onConflict: 'user_id,from_technique_id,to_technique_id', ignoreDuplicates: true },
+      )
 
     if (insertLinksError && !isMissingSchemaError(insertLinksError)) {
       throw new Error(insertLinksError.message)
@@ -696,29 +632,7 @@ async function syncProgressSignals(userId: string): Promise<void> {
     if (row.completed_at && !challengeCompletionById.get(row.challenge_id)) {
       const definition = challengeDefinitions.get(row.challenge_id)
       if (definition) {
-        await insertNotification(
-          userId,
-          'challenge_unlocked',
-          'Challenge completed',
-          `${definition.title} is complete. +${definition.xpReward} XP added to your grind.`,
-          { challengeId: row.challenge_id },
-        )
         await awardXp(userId, definition.xpReward)
-      }
-    }
-  }
-
-  for (const row of nextAchievementRows) {
-    if (row.unlocked_at && !achievementCompletionById.get(row.achievement_id)) {
-      const definition = achievementDefinitions.get(row.achievement_id)
-      if (definition) {
-        await insertNotification(
-          userId,
-          'achievement_unlocked',
-          'Achievement unlocked',
-          definition.title,
-          { achievementId: row.achievement_id },
-        )
       }
     }
   }
@@ -807,41 +721,6 @@ async function listSessions(userId: string): Promise<BjjSession[]> {
   }
 
   return (sessions ?? []).map((row: any) => mapSession(row, linkedTechniqueIdsBySession.get(row.id) ?? []))
-}
-
-async function listFollowedGrapplerIds(userId: string): Promise<string[]> {
-  const { data, error } = await db
-    .from('follows')
-    .select('following_user_id')
-    .eq('follower_user_id', userId)
-
-  if (error) {
-    if (isMissingSchemaError(error, 'follows')) return []
-    throw new Error(error.message)
-  }
-
-  return (data ?? []).map((row: any) => row.following_user_id)
-}
-
-async function listNotifications(userId: string): Promise<BjjNotification[]> {
-  const { data, error } = await db
-    .from('notifications')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    if (isMissingSchemaError(error, 'notifications')) return []
-    throw new Error(error.message)
-  }
-
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    title: row.title,
-    body: row.body,
-    createdAt: row.created_at ?? new Date().toISOString(),
-    read: !!row.read,
-  }))
 }
 
 const MAX_USER_SYSTEM_NODES = 24
@@ -1192,8 +1071,8 @@ async function persistUserSystem(userId: string, input: SaveUserSystemInput): Pr
   const systemId = input.id ?? null
   const sortOrder = typeof input.sortOrder === 'number' ? input.sortOrder : 5000
   const branch = normalizeMartialArtsBranchId(input.branch) ?? 'bjj'
-  const status = normalizeSystemStatus(input.status)
-  const visibility: BjjPrivacy = status === 'draft' ? 'private' : input.visibility
+  const status: BjjSystemStatus = 'active'
+  const visibility: BjjPrivacy = 'public'
   await assertUserOwnsTechniques(userId, allLinkedTechniques, branch)
 
   const pNodes = input.nodes.map((node, index) => {
@@ -1284,290 +1163,7 @@ async function removeUserSystem(userId: string, systemId: string): Promise<void>
   await syncProgressSignals(userId)
 }
 
-async function listProfilesByIds(viewerId: string | null, userIds: string[]): Promise<Map<string, any>> {
-  if (userIds.length === 0) return new Map<string, any>()
-  const { data, error } = await db.rpc('public_profile_cards_batch', {
-    p_viewer_id: viewerId,
-    p_user_ids: userIds,
-  })
 
-  if (error) {
-    if (isMissingSchemaError(error, 'public_profile_cards_batch')) return new Map<string, any>()
-    if (isPermissionDeniedError(error)) return new Map<string, any>()
-    throw new Error(error.message)
-  }
-
-  return new Map<string, any>(
-    (data ?? []).map((row: any) => [
-      row.user_id as string,
-      {
-        id: row.user_id,
-        username: row.username,
-        display_name: row.display_name,
-        avatar_url: row.avatar_url,
-      },
-    ]),
-  )
-}
-
-function mapPublicProfileRowToGrappler(row: any): BjjSuggestedGrappler {
-  const id = String(row.user_id ?? row.id ?? '')
-  const branch = normalizeMartialArtsBranchId(row.branch)
-    ?? branchFromPrimaryDiscipline(row.primary_discipline)
-  const username = String(row.username ?? 'grappler')
-  return {
-    id,
-    name: String(row.display_name ?? 'Grappler'),
-    handle: `@${username}`,
-    accent: accentFromSeed(id),
-    branch,
-    branchLabel: getMartialArtsBranchLabel(branch),
-    avatarUrl: row.avatar_url ?? undefined,
-    followerCount: typeof row.follower_count === 'number' ? row.follower_count : Number(row.follower_count ?? 0),
-    followingCount: typeof row.following_count === 'number' ? row.following_count : Number(row.following_count ?? 0),
-    viewerFollows: Boolean(row.viewer_follows),
-    viewerRequested: Boolean(row.viewer_requested),
-  }
-}
-
-async function listFeedPosts(userId: string): Promise<BjjFeedPost[]> {
-  const [{ data: sessions, error }, followedIds] = await Promise.all([
-    db
-      .from('training_sessions')
-      .select('id, user_id, location, session_type, caption, notes, duration_minutes, submission_names, photo_url, created_at')
-      .eq('visibility', 'everyone')
-      .order('created_at', { ascending: false })
-      .limit(20),
-    listFollowedGrapplerIds(userId),
-  ])
-
-  if (error) {
-    if (isMissingSchemaError(error, 'feed_training_sessions')) return []
-    throw new Error(error.message)
-  }
-
-  const sessionRows = sessions ?? []
-  if (sessionRows.length === 0) return []
-
-  const sessionIds = sessionRows.map((row: any) => row.id)
-  const [
-    profilesById,
-    { data: likesRows, error: likesError },
-    { data: commentRows, error: commentError },
-  ] = await Promise.all([
-    listProfilesByIds(userId, Array.from(new Set(sessionRows.map((row: any) => row.user_id)))),
-    db.from('training_session_likes').select('training_session_id, user_id').in('training_session_id', sessionIds),
-    db.from('training_session_comments').select('id, training_session_id').in('training_session_id', sessionIds),
-  ])
-
-  if (likesError) {
-    if (isMissingSchemaError(likesError, 'training_session_likes')) {
-      return sessionRows
-        .map((row: any) => {
-          const profile = profilesById.get(row.user_id)
-          return {
-            id: toSessionPostId(row.id),
-            authorId: row.user_id,
-            authorName: profile?.display_name ?? 'Grappler',
-            authorHandle: `@${profile?.username ?? 'grappler'}`,
-            authorAvatarUrl: profile?.avatar_url ?? undefined,
-            title: `${row.session_type ?? 'No-Gi'} @ ${row.location || 'Training Room'}`,
-            summary: row.caption || row.notes || 'Logged a public session and linked the rounds that mattered.',
-            submissions: Array.isArray(row.submission_names) ? row.submission_names.length : 0,
-            durationLabel: `${row.duration_minutes ?? 90}m`,
-            imageLabel: row.photo_url ? 'Session photo' : 'Training session post',
-            imageUrl: row.photo_url ?? undefined,
-            createdAt: row.created_at ?? new Date().toISOString(),
-            createdAtLabel: formatFeedTimestamp(row.created_at ?? new Date().toISOString()),
-            likes: 0,
-            comments: 0,
-            saves: 0,
-            likedByViewer: false,
-            savedByViewer: false,
-            accent: accentFromSeed(row.user_id),
-            source: 'session' as const,
-            sessionId: row.id,
-            _priority: followedIds.includes(row.user_id) ? 1 : 0,
-          }
-        })
-        .sort((left: BjjFeedPost & { _priority: number }, right: BjjFeedPost & { _priority: number }) => right._priority - left._priority)
-        .map(({ _priority, ...post }: BjjFeedPost & { _priority: number }) => post)
-    }
-    throw new Error(likesError.message)
-  }
-
-  if (commentError) {
-    if (isMissingSchemaError(commentError, 'training_session_comments')) {
-      return sessionRows
-        .map((row: any) => {
-          const profile = profilesById.get(row.user_id)
-          return {
-            id: toSessionPostId(row.id),
-            authorId: row.user_id,
-            authorName: profile?.display_name ?? 'Grappler',
-            authorHandle: `@${profile?.username ?? 'grappler'}`,
-            authorAvatarUrl: profile?.avatar_url ?? undefined,
-            title: `${row.session_type ?? 'No-Gi'} @ ${row.location || 'Training Room'}`,
-            summary: row.caption || row.notes || 'Logged a public session and linked the rounds that mattered.',
-            submissions: Array.isArray(row.submission_names) ? row.submission_names.length : 0,
-            durationLabel: `${row.duration_minutes ?? 90}m`,
-            imageLabel: row.photo_url ? 'Session photo' : 'Training session post',
-            imageUrl: row.photo_url ?? undefined,
-            createdAt: row.created_at ?? new Date().toISOString(),
-            createdAtLabel: formatFeedTimestamp(row.created_at ?? new Date().toISOString()),
-            likes: likeCountBySession.get(row.id) ?? 0,
-            comments: 0,
-            saves: 0,
-            likedByViewer: likedSessionIds.has(row.id),
-            savedByViewer: false,
-            accent: accentFromSeed(row.user_id),
-            source: 'session' as const,
-            sessionId: row.id,
-            _priority: followedIds.includes(row.user_id) ? 1 : 0,
-          }
-        })
-        .sort((left: BjjFeedPost & { _priority: number }, right: BjjFeedPost & { _priority: number }) => right._priority - left._priority)
-        .map(({ _priority, ...post }: BjjFeedPost & { _priority: number }) => post)
-    }
-    throw new Error(commentError.message)
-  }
-
-  const likeCountBySession = new Map<string, number>()
-  const likedSessionIds = new Set<string>()
-  for (const row of likesRows ?? []) {
-    likeCountBySession.set(row.training_session_id, (likeCountBySession.get(row.training_session_id) ?? 0) + 1)
-    if (row.user_id === userId) {
-      likedSessionIds.add(row.training_session_id)
-    }
-  }
-
-  const commentCountBySession = new Map<string, number>()
-  for (const row of commentRows ?? []) {
-    commentCountBySession.set(row.training_session_id, (commentCountBySession.get(row.training_session_id) ?? 0) + 1)
-  }
-
-  return sessionRows
-    .map((row: any) => {
-      const profile = profilesById.get(row.user_id)
-      return {
-        id: toSessionPostId(row.id),
-        authorId: row.user_id,
-        authorName: profile?.display_name ?? 'Grappler',
-        authorHandle: `@${profile?.username ?? 'grappler'}`,
-        authorAvatarUrl: profile?.avatar_url ?? undefined,
-        title: `${row.session_type ?? 'No-Gi'} @ ${row.location || 'Training Room'}`,
-        summary: row.caption || row.notes || 'Logged a public session and linked the rounds that mattered.',
-        submissions: Array.isArray(row.submission_names) ? row.submission_names.length : 0,
-        durationLabel: `${row.duration_minutes ?? 90}m`,
-        imageLabel: row.photo_url ? 'Session photo' : 'Training session post',
-        imageUrl: row.photo_url ?? undefined,
-        createdAt: row.created_at ?? new Date().toISOString(),
-        createdAtLabel: formatFeedTimestamp(row.created_at ?? new Date().toISOString()),
-        likes: likeCountBySession.get(row.id) ?? 0,
-        comments: commentCountBySession.get(row.id) ?? 0,
-        saves: 0,
-        likedByViewer: likedSessionIds.has(row.id),
-        savedByViewer: false,
-        accent: accentFromSeed(row.user_id),
-        source: 'session' as const,
-        sessionId: row.id,
-        _priority: followedIds.includes(row.user_id) ? 1 : 0,
-      }
-    })
-    .sort((left: BjjFeedPost & { _priority: number }, right: BjjFeedPost & { _priority: number }) => {
-      return right._priority - left._priority
-    })
-    .map(({ _priority, ...post }: BjjFeedPost & { _priority: number }) => post)
-}
-
-async function listSuggestedGrapplers(userId: string, followedIds: string[]): Promise<BjjSuggestedGrappler[]> {
-  const rows: any[] = []
-
-  for (const branch of MARTIAL_ARTS_BRANCH_IDS) {
-    const { data, error } = await db.rpc('search_public_profiles', {
-      p_branch: branch,
-      p_query: '',
-      p_limit: 24,
-      p_cursor: null,
-    })
-    if (error) {
-      if (isMissingSchemaError(error, 'search_public_profiles')) return []
-      if (isPermissionDeniedError(error)) return []
-      throw new Error(error.message)
-    }
-    rows.push(...(data ?? []))
-  }
-
-  const seen = new Set<string>()
-  return rows
-    .filter((row: any) => {
-      const id = row.user_id as string
-      if (!id || id === userId || followedIds.includes(id) || seen.has(id)) return false
-      seen.add(id)
-      return true
-    })
-    .slice(0, 48)
-    .map(mapPublicProfileRowToGrappler)
-}
-
-function formatLeaderboardMonthStartIso(year: number, month: number): string {
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    throw new Error('Invalid month')
-  }
-  return `${year}-${String(month).padStart(2, '0')}-01`
-}
-
-async function listLeaderboardForMonth(year: number, month: number): Promise<BjjLeaderboardEntry[]> {
-  const monthStart = formatLeaderboardMonthStartIso(year, month)
-  const { data, error } = await db.rpc('bjj_leaderboard_sessions_for_month', { month_start: monthStart })
-
-  if (error) {
-    if (isMissingSchemaError(error, 'bjj_leaderboard_sessions_for_month')) return []
-    throw new Error(error.message)
-  }
-
-  return (data ?? []).map((row: { id: string; name: string; handle: string; score: number | string }) => ({
-    id: String(row.id),
-    name: String(row.name ?? ''),
-    handle: String(row.handle ?? ''),
-    score: Number(row.score ?? 0),
-  }))
-}
-
-async function listFeedComments(viewerId: string | null, sessionId: string): Promise<BjjFeedComment[]> {
-  const { data: rows, error } = await db
-    .from('training_session_comments')
-    .select('*')
-    .eq('training_session_id', sessionId)
-    .order('created_at', { ascending: true })
-
-  if (error) {
-    if (isMissingSchemaError(error, 'list_feed_comments')) return []
-    throw new Error(error.message)
-  }
-
-  const userIds = Array.from(
-    new Set<string>(
-      (rows ?? [])
-        .map((row: any) => row.user_id)
-        .filter((userId: unknown): userId is string => typeof userId === 'string' && userId.length > 0),
-    ),
-  )
-  const profilesById = await listProfilesByIds(viewerId, userIds)
-
-  return (rows ?? []).map((row: any) => {
-    const profile = profilesById.get(row.user_id)
-    return {
-      id: row.id,
-      sessionId,
-      authorName: profile?.display_name ?? 'Grappler',
-      authorHandle: `@${profile?.username ?? 'grappler'}`,
-      body: row.body,
-      createdAt: row.created_at ?? new Date().toISOString(),
-      createdAtLabel: formatFeedTimestamp(row.created_at ?? new Date().toISOString()),
-    }
-  })
-}
 
 async function mapChallengeProgress(userId: string): Promise<BjjChallenge[]> {
   const [rows, definitions] = await Promise.all([
@@ -1709,17 +1305,14 @@ export const bjjService = {
       const profile = await supabaseService.getProfile(user.id)
       const premiumUnlocked = isPremiumProfile(profile ?? user)
 
-      const [libraryTechniques, discoverTechniques, sessions, followedGrapplerIds, notifications, systems] = await Promise.all([
+      const [libraryTechniques, discoverTechniques, sessions, systems] = await Promise.all([
         listLibraryTechniques(user.id),
         listDiscoverTechniques(),
         listSessions(user.id),
-        listFollowedGrapplerIds(user.id),
-        listNotifications(user.id),
         listSystems(user.id, premiumUnlocked),
       ])
 
-      const [suggestedGrapplers, challenges, achievements] = await Promise.all([
-        listSuggestedGrapplers(user.id, followedGrapplerIds),
+      const [challenges, achievements] = await Promise.all([
         mapChallengeProgress(user.id),
         mapAchievementProgress(user.id),
       ])
@@ -1730,74 +1323,13 @@ export const bjjService = {
         customTags: sanitizeArray(libraryTechniques.flatMap((technique) => technique.tags)),
         discoverTechniques,
         sessions,
-        followedGrapplerIds,
-        feedPosts: [],
-        suggestedGrapplers,
-        notifications,
         systems,
-        leaderboard: [],
         challenges,
         achievements,
       }
     } catch (error) {
       captureException('bjj-shell-snapshot', error, { step: 'hydrate' }, 'warning')
       throw error instanceof Error ? error : new Error(getErrorMessage(error))
-    }
-  },
-
-  listLeaderboardForMonth(year: number, month: number): Promise<BjjLeaderboardEntry[]> {
-    return listLeaderboardForMonth(year, month)
-  },
-
-  async searchCommunityProfiles(_userId: string, branch: MartialArtsBranchId, query: string): Promise<BjjSuggestedGrappler[]> {
-    const { data, error } = await db.rpc('search_public_profiles', {
-      p_branch: branch,
-      p_query: query.trim(),
-      p_limit: 60,
-      p_cursor: null,
-    })
-    if (error) {
-      if (isMissingSchemaError(error, 'search_public_profiles')) return []
-      throw new Error(error.message)
-    }
-    return (data ?? []).map(mapPublicProfileRowToGrappler)
-  },
-
-  async getPublicUserProfile(
-    _viewerId: string,
-    profileId: string,
-    branch: MartialArtsBranchId,
-  ): Promise<BjjPublicUserProfileBundle | null> {
-    const [{ data: profileRows, error: profileError }, { data: techniqueRows, error: techniqueError }, { data: systemRows, error: systemsError }] = await Promise.all([
-      db.rpc('get_public_profile', { p_profile_id: profileId }),
-      db.rpc('list_public_user_techniques', { p_profile_id: profileId, p_branch: branch }),
-      db.rpc('list_public_user_systems', { p_profile_id: profileId, p_branch: branch }),
-    ])
-
-    if (profileError) {
-      if (isMissingSchemaError(profileError, 'get_public_profile')) return null
-      throw new Error(profileError.message)
-    }
-    if (techniqueError) {
-      if (isMissingSchemaError(techniqueError, 'list_public_user_techniques')) return null
-      throw new Error(techniqueError.message)
-    }
-    if (systemsError) {
-      if (isMissingSchemaError(systemsError, 'list_public_user_systems')) return null
-      throw new Error(systemsError.message)
-    }
-
-    const profileRow = Array.isArray(profileRows) ? profileRows[0] : null
-    if (!profileRow) return null
-    const profile = mapPublicProfileRowToGrappler(profileRow)
-    return {
-      profile: {
-        ...profile,
-        bio: String(profileRow.bio ?? ''),
-        privacy: (profileRow.privacy === 'private' ? 'private' : 'public') as BjjPrivacy,
-      },
-      techniques: (techniqueRows ?? []).map((row: any) => mapDiscoverTechnique(row)),
-      systems: (systemRows ?? []).map((row: any) => mapPublicSystemRpcRow(row, profileId)),
     }
   },
 
@@ -1996,32 +1528,6 @@ export const bjjService = {
     await incrementStreaks(userId)
     await awardXp(userId, 40)
 
-    if (input.visibility === 'everyone') {
-      await insertNotification(
-        userId,
-        'session_posted',
-        'Public session posted',
-        `Your ${input.type} session is now live in the feed.`,
-        { sessionId: row.id },
-      )
-
-      const { data: followers } = await db
-        .from('follows')
-        .select('follower_user_id')
-        .eq('following_user_id', userId)
-
-      const currentUserProfile = await supabaseService.getProfile(userId)
-      for (const follower of followers ?? []) {
-        await insertNotification(
-          follower.follower_user_id,
-          'session_posted',
-          'New session in your feed',
-          `${currentUserProfile?.displayName ?? 'A grappler'} posted a public session.`,
-          { sessionId: row.id, authorId: userId },
-        )
-      }
-    }
-
     await syncProgressSignals(userId)
     return mapSession(row, linkedTechniqueIds)
   },
@@ -2094,201 +1600,6 @@ export const bjjService = {
       .eq('user_id', userId)
 
     if (error) throw new Error(error.message)
-  },
-
-  async followUser(userId: string, targetUserId: string): Promise<void> {
-    const action = await socialRelationshipsService.followUser(userId, targetUserId)
-    if (action === 'followed') {
-      const profile = await supabaseService.getProfile(userId)
-      await insertNotification(
-        targetUserId,
-        'follow',
-        'New follower',
-        `${profile?.displayName ?? 'A grappler'} started following you.`,
-        { followerId: userId },
-      )
-      return
-    }
-
-    if (action === 'requested') {
-      const profile = await supabaseService.getProfile(userId)
-      await insertNotification(
-        targetUserId,
-        'follow-request',
-        'Follow request',
-        `${profile?.displayName ?? 'A grappler'} requested to follow you.`,
-        { requesterId: userId },
-      )
-    }
-  },
-
-  async unfollowUser(userId: string, targetUserId: string): Promise<void> {
-    await socialRelationshipsService.unfollowUser(userId, targetUserId)
-  },
-
-  async markNotificationsRead(userId: string): Promise<void> {
-    const { error } = await db
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', userId)
-      .eq('read', false)
-
-    if (error && !isMissingSchemaError(error)) {
-      throw new Error(error.message)
-    }
-  },
-
-  async likeFeedPost(userId: string, postId: string): Promise<void> {
-    const sessionId = toSessionIdFromPostId(postId)
-    if (!sessionId) {
-      await socialInteractionsService.likePost(userId, postId)
-      return
-    }
-
-    const { error } = await db
-      .from('training_session_likes')
-      .insert({
-        training_session_id: sessionId,
-        user_id: userId,
-      })
-
-    if (error && !/duplicate key/i.test(error.message)) {
-      throw new Error(error.message)
-    }
-  },
-
-  async unlikeFeedPost(userId: string, postId: string): Promise<void> {
-    const sessionId = toSessionIdFromPostId(postId)
-    if (!sessionId) {
-      await socialInteractionsService.unlikePost(userId, postId)
-      return
-    }
-
-    const { error } = await db
-      .from('training_session_likes')
-      .delete()
-      .eq('training_session_id', sessionId)
-      .eq('user_id', userId)
-
-    if (error) {
-      throw new Error(error.message)
-    }
-  },
-
-  async saveFeedPost(userId: string, postId: string): Promise<void> {
-    const sessionId = toSessionIdFromPostId(postId)
-    if (sessionId) return
-    await socialInteractionsService.savePost(userId, postId)
-  },
-
-  async unsaveFeedPost(userId: string, postId: string): Promise<void> {
-    const sessionId = toSessionIdFromPostId(postId)
-    if (sessionId) return
-    await socialInteractionsService.unsavePost(userId, postId)
-  },
-
-  async listCommentsForPost(viewerUserId: string | null, postId: string): Promise<BjjFeedComment[]> {
-    const sessionId = toSessionIdFromPostId(postId)
-    if (!sessionId) {
-      const comments = await socialInteractionsService.listComments(postId)
-      return comments.map((comment) => ({
-        id: comment.id,
-        sessionId: postId,
-        authorName: comment.authorName,
-        authorHandle: comment.authorHandle,
-        body: comment.body,
-        parentCommentId: comment.parentCommentId,
-        mentions: comment.mentions,
-        hashtags: comment.hashtags,
-        createdAt: comment.createdAt,
-        createdAtLabel: formatFeedTimestamp(comment.createdAt),
-      }))
-    }
-    return listFeedComments(viewerUserId, sessionId)
-  },
-
-  async addCommentToPost(userId: string, postId: string, body: string, parentCommentId?: string): Promise<BjjFeedComment[]> {
-    const sessionId = toSessionIdFromPostId(postId)
-    if (!sessionId) {
-      const comments = await socialInteractionsService.addComment(userId, postId, body, parentCommentId)
-      return comments.map((comment) => ({
-        id: comment.id,
-        sessionId: postId,
-        authorName: comment.authorName,
-        authorHandle: comment.authorHandle,
-        body: comment.body,
-        parentCommentId: comment.parentCommentId,
-        mentions: comment.mentions,
-        hashtags: comment.hashtags,
-        createdAt: comment.createdAt,
-        createdAtLabel: formatFeedTimestamp(comment.createdAt),
-      }))
-    }
-
-    const trimmedBody = body.trim()
-    if (!trimmedBody) {
-      throw new Error('Comment body is required')
-    }
-
-    const { error } = await db
-      .from('training_session_comments')
-      .insert({
-        training_session_id: sessionId,
-        user_id: userId,
-        body: trimmedBody,
-      })
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    return listFeedComments(userId, sessionId)
-  },
-
-  async getInviteLink(userId: string, baseUrl: string): Promise<string> {
-    const now = new Date().toISOString()
-    const { data: existing, error: existingError } = await db
-      .from('invite_links')
-      .select('*')
-      .eq('creator_user_id', userId)
-      .order('created_at', { ascending: false })
-      .maybeSingle()
-
-    if (existingError && !isMissingSchemaError(existingError)) {
-      throw new Error(existingError.message)
-    }
-
-    const code = existing?.code ?? createTextId('invite').replace(/^invite-/, '')
-
-    const { error } = await db
-      .from('invite_links')
-      .upsert({
-        id: existing?.id ?? undefined,
-        creator_user_id: userId,
-        code,
-        share_count: Number(existing?.share_count ?? 0) + 1,
-        last_shared_at: now,
-      }, { onConflict: 'code' })
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    const inviteUrl = new URL(baseUrl)
-    inviteUrl.searchParams.set('invite', code)
-    return inviteUrl.toString()
-  },
-
-  async resolveProfileByUsername(username: string): Promise<string | null> {
-    const handle = username.trim().replace(/^@/, '')
-    if (!handle) return null
-    const { data, error } = await db.rpc('resolve_public_profile_by_username', { p_username: handle })
-    if (error) {
-      if (isMissingSchemaError(error, 'resolve_public_profile_by_username')) return null
-      throw new Error(error.message)
-    }
-    if (data == null) return null
-    return String(data)
   },
 
   async uploadProfilePhoto(userId: string, file: File): Promise<string> {

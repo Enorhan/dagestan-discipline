@@ -8,9 +8,7 @@ const read = (path: string) => readFileSync(join(root, path), 'utf8')
 const migration = read('supabase/migrations/20260421223000_multi_user_public_graph_hardening.sql')
 const draftStatusMigration = read('supabase/migrations/20260424113000_system_draft_status.sql')
 const bjjService = read('src/lib/bjj-service.ts')
-const bjjApp = read('src/components/bjj-app.tsx')
 const runtimeFlags = read('src/lib/runtime-flags.ts')
-const bjjTypes = read('src/lib/bjj-types.ts')
 const databaseTypes = read('src/lib/database.types.ts')
 
 for (const token of [
@@ -48,29 +46,13 @@ for (const token of [
   assert.ok(draftStatusMigration.includes(token), `draft status migration missing ${token}`)
 }
 
-for (const rpc of [
-  'save_user_system_graph',
-  'search_public_profiles',
-  'get_public_profile',
-  'list_public_user_techniques',
-  'list_public_user_systems',
-]) {
+// MatFlow minimalist pivot (2026-05-10) removed social/public-profile RPCs.
+// We keep coverage for the surface-area that survived the pivot: the system
+// graph save path is still authoritative for user-created graphs.
+for (const rpc of ['save_user_system_graph']) {
   assert.ok(bjjService.includes(`'${rpc}'`), `bjj service should call ${rpc}`)
   assert.ok(databaseTypes.includes(`${rpc}: {`), `generated database types should include ${rpc}`)
 }
-
-assert.ok(
-  bjjTypes.includes('export type BjjSocialSurface = MartialArtsBranchId'),
-  'community surface should be branch-scoped',
-)
-
-const refreshSocialFeedMatch = bjjApp.match(/const refreshSocialFeed = useCallback[\s\S]+?\}, \[showError, user\]\)/)
-assert.ok(refreshSocialFeedMatch, 'refreshSocialFeed block not found')
-assert.doesNotMatch(
-  refreshSocialFeedMatch[0],
-  /listHomeFeed|listExploreFeed|listReels|listStories|listDrafts|listTrendingTopics/,
-  'Community refresh must not call legacy social feed paths',
-)
 
 for (const flag of [
   'socialFeedEnabled',

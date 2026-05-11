@@ -44,6 +44,40 @@ function appleEpochMillisToIso(value: number | undefined): string | null {
   return new Date(value).toISOString()
 }
 
+function allowedProductIds(): Set<string> {
+  const configured = trimEnv(Deno.env.get('APPSTORE_ALLOWED_PRODUCT_IDS'))
+    || trimEnv(Deno.env.get('APPSTORE_IAP_PRODUCT_IDS'))
+    || trimEnv(Deno.env.get('APPSTORE_MONTHLY_PRODUCT_ID'))
+    || 'matflow.monthly'
+
+  return new Set(
+    configured
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  )
+}
+
+async function recordProcessedNotification(
+  supabaseAdmin: any,
+  params: { uuid: string, notificationType?: string | null, subtype?: string | null },
+): Promise<void> {
+  const notificationUUID = params.uuid.trim()
+  if (!notificationUUID) return
+
+  const { error } = await supabaseAdmin
+    .from('processed_app_store_notifications')
+    .insert({
+      notification_uuid: notificationUUID,
+      notification_type: params.notificationType ?? null,
+      subtype: params.subtype ?? null,
+    })
+
+  if (error && error.code !== '23505') {
+    throw new Error(error.message)
+  }
+}
+
 interface ProcessedTransactionResult {
   userId: string
   originalTransactionId: string
@@ -53,6 +87,7 @@ interface ProcessedTransactionResult {
   status: string | null
   purchasedAt: string | null
   expiresAt: string | null
+  revokedAt: string | null
 }
 
 Deno.serve(async (req) => {
@@ -91,18 +126,15 @@ Deno.serve(async (req) => {
       if (existing?.id) {
         return jsonResponse({ ok: true, deduped: true }, 200)
       }
-
-      await supabaseAdmin
-        .from('processed_app_store_notifications')
-        .insert({
-          notification_uuid: notificationUUID,
-          notification_type: notification.notificationType ?? null,
-          subtype: notification.subtype ?? null,
-        })
     }
 
     const signedTransactionInfo = (data.signedTransactionInfo ?? '').trim()
     if (!signedTransactionInfo) {
+      await recordProcessedNotification(supabaseAdmin, {
+        uuid: notificationUUID,
+        notificationType: notification.notificationType,
+        subtype: notification.subtype,
+      })
       return jsonResponse({ ok: true, ignored: 'no signedTransactionInfo' }, 200)
     }
 
@@ -118,6 +150,9 @@ Deno.serve(async (req) => {
     if (!userId || !originalTransactionId || !productId) {
       return jsonResponse({ ok: false, error: 'Missing appAccountToken / originalTransactionId / productId' }, 400)
     }
+    if (!allowedProductIds().has(productId)) {
+      return jsonResponse({ ok: false, error: 'Unsupported App Store product' }, 400)
+    }
 
     const result: ProcessedTransactionResult = {
       userId,
@@ -128,9 +163,10 @@ Deno.serve(async (req) => {
       status: notification.notificationType ?? null,
       purchasedAt: appleEpochMillisToIso(transaction.purchaseDate),
       expiresAt: appleEpochMillisToIso(transaction.expiresDate),
+      revokedAt: appleEpochMillisToIso(transaction.revocationDate),
     }
 
-    await supabaseAdmin
+    const { error: transactionError } = await supabaseAdmin
       .from('app_store_transactions')
       .upsert(
         {
@@ -146,19 +182,31 @@ Deno.serve(async (req) => {
         },
         { onConflict: 'user_id,original_transaction_id,product_id' },
       )
+    if (transactionError) throw new Error(transactionError.message)
 
-    const isPremium = result.expiresAt ? Date.parse(result.expiresAt) > Date.now() : true
+    const revoked = Boolean(result.revokedAt)
+    const expiresAtMs = result.expiresAt ? Date.parse(result.expiresAt) : null
+    const isActive = !revoked && expiresAtMs != null && expiresAtMs > Date.now()
+    const subscriptionStatus = revoked ? 'revoked' : isActive ? 'active' : 'expired'
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({
-        is_premium: isPremium,
+        is_premium: isActive,
         premium_source: 'apple_iap',
         premium_provider_id: result.originalTransactionId,
         premium_updated_at: new Date().toISOString(),
+        subscription_status: subscriptionStatus,
+        subscription_period_end: result.expiresAt,
       })
       .eq('id', result.userId)
 
     if (profileError) throw new Error(profileError.message)
+
+    await recordProcessedNotification(supabaseAdmin, {
+      uuid: notificationUUID,
+      notificationType: notification.notificationType,
+      subtype: notification.subtype,
+    })
 
     return jsonResponse({ ok: true }, 200)
   } catch (error) {
@@ -167,4 +215,3 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: message }, 400)
   }
 })
-
